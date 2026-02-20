@@ -4,7 +4,8 @@ import type { ProblemDetailDto, SolutionDetailDto, UserDetailDto } from '../type
 import Navbar from '../components/Navbar';
 import { problemService } from '../services/problemService';
 import { solutionService } from '../services/solutionService';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { authService } from '../services/authService';
 
 const Profile = () => {
     const [user, setUser] = useState<UserDetailDto | null>(null);
@@ -16,6 +17,8 @@ const Profile = () => {
     const [activeTab, setActiveTab] = useState<'problems' | 'solutions' | 'settings'>('problems');
     const [passForm, setPassForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
     const [passMessage, setPassMessage] = useState({ type: '', text: '' });
+
+    const navigate = useNavigate();
 
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,7 +202,24 @@ const Profile = () => {
                             <div className="space-y-4">
                                 <div className="flex items-center text-gray-700">
                                     <span className="w-24 font-bold text-gray-500 uppercase text-xs">E-Posta:</span>
-                                    <span className="font-medium">{user?.email}</span>
+                                    <span className="font-medium mr-3">{user?.email}</span>
+
+                                    {/* DOĞRULAMA ROZETİ VE BUTONU */}
+                                    {user?.isEmailVerified ? (
+                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full uppercase tracking-wider">Doğrulandı</span>
+                                    ) : (
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    await authService.resendVerification(user!.email);
+                                                    navigate('/verify-email', { state: { email: user!.email } });
+                                                } catch (err) { alert("Kod gönderilemedi."); }
+                                            }}
+                                            className="px-2 py-0.5 bg-red-100 text-red-700 hover:bg-red-200 transition text-[10px] font-bold rounded-full uppercase tracking-wider cursor-pointer"
+                                        >
+                                            Hesabı Doğrula
+                                        </button>
+                                    )}
                                 </div>
                                 <div className="flex items-center text-gray-700">
                                     <span className="w-24 font-bold text-gray-500 uppercase text-xs">Şehir:</span>

@@ -6,6 +6,8 @@ import { userService } from '../services/userService';
 import type { ProblemDetailDto, SolutionDetailDto, UserDetailDto } from '../types';
 import Navbar from '../components/Navbar';
 import { solutionVoteService } from '../services/solutionVoteService';
+import CommentSection from '../components/CommentSection';
+import ReportModal from '../components/ReportModal';
 
 const ProblemDetail = () => {
     const { id } = useParams<{ id: string }>(); // URL'den ID'yi al
@@ -13,6 +15,14 @@ const ProblemDetail = () => {
     const [solutions, setSolutions] = useState<SolutionDetailDto[]>([]);
     const [currentUser, setCurrentUser] = useState<UserDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
+    // Şikayet Modalı State'leri
+    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const [reportTarget, setReportTarget] = useState<{ type: 'Problem' | 'Solution', id: number } | null>(null);
+
+    const openReportModal = (type: 'Problem' | 'Solution', id: number) => {
+        setReportTarget({ type, id });
+        setIsReportModalOpen(true);
+    };
 
     // Çözüm Formu Verileri
     const [solutionForm, setSolutionForm] = useState({ title: '', description: '' });
@@ -163,9 +173,15 @@ const ProblemDetail = () => {
                         <p className="text-gray-700 text-lg whitespace-pre-wrap">
                             {problem.description}
                         </p>
-                        <div className="mt-4 flex items-center">
+                        <Link to={`/user/${problem.senderId}`} className="mt-4 flex items-center">
                             <div className="font-medium text-blue-600">Gönderen: {problem.senderUsername}</div>
-                        </div>
+                        </Link>
+                        <button
+                            onClick={() => openReportModal('Problem', problem.id)}
+                            className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1 mt-3 transition bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-100 w-fit"
+                        >
+                            🚩 Bu Sorunu Şikayet Et
+                        </button>
                     </div>
                 </div>
 
@@ -180,51 +196,61 @@ const ProblemDetail = () => {
                         ) : (
                             <div className="space-y-4">
                                 {solutions.map(sol => (
-                                    <div key={sol.id} className={`flex bg-white p-6 rounded-lg shadow border-l-4 ${sol.senderIsExpert ? 'border-green-500' : 'border-blue-500'} transition-all hover:shadow-md`}>
+                                    <div key={sol.id} className={`bg-white p-6 rounded-lg shadow border-l-4 ${sol.senderIsExpert ? 'border-green-500' : 'border-blue-500'} transition-all hover:shadow-md`}>
+                                        <div className='flex'>
+                                            {/* OYLAMA KISMI (SOL TARAFTA) */}
+                                            <div className="flex flex-col items-center justify-start mr-4 space-y-1">
+                                                <button
+                                                    onClick={() => handleVote(sol.id, true)}
+                                                    className="text-gray-400 hover:text-orange-500 transition p-1"
+                                                    title="Bu çözüm yararlı"
+                                                >
+                                                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                                                </button>
 
-                                        {/* OYLAMA KISMI (SOL TARAFTA) */}
-                                        <div className="flex flex-col items-center justify-start mr-4 space-y-1">
-                                            <button
-                                                onClick={() => handleVote(sol.id, true)}
-                                                className="text-gray-400 hover:text-orange-500 transition p-1"
-                                                title="Bu çözüm yararlı"
-                                            >
-                                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
-                                            </button>
+                                                <span className="text-xl font-bold text-gray-700">
+                                                    {/* Backend'den gelen VoteCount alanı varsa onu kullan, yoksa 0 */}
+                                                    {(sol as any).voteCount || 0}
+                                                </span>
 
-                                            <span className="text-xl font-bold text-gray-700">
-                                                {/* Backend'den gelen VoteCount alanı varsa onu kullan, yoksa 0 */}
-                                                {(sol as any).voteCount || 0}
-                                            </span>
-
-                                            <button
-                                                onClick={() => handleVote(sol.id, false)}
-                                                className="text-gray-400 hover:text-blue-500 transition p-1"
-                                                title="Bu çözüm yararlı değil"
-                                            >
-                                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                            </button>
-                                        </div>
-
-                                        {/* İÇERİK KISMI */}
-                                        <div className="flex-1">
-                                            <div className="flex justify-between items-start">
-                                                <h4 className="text-lg font-bold text-gray-900">{sol.title}</h4>
-                                                <span className="text-xs text-gray-500">{formatDate(sol.sendDate)}</span>
+                                                <button
+                                                    onClick={() => handleVote(sol.id, false)}
+                                                    className="text-gray-400 hover:text-blue-500 transition p-1"
+                                                    title="Bu çözüm yararlı değil"
+                                                >
+                                                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                </button>
                                             </div>
-                                            <p className="mt-2 text-gray-700 whitespace-pre-wrap">{sol.description}</p>
 
-                                            <div className="mt-4 flex items-center justify-between text-sm">
-                                                <div className="flex items-center">
-                                                    <span className="font-bold text-gray-900 mr-2">{sol.senderUsername}</span>
-                                                    {sol.senderIsExpert && (
-                                                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
-                                                            Uzman
-                                                        </span>
-                                                    )}
+                                            {/* İÇERİK KISMI */}
+                                            <div className="flex-1">
+                                                <div className="flex justify-between items-start">
+                                                    <h4 className="text-lg font-bold text-gray-900">{sol.title}</h4>
+                                                    <span className="text-xs text-gray-500">{formatDate(sol.sendDate)}</span>
+                                                </div>
+                                                <p className="mt-2 text-gray-700 whitespace-pre-wrap">{sol.description}</p>
+
+                                                <div className="mt-4 flex items-center justify-between text-sm">
+                                                    <div className="flex items-center">
+                                                        <Link to={`/user/${sol.senderId}`} className="font-bold text-gray-900 mr-2">{sol.senderUsername}</Link>
+                                                        {sol.senderIsExpert && (
+                                                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                                                                Uzman
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
+                                        <div className="mt-6">
+                                            <CommentSection solutionId={sol.id} />
+                                        </div>
+                                        <button
+                                            onClick={() => openReportModal('Solution', sol.id)}
+                                            className="text-[10px] text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 px-2 py-1 rounded-md font-bold uppercase tracking-wider transition ml-auto"
+                                        >
+                                            🚩 Şikayet Et
+                                        </button>
                                     </div>
                                 ))}
                             </div>
@@ -282,6 +308,16 @@ const ProblemDetail = () => {
                 </div>
 
             </main>
+
+            {/* Şikayet Modalı */}
+            {reportTarget && (
+                <ReportModal
+                    isOpen={isReportModalOpen}
+                    onClose={() => setIsReportModalOpen(false)}
+                    targetType={reportTarget.type}
+                    targetId={reportTarget.id}
+                />
+            )}
         </div>
     );
 };

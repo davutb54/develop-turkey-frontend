@@ -24,4 +24,11 @@ export const solutionService = {
     getBySender: async (senderId: number) => {
         return api.get<IDataResult<SolutionDetailDto[]>>(`/solution/getbysender?senderId=${senderId}`);
     },
+    getAll: async () => {
+        return api.get<IDataResult<SolutionDetailDto[]>>('/solution/getall');
+    },
+    delete: async (id: number) => {
+        // Backend int id bekliyor
+        return api.delete<IResult>(`/solution/delete?id=${id}`);
+    }
 };

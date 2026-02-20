@@ -75,7 +75,7 @@ const Register = () => {
       if (response.data && response.data.token) {
         localStorage.setItem('token', response.data.token);
         alert("Kayıt Başarılı! Hoşgeldiniz.");
-        navigate('/');
+        navigate('/verify-email', { state: { email: formData.email } });
       } else {
         setError("Kayıt işlemi başarısız oldu.");
       }

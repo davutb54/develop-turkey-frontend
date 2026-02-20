@@ -160,3 +160,71 @@ export interface ProblemFilterDto {
     topicId?: number;
     searchText?: string;
 }
+
+// Yorumlar İçin
+
+export interface CommentAddDto {
+    solutionId: number;
+    senderId: number; // Backend Comment tablosu SenderId bekliyor
+    text: string;
+    parentCommentId?: number | null; // Alt yorumsa burası dolacak
+}
+
+export interface VerifyEmailDto {
+    email: string;
+    code: number;
+}
+
+export interface ResetPasswordDto {
+    email: string;
+    code: number;
+    newPassword: string;
+}
+
+// --- ADMIN PANELI TİPLERİ ---
+export interface AdminDashboardDto {
+    totalUsers: number;
+    totalProblems: number;
+    totalSolutions: number;
+    reportedProblems: number;
+    bannedUsers: number;
+}
+
+export interface LogDto {
+    id: number;
+    message: string;
+    creationDate: string;
+    type: string;
+}
+
+export interface LogFilterDto {
+    type?: string;
+    searchText?: string;
+    startDate?: string;
+    endDate?: string;
+}
+
+export interface ReportDto {
+    id: number;
+    reporterUserId: number;
+    targetType: string;
+    targetId: number;
+    reason: string;
+    reportDate: string;
+    isResolved: boolean;
+}
+
+export interface UserForUpdateDto {
+    id: number;
+    name: string;
+    surname: string;
+    email: string;
+    cityCode: number;
+    genderCode: number;
+}
+
+export interface UserForPasswordUpdateDto {
+    id: number;
+    oldPassword: string;
+    newPassword: string;
+}

@@ -1,7 +1,7 @@
 // src/pages/Login.tsx
 import { useState } from 'react';
 import { userService } from '../services/userService';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const Login = () => {
   const [userName, setUserName] = useState('');
@@ -15,28 +15,28 @@ const Login = () => {
 
     try {
       const response = await userService.login({ userName, password });
-      
+
       // DEĞİŞİKLİK BURADA: response.data artık doğrudan Token objesidir.
       // Eğer token varsa işlem başarılıdır.
       if (response.data && response.data.token) {
         localStorage.setItem('token', response.data.token);
 
 
-    const base64Url = response.data.token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
+        const base64Url = response.data.token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
 
-    const tokenData = JSON.parse(jsonPayload);
-    // JWT içindeki "nameid" genelde ID'yi tutar
-    localStorage.setItem('userId', tokenData.nameid || tokenData.unique_name || tokenData.sub);
+        const tokenData = JSON.parse(jsonPayload);
+        // JWT içindeki "nameid" genelde ID'yi tutar
+        localStorage.setItem('userId', tokenData.nameid || tokenData.unique_name || tokenData.sub);
 
 
-        
+
         // Kullanıcıya bilgi verelim (isteğe bağlı, direkt yönlendirebilirsin)
         // alert("Giriş Başarılı! Yönlendiriliyorsunuz...");
-        
+
         navigate('/');
       } else {
         // Token gelmediyse bir sorun vardır
@@ -47,8 +47,8 @@ const Login = () => {
       console.error("Login hatası:", err);
       if (err.response && err.response.data) {
         // Backend bazen string mesaj, bazen obje dönebilir
-        setError(typeof err.response.data === 'string' 
-          ? err.response.data 
+        setError(typeof err.response.data === 'string'
+          ? err.response.data
           : err.response.data.message || "Kullanıcı adı veya şifre hatalı");
       } else {
         setError("Sunucuya bağlanılamadı.");
@@ -67,7 +67,7 @@ const Login = () => {
             Develop Turkey Platformu
           </p>
         </div>
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
           <div className="rounded-md shadow-sm -space-y-px">
             <div className="mb-4">
@@ -111,6 +111,12 @@ const Login = () => {
             >
               Giriş Yap
             </button>
+            <div className="mt-4 text-center">
+              <Link to="/forgot-password" className="text-sm text-blue-600 hover:underline">Şifremi Unuttum</Link>
+            </div>
+            <div className="mt-4 text-center">
+              <Link to="/register" className="text-sm text-blue-600 hover:underline">Kayıt Ol</Link>
+            </div>
           </div>
         </form>
       </div>

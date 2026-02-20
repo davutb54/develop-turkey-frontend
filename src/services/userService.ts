@@ -7,7 +7,8 @@ import type {
     UserForRegisterDto, 
     UserDetailDto,
     UserImageUpdateDto,
-    UserForPasswordUpdateDto
+    UserForPasswordUpdateDto,
+    UserForUpdateDto
 } from '../types';
 
 export const userService = {
@@ -37,5 +38,13 @@ export const userService = {
     // Şifre Güncelle (UserController/updatepassword)
     updatePassword: async (data: UserForPasswordUpdateDto) => {
         return api.post<IResult>('/user/updatepassword', data);
-    }
+    },
+
+    getAll: async () => {
+        return api.get<IDataResult<UserDetailDto[]>>('/user/getall');
+    },
+
+    updateDetails: async (data: UserForUpdateDto) => {
+        return api.post<IResult>('/user/updatedetails', data);
+    },
 };
