@@ -11,7 +11,7 @@ const Navbar = () => {
   useEffect(() => {
     const fetchUser = async () => {
       const userId = localStorage.getItem('userId');
-      
+
       if (userId) {
         try {
           // Giriş yapmış kullanıcının tüm detaylarını çekiyoruz
@@ -19,8 +19,25 @@ const Navbar = () => {
           if (response.data.success) {
             setUser(response.data.data);
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Kullanıcı bilgileri çekilemedi:", error);
+
+          if (error.response && error.response.status === 429) {
+            setUser({
+              id: parseInt(userId),
+              userName: "Yeniden Bağlanıyor...", // Sağ üstte bu yazacak
+              name: "",
+              surname: "",
+              email: "",
+              profileImageUrl: null,
+              isAdmin: false, // Güvenlik gereği özellikleri kapalı tutuyoruz
+              isExpert: false,
+              isOfficial: false,
+              cityCode: 0,
+              gender: 0,
+              registerDate: new Date().toISOString()
+            } as any);
+          }
         }
       }
       setLoading(false);
@@ -41,7 +58,7 @@ const Navbar = () => {
     <nav className="bg-white shadow-md border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          
+
           {/* SOL KISIM: Logo ve Ana Menü */}
           <div className="flex items-center">
             <Link to="/" className="flex items-center gap-2">
@@ -57,7 +74,7 @@ const Navbar = () => {
                 {user ? (
                   // KULLANICI GİRİŞ YAPMIŞSA
                   <div className="flex items-center gap-4">
-                    
+
                     {/* YENİ EKLENEN SORUN PAYLAŞ BUTONU */}
                     <Link to="/add-problem" className="hidden sm:block text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-md hover:bg-blue-100 transition">
                       + Sorun Paylaş
@@ -86,8 +103,8 @@ const Navbar = () => {
                           {user.userName}
                         </span>
                       </Link>
-                      
-                      <button 
+
+                      <button
                         onClick={handleLogout}
                         className="text-sm font-medium text-gray-500 hover:text-red-600 transition ml-2"
                         title="Çıkış Yap"
