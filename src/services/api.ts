@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Backend'in çalıştığı adres (WebAPI/Properties/launchSettings.json'dan alındı)
-const BASE_URL = 'https://localhost:7216/api'; 
+const BASE_URL = '/api'; 
 
 const api = axios.create({
   baseURL: BASE_URL,

@@ -1,15 +1,26 @@
 import api from './api';
-import type { IDataResult, IResult, ProblemDetailDto, ProblemAddDto, ProblemFilterDto } from '../types';
+import type { IDataResult, IResult, ProblemDetailDto, ProblemAddDto } from '../types';
 
 export const problemService = {
 
     // Filtreli Listeleme (ProblemController/getlist)
-    getList: async (filter: ProblemFilterDto) => {
-        // Axios params özelliği, objeyi otomatik olarak query string'e çevirir
-        // Örn: /problem/getlist?CityCode=34&TopicId=2
-        return api.get<IDataResult<ProblemDetailDto[]>>('/problem/getlist', {
-            params: filter
+    getList: async (filterDto: {
+        topicId?: number;
+        cityCode?: number;
+        searchText?: string;
+        isOfficialResponse?: boolean;
+        page?: number;
+        pageSize?: number;
+    }) => {
+        // Objedeki null, undefined veya boş string olanları temizleyip URL parametresine çevirir
+        const queryParams = new URLSearchParams();
+        Object.entries(filterDto).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                queryParams.append(key, value.toString());
+            }
         });
+
+        return api.get(`/problem/getlist?${queryParams.toString()}`);
     },
 
 
@@ -44,5 +55,19 @@ export const problemService = {
     // Mevcut fonksiyonların yanına ekle:
     getBySender: async (senderId: number) => {
         return api.get<IDataResult<ProblemDetailDto[]>>(`/problem/getbysender?senderId=${senderId}`);
+    },
+
+    update: async (problem: any) => {
+        return api.post('/problem/update', problem);
+    },
+    // delete metodunu şu şekilde değiştir:
+    // Sorun Silme
+    delete: async (id: number) => {
+        return api.delete<IResult>(`/problem/delete?id=${id}`);
+    },
+
+    // Tıklanma / Görüntülenme sayısını artırır
+    incrementView: async (id: number) => {
+        return api.post(`/problem/incrementview?id=${id}`);
     },
 };

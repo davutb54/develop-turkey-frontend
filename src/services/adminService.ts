@@ -20,5 +20,39 @@ export const adminService = {
     },
     getLogs: async (filter: LogFilterDto) => {
         return api.get<IDataResult<LogDto[]>>('/admin/getlogs', { params: filter });
+    },
+    // YETKİLENDİRME METODLARI
+    toggleAdminRole: async (userId: number) => {
+        return api.post<IResult>(`/admin/toggleadminrole?userId=${userId}`);
+    },
+    toggleExpertRole: async (userId: number) => {
+        return api.post<IResult>(`/admin/toggleexpertrole?userId=${userId}`);
+    },
+    toggleOfficialRole: async (userId: number) => {
+        return api.post<IResult>(`/admin/toggleofficialrole?userId=${userId}`);
+    },
+    toggleProblemHighlight: async (problemId: number) => {
+        return api.post<IResult>(`/admin/toggleproblemhighlight?problemId=${problemId}`);
+    },
+    toggleSolutionHighlight: async (solutionId: number) => {
+        return api.post<IResult>(`/admin/togglesolutionhighlight?solutionId=${solutionId}`);
+    },
+    // SORUNU ÇÖZÜLDÜ OLARAK İŞARETLEME
+    toggleProblemResolved: async (id: number) => {
+        return api.post<IResult>(`/admin/toggleproblemresolved?problemId=${id}`, {});
+    },
+    // BEKLEYEN UZMAN ÇÖZÜMLERİNİ GETİR
+    getPendingExpertSolutions: async () => {
+        return api.get<IDataResult<any[]>>('/admin/getpendingexpertsolutions');
+    },
+
+    // ÇÖZÜMÜ ONAYLA
+    approveSolution: async (id: number) => {
+        return api.post<IResult>(`/admin/approvesolution?solutionId=${id}`, {});
+    },
+
+    // ÇÖZÜMÜ REDDET
+    rejectSolution: async (id: number) => {
+        return api.post<IResult>(`/admin/rejectsolution?solutionId=${id}`, {});
     }
 };

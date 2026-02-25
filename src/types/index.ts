@@ -20,6 +20,8 @@ export interface AccessToken {
 
 // Kullanıcı Detayları (Entities/DTOs/User/UserDetailDto.cs)
 export interface UserDetailDto {
+    cityCode: number;
+    genderCode: number;
     id: number;
     userName: string;
     name: string;
@@ -49,6 +51,7 @@ export interface Topic {
 
 // Sorun Detayları (Entities/DTOs/ProblemDetailDto.cs)
 export interface ProblemDetailDto {
+    isResolved: boolean;
     id: number;
     senderId: number;
     topicName: string;
@@ -65,6 +68,10 @@ export interface ProblemDetailDto {
     isDeleted: boolean;
     sendDate: string;
     imageUrl?: string | null;
+    isResolvedByExpert: boolean;
+    solutionCount: number;
+    viewCount: number;
+    senderImageUrl?: string | null;
 }
 
 // Çözüm Detayları (Entities/DTOs/SolutionDetailDto.cs)
@@ -83,6 +90,8 @@ export interface SolutionDetailDto {
     isDeleted: boolean;
     sendDate: string;
     voteCount: number;
+    expertApprovalStatus: number;
+    senderImageUrl?: string | null;
 }
 
 // Yorum Detayları (Entities/DTOs/CommentDetailDto.cs)

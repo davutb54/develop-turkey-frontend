@@ -8,6 +8,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  esbuild: {
+    pure: ['console.log', 'console.info', 'console.debug'],
+  },
   server: {
     port: 3000,
   }

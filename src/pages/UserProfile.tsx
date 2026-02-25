@@ -68,7 +68,7 @@ const UserProfile = () => {
                             <div className="h-32 w-32 rounded-full border-4 border-white overflow-hidden bg-gray-200 shadow-lg">
                                 {user.profileImageUrl ? (
                                     <img
-                                        src={`https://localhost:7216/uploads/profiles/${user.profileImageUrl}`}
+                                        src={`/uploads/profiles/${user.profileImageUrl}`}
                                         alt="Profil"
                                         className="h-full w-full object-cover"
                                     />

@@ -30,5 +30,8 @@ export const solutionService = {
     delete: async (id: number) => {
         // Backend int id bekliyor
         return api.delete<IResult>(`/solution/delete?id=${id}`);
-    }
+    },
+    update: async (solution: any) => {
+        return api.post('/solution/update', solution);
+    },
 };

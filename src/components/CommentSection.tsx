@@ -11,13 +11,14 @@ const CommentSection = ({ solutionId }: Props) => {
     const [comments, setComments] = useState<CommentDetailDto[]>([]);
     const [loading, setLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
-    
+
     // Ana yorum state'i
     const [newComment, setNewComment] = useState('');
-    
+
     // Alt yorum (Yanıt) state'leri
     const [replyingTo, setReplyingTo] = useState<number | null>(null); // Hangi yoruma yanıt veriliyor?
     const [replyText, setReplyText] = useState('');
+    const currentUserId = parseInt(localStorage.getItem('userId') || '0');
 
     const loadComments = async () => {
         if (!isOpen) return;
@@ -74,13 +75,23 @@ const CommentSection = ({ solutionId }: Props) => {
         }
     };
 
+    const handleDeleteComment = async (id: number) => {
+        if (!window.confirm("Bu yorumu silmek istediğinize emin misiniz?")) return;
+        try {
+            await commentService.delete(id);
+            loadComments(); // Listeyi yenile
+        } catch (err) {
+            alert("Yorum silinemedi.");
+        }
+    };
+
     // Yorumları Filtreleme (Sadece 1 seviye derinlik)
     const mainComments = comments.filter(c => c.parentCommentId === null);
     const getSubComments = (parentId: number) => comments.filter(c => c.parentCommentId === parentId);
 
     return (
         <div className="mt-4 border-t pt-2">
-            <button 
+            <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="text-sm text-gray-500 hover:text-blue-600 flex items-center gap-1"
             >
@@ -100,7 +111,7 @@ const CommentSection = ({ solutionId }: Props) => {
                             ) : (
                                 mainComments.map(comment => (
                                     <div key={comment.id} className="text-sm border-b border-gray-200 pb-3 last:border-0 last:pb-0">
-                                        
+
                                         {/* ANA YORUM */}
                                         <div className="flex justify-between items-center mb-1">
                                             <div className="flex items-center gap-2">
@@ -117,20 +128,24 @@ const CommentSection = ({ solutionId }: Props) => {
                                             </span>
                                         </div>
                                         <p className="text-gray-700 mb-2">{comment.text}</p>
-                                        
+
                                         {/* YANITLA BUTONU (Sadece ana yorumlarda çıkar) */}
-                                        <button 
+                                        <button
                                             onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
                                             className="text-xs text-blue-600 font-medium hover:underline mb-2"
                                         >
                                             {replyingTo === comment.id ? 'İptal' : 'Yanıtla'}
                                         </button>
 
+                                        {comment.senderId === currentUserId && (
+                                            <button onClick={() => handleDeleteComment(comment.id)} className="text-[11px] text-red-500 font-bold hover:underline mb-2">Sil</button>
+                                        )}
+
                                         {/* YANIT YAZMA KUTUSU */}
                                         {replyingTo === comment.id && (
                                             <form onSubmit={(e) => handleSendComment(e, comment.id)} className="flex gap-2 mb-3 mt-1 ml-4">
-                                                <input 
-                                                    type="text" 
+                                                <input
+                                                    type="text"
                                                     className="flex-1 text-xs border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:border-blue-500"
                                                     placeholder={`${comment.senderUsername} kullanıcısına yanıt ver...`}
                                                     value={replyText}
@@ -172,8 +187,8 @@ const CommentSection = ({ solutionId }: Props) => {
 
                     {/* ANA YORUM YAZMA FORMU */}
                     <form onSubmit={(e) => handleSendComment(e, null)} className="flex gap-2 border-t pt-4">
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             className="flex-1 text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:border-blue-500"
                             placeholder="Ana yoruma katkıda bulun..."
                             value={newComment}

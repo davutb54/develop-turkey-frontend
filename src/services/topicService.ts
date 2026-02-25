@@ -5,11 +5,11 @@ export const topicService = {
     getAll: async () => {
         return api.get<IDataResult<Topic[]>>('/topic/getall');
     },
-    add: async (topic: { name: string }) => {
+    add: async (topic: { name: string, imageName: string }) => {
+        // YENİ: imageName parametresi eklendi
         return api.post<IResult>('/topic/add', topic);
     },
-    delete: async (topic: Topic) => {
-        // Backend Delete işlemi için body bekliyor, axios'ta body 'data' içine yazılır.
-        return api.delete<IResult>('/topic/delete', { data: topic });
+    delete: async (id: number) => {
+        return api.delete<IResult>(`/topic/delete?id=${id}`);
     }
 };

@@ -75,7 +75,7 @@ const Navbar = () => {
                       <Link to="/profile" className="flex items-center gap-2 hover:opacity-80 transition">
                         <div className="h-8 w-8 rounded-full bg-gray-200 border border-gray-300 overflow-hidden flex-shrink-0">
                           {user.profileImageUrl ? (
-                            <img src={`https://localhost:7216/uploads/profiles/${user.profileImageUrl}`} alt="Profil" className="h-full w-full object-cover" />
+                            <img src={`/uploads/profiles/${user.profileImageUrl}`} alt="Profil" className="h-full w-full object-cover" />
                           ) : (
                             <div className="h-full w-full flex items-center justify-center text-xs font-bold text-gray-500 bg-gray-100">
                               {user.name[0]}{user.surname[0]}

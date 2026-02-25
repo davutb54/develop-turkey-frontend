@@ -50,7 +50,16 @@ const CreateProblem = () => {
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setImage(e.target.files[0]);
+            const file = e.target.files[0];
+
+            // 5 MB = 5 * 1024 * 1024 byte
+            if (file.size > 5 * 1024 * 1024) {
+                alert("Seçtiğiniz fotoğraf çok büyük! Lütfen 5 MB'dan küçük bir fotoğraf seçin.");
+                e.target.value = ''; // Inputu temizle
+                return;
+            }
+
+            setImage(file);
         }
     };
 
