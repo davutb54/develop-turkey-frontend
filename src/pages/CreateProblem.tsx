@@ -35,7 +35,7 @@ const CreateProblem = () => {
             try {
                 const [cityRes, topicRes] = await Promise.all([
                     constantService.getCities(),
-                    topicService.getAll()
+                    topicService.getAllActive()
                 ]);
 
                 if (cityRes.data.success) setCities(cityRes.data.data);

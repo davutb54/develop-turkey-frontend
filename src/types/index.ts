@@ -21,6 +21,7 @@ export interface AccessToken {
 
 // Kullanıcı Detayları (Entities/DTOs/User/UserDetailDto.cs)
 export interface UserDetailDto {
+    institutionId: number;
     cityCode: number;
     genderCode: number;
     id: number;
@@ -48,10 +49,12 @@ export interface Topic {
     id: number;
     name: string;
     imageName: string;
+    status: boolean;
 }
 
 // Sorun Detayları (Entities/DTOs/ProblemDetailDto.cs)
 export interface ProblemDetailDto {
+    institutionId: number;
     isResolved: boolean;
     id: number;
     senderId: number;
@@ -211,6 +214,8 @@ export interface LogFilterDto {
     searchText?: string;
     startDate?: string;
     endDate?: string;
+    page?: number;
+    pageSize?: number;
 }
 
 export interface ReportDto {
@@ -236,4 +241,14 @@ export interface UserForPasswordUpdateDto {
     id: number;
     oldPassword: string;
     newPassword: string;
+}
+
+// --- KURUM (INSTITUTION) TİPLERİ ---
+export interface Institution {
+    id?: number;
+    name: string;
+    domain: string;
+    logoUrl?: string | null;
+    primaryColor?: string | null;
+    status: boolean;
 }

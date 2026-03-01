@@ -5,7 +5,8 @@ import { topicService } from '../services/topicService';
 import { problemService } from '../services/problemService';
 import { solutionService } from '../services/solutionService';
 import { reportService } from '../services/reportService';
-import type { AdminDashboardDto, ProblemDetailDto, SolutionDetailDto, LogDto, UserDetailDto, Topic, LogFilterDto, ReportDto } from '../types';
+import { institutionService } from '../services/institutionService'; // YENİ EKLENDİ
+import type { AdminDashboardDto, ProblemDetailDto, SolutionDetailDto, LogDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution } from '../types'; // Institution eklendi
 import Navbar from '../components/Navbar';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -19,28 +20,57 @@ const AdminDashboard = () => {
     const [logs, setLogs] = useState<LogDto[]>([]);
     const [pendingReports, setPendingReports] = useState<ReportDto[]>([]);
     const [pendingSolutions, setPendingSolutions] = useState<any[]>([]);
+    const [institutions, setInstitutions] = useState<Institution[]>([]); // YENİ EKLENDİ
 
     // --- ARAMA VE FİLTRE STATE'LERİ ---
     const [userSearch, setUserSearch] = useState('');
     const [userStatus, setUserStatus] = useState('');
-    
     const [problemSearch, setProblemSearch] = useState('');
-    const [problemStatus, setProblemStatus] = useState(''); // YENİ: Problem Durum Filtresi
-    
+    const [problemStatus, setProblemStatus] = useState('');
     const [solutionSearch, setSolutionSearch] = useState('');
-    const [solutionStatus, setSolutionStatus] = useState(''); // YENİ: Çözüm Durum Filtresi
-    
+    const [solutionStatus, setSolutionStatus] = useState('');
     const [newTopicName, setNewTopicName] = useState('');
+
+    // --- YENİ EKLENEN FİLTRE VE SAYFALAMA STATE'LERİ ---
+    const [problemInst, setProblemInst] = useState('');
+    const [solutionInst, setSolutionInst] = useState('');
+    const [problemPage, setProblemPage] = useState(1);
+    const [solutionPage, setSolutionPage] = useState(1);
+    const ITEMS_PER_PAGE = 8; // Bir sayfada kaç veri görünecek
+
+    // --- KURUM EKLEME STATE'LERİ (YENİ) ---
+    const [instFormData, setInstFormData] = useState<Institution>({
+        name: '', domain: '', logoUrl: '', primaryColor: '#2563eb', status: true
+    });
+    const [instLoading, setInstLoading] = useState(false);
+    const [instError, setInstError] = useState('');
+    const [instSuccess, setInstSuccess] = useState('');
 
     // LOG FİLTRELEME STATE'LERİ
     const [logFilter, setLogFilter] = useState({
         object: '', action: '', status: '', searchText: '', endDate: ''
     });
+    const [logPage, setLogPage] = useState(1);
 
     // --- SEKME STATE'LERİ ---
-    const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'topics' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals'>('overview');
     const [reportTab, setReportTab] = useState<'problems' | 'solutions' | 'users'>('problems');
     const [loading, setLoading] = useState(true);
+
+    const [newTopicImage, setNewTopicImage] = useState<File | null>(null);
+    const [instLogoFile, setInstLogoFile] = useState<File | null>(null);
+
+    // --- DÜZENLEME (EDIT) MODAL STATE'LERİ ---
+    const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
+    const [editTopicName, setEditTopicName] = useState('');
+    const [editTopicImage, setEditTopicImage] = useState<File | null>(null);
+
+    const [editingInst, setEditingInst] = useState<Institution | null>(null);
+    const [editInstData, setEditInstData] = useState({ name: '', domain: '', primaryColor: '', status: true });
+    const [editInstLogo, setEditInstLogo] = useState<File | null>(null);
+
+    const [editTopicStatus, setEditTopicStatus] = useState(true);
+
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -72,13 +102,14 @@ const AdminDashboard = () => {
     const loadAllData = async () => {
         setLoading(true);
         try {
-            const [statsRes, usersRes, topicsRes, problemsRes, solutionsRes, reportsRes] = await Promise.all([
+            const [statsRes, usersRes, topicsRes, problemsRes, solutionsRes, reportsRes, instRes] = await Promise.all([
                 adminService.getDashboardStats(),
                 userService.getAll(),
                 topicService.getAll(),
                 problemService.getAll(),
                 solutionService.getAll(),
-                reportService.getPending()
+                reportService.getPending(),
+                institutionService.getAll() // Kurumlar da çekiliyor
             ]);
 
             if (statsRes.data.success) setStats(statsRes.data.data);
@@ -87,33 +118,44 @@ const AdminDashboard = () => {
             if (problemsRes.data.success) setProblems(problemsRes.data.data);
             if (solutionsRes.data.success) setSolutions(solutionsRes.data.data);
             if (reportsRes.data.success) setPendingReports(reportsRes.data.data);
+            if (instRes.data.success) setInstitutions(instRes.data.data);
 
             fetchLogs();
         } catch (err) { console.error("Veriler yüklenemedi", err); }
         finally { setLoading(false); }
     };
 
+    // YENİ FETCH LOGS FONKSİYONU
     const fetchLogs = async () => {
         try {
-            const filterToSend: LogFilterDto = { 
-                searchText: logFilter.searchText, 
+            // Frontend'deki parçalı filtreleri birleştirip tek bir zeki filtre haline getiriyoruz
+            const typeParts = [logFilter.object, logFilter.action, logFilter.status].filter(Boolean);
+            const typeString = typeParts.length > 0 ? typeParts.join(',') : undefined;
+
+            const filterToSend: LogFilterDto = {
+                searchText: logFilter.searchText || undefined,
                 endDate: logFilter.endDate ? `${logFilter.endDate}T23:59:59` : undefined,
-                startDate: '', type: '' 
+                type: typeString,
+                page: logPage,     // Backend'e hangi sayfada olduğumuzu söylüyoruz
+                pageSize: 20       // Tek seferde sadece 20 veri istiyoruz
             };
             const res = await adminService.getLogs(filterToSend);
-            if (res.data.success) setLogs(res.data.data);
+            if (res.data.success) {
+                // Backend'den filtrelenmiş ve 20'şerli kesilmiş veri gelecek
+                setLogs(res.data.data);
+            }
         } catch (err) { console.error("Loglar çekilemedi", err); }
     };
 
-    // --- LOG AYRIŞTIRMA (ARTIK `log.type` İÇİNDEKİ VİRGÜLLERDEN AYRILIYOR) ---
+    // logPage (Sayfa numarası) her değiştiğinde backend'den yeni sayfayı İSTE!
+    useEffect(() => {
+        fetchLogs();
+    }, [logPage]);
+
     const parsedLogs = logs.map(log => {
-        // Backend log.type = "Problem,Created,Success" gibi yolluyorsa:
         const parts = log.type ? log.type.split(',') : ['Bilinmiyor', 'Bilinmiyor', 'Bilinmiyor'];
         return {
-            ...log,
-            logObject: parts[0]?.trim() || 'Bilinmiyor',
-            logAction: parts[1]?.trim() || 'Bilinmiyor',
-            logStatus: parts[2]?.trim() || 'Bilinmiyor',
+            ...log, logObject: parts[0]?.trim() || 'Bilinmiyor', logAction: parts[1]?.trim() || 'Bilinmiyor', logStatus: parts[2]?.trim() || 'Bilinmiyor',
         };
     });
 
@@ -121,35 +163,54 @@ const AdminDashboard = () => {
     const uniqueActions = Array.from(new Set(parsedLogs.map(l => l.logAction))).filter(a => a !== 'Bilinmiyor');
     const uniqueStatuses = Array.from(new Set(parsedLogs.map(l => l.logStatus))).filter(s => s !== 'Bilinmiyor');
 
-    const filteredLogs = parsedLogs.filter(l => 
+    const filteredLogs = parsedLogs.filter(l =>
         (logFilter.object === '' || l.logObject === logFilter.object) &&
         (logFilter.action === '' || l.logAction === logFilter.action) &&
         (logFilter.status === '' || l.logStatus === logFilter.status)
     );
 
-    // --- DİNAMİK FİLTRELEMELER ---
     const filteredUsers = users.filter(u => {
         const matchSearch = (u.userName + u.name + u.surname + u.email).toLowerCase().includes(userSearch.toLowerCase());
         const matchStatus = userStatus === 'banned' ? u.isBanned : userStatus === 'admin' ? u.isAdmin : true;
         return matchSearch && matchStatus;
     });
 
+    // --- AKILLI FİLTRELER VE SAYFALAMA ---
     const filteredProblems = problems.filter(p => {
         const matchSearch = p.title.toLowerCase().includes(problemSearch.toLowerCase()) || p.senderUsername.toLowerCase().includes(problemSearch.toLowerCase());
+
         let matchStatus = true;
         if (problemStatus === 'highlighted') matchStatus = p.isHighlighted;
-        else if (problemStatus === 'resolved') matchStatus = p.isResolved || p.isResolvedByExpert;
-        else if (problemStatus === 'deleted') matchStatus = p.isDeleted;
-        return matchSearch && matchStatus;
+        if (problemStatus === 'resolved') matchStatus = p.isResolved || p.isResolvedByExpert;
+
+        let matchInst = problemInst === '' || p.institutionId?.toString() === problemInst;
+        return matchSearch && matchStatus && matchInst;
     });
+    const paginatedProblems = filteredProblems.slice((problemPage - 1) * ITEMS_PER_PAGE, problemPage * ITEMS_PER_PAGE);
 
     const filteredSolutions = solutions.filter(s => {
         const matchSearch = s.title.toLowerCase().includes(solutionSearch.toLowerCase()) || s.senderUsername.toLowerCase().includes(solutionSearch.toLowerCase());
+
         let matchStatus = true;
         if (solutionStatus === 'highlighted') matchStatus = s.isHighlighted;
-        else if (solutionStatus === 'deleted') matchStatus = s.isDeleted;
-        return matchSearch && matchStatus;
+
+        let matchInst = true;
+        if (solutionInst !== '') {
+            const relatedProblem = problems.find(p => p.id === s.problemId);
+            matchInst = relatedProblem ? relatedProblem.institutionId?.toString() === solutionInst : false;
+        }
+        return matchSearch && matchStatus && matchInst;
     });
+
+    // ÇÖZÜMLERİ SORUNLARINA GÖRE GRUPLA
+    const groupedSolutions = filteredSolutions.reduce((acc, sol) => {
+        if (!acc[sol.problemId]) acc[sol.problemId] = { problemId: sol.problemId, problemName: problems.find(p => p.id === sol.problemId)?.title || "Bilinmeyen Sorun", solutions: [] };
+        acc[sol.problemId].solutions.push(sol);
+        return acc;
+    }, {} as any);
+
+    const groupedSolutionsArray = Object.values(groupedSolutions);
+    const paginatedSolutionsGroups = groupedSolutionsArray.slice((solutionPage - 1) * ITEMS_PER_PAGE, solutionPage * ITEMS_PER_PAGE);
 
     const problemReports = pendingReports.filter(r => r.targetType === 'Problem');
     const solutionReports = pendingReports.filter(r => r.targetType === 'Solution');
@@ -176,12 +237,36 @@ const AdminDashboard = () => {
         } catch { alert("İşlem başarısız."); }
     };
 
+    const handleToggleTopicStatus = async (topic: Topic) => {
+        const actionText = topic.status ? 'pasife almak (gizlemek)' : 'tekrar aktif etmek';
+        if (!window.confirm(`'${topic.name}' kategorisini ${actionText} istediğinize emin misiniz?`)) return;
+
+        try {
+            const formData = new FormData();
+            formData.append("Id", topic.id.toString());
+            formData.append("Name", topic.name);
+            formData.append("ExistingImageName", topic.imageName);
+            formData.append("Status", (!topic.status).toString()); // TERSİNE ÇEVİR
+
+            await topicService.update(formData);
+            loadAllData();
+        } catch { alert("Durum güncellenemedi."); }
+    };
+
     const handleAddTopic = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newTopicName.trim()) return;
+
+        const formData = new FormData();
+        formData.append("Name", newTopicName);
+        if (newTopicImage) {
+            formData.append("Image", newTopicImage);
+        }
+
         try {
-            await topicService.add({ name: newTopicName, imageName: 'default.png' });
+            await topicService.add(formData);
             setNewTopicName('');
+            setNewTopicImage(null);
             loadAllData();
         } catch { alert("Kategori eklenemedi."); }
     };
@@ -200,6 +285,119 @@ const AdminDashboard = () => {
         if (!window.confirm("Bu çözümü silmek istediğinize emin misiniz?")) return;
         try { await solutionService.delete(id); loadAllData(); } catch { alert("Silinemedi."); }
     };
+
+    // --- KURUM (INSTITUTION) İŞLEMLERİ ---
+    const handleInstChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value, type, checked } = e.target;
+        setInstFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    };
+
+    // --- GÜNCELLEME İŞLEMLERİ ---
+    const handleUpdateTopic = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingTopic) return;
+        const formData = new FormData();
+        formData.append("Id", editingTopic.id.toString());
+        formData.append("Name", editTopicName);
+        formData.append("ExistingImageName", editingTopic.imageName);
+        formData.append("Status", editTopicStatus.toString());
+        if (editTopicImage) formData.append("Image", editTopicImage);
+
+        try {
+            await topicService.update(formData);
+            setEditingTopic(null); // Modalı kapat
+            loadAllData(); // Tabloyu yenile
+        } catch { alert("Kategori güncellenemedi."); }
+    };
+
+    const handleUpdateInst = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingInst) return;
+        const formData = new FormData();
+        formData.append("Id", editingInst.id!.toString());
+        formData.append("Name", editInstData.name);
+        formData.append("Domain", editInstData.domain);
+        formData.append("PrimaryColor", editInstData.primaryColor);
+        formData.append("Status", editInstData.status.toString());
+        if (editingInst.logoUrl) formData.append("ExistingLogoUrl", editingInst.logoUrl);
+        if (editInstLogo) formData.append("Logo", editInstLogo);
+
+        try {
+            await institutionService.update(formData);
+            setEditingInst(null); // Modalı kapat
+            loadAllData(); // Tabloyu yenile
+        } catch { alert("Kurum güncellenemedi."); }
+    };
+
+    const handleAddInstitution = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setInstLoading(true); setInstError(''); setInstSuccess('');
+        if (!instFormData.name || !instFormData.domain) {
+            setInstError("Kurum adı ve Domain zorunludur.");
+            setInstLoading(false); return;
+        }
+
+        // JSON YERİNE FORMDATA YAPILIYOR:
+        const formData = new FormData();
+        formData.append("Name", instFormData.name);
+        formData.append("Domain", instFormData.domain);
+        formData.append("PrimaryColor", instFormData.primaryColor || '#2563eb');
+        formData.append("Status", instFormData.status.toString());
+        if (instLogoFile) {
+            formData.append("Logo", instLogoFile);
+        }
+
+        try {
+            const response = await institutionService.add(formData);
+            if (response.data.success) {
+                setInstSuccess(`${instFormData.name} başarıyla eklendi!`);
+                setInstFormData({ name: '', domain: '', logoUrl: '', primaryColor: '#2563eb', status: true });
+                setInstLogoFile(null); // Dosyayı temizle
+                loadAllData();
+            } else { setInstError(response.data.message); }
+        } catch (err: any) { setInstError(err.response?.data?.message || "Kurum eklenirken hata."); }
+        finally { setInstLoading(false); }
+    };
+
+    const handleToggleInstitutionStatus = async (inst: Institution) => {
+        if (inst.id === 1) {
+            alert("Sistemin ana (varsayılan) ağı pasife alınamaz!");
+            return;
+        }
+
+        const actionText = inst.status ? 'pasife almak (dondurmak)' : 'tekrar aktif etmek';
+        if (!window.confirm(`'${inst.name}' ağını ${actionText} istediğinize emin misiniz?`)) return;
+
+        try {
+            // BACKEND ARTIK [FromForm] BEKLEDİĞİ İÇİN VERİYİ FORMDATA'YA ÇEVİRİYORUZ
+            const formData = new FormData();
+
+            // Mevcut verileri ekliyoruz
+            formData.append("Id", inst.id!.toString());
+            formData.append("Name", inst.name);
+            formData.append("Domain", inst.domain);
+
+            // SİHİRLİ KISIM: Status'ü tersine çevirerek (toggle) ekliyoruz
+            formData.append("Status", (!inst.status).toString());
+
+            // Eğer renk ve eski logo varsa onları da kaybolmasın diye ekliyoruz
+            if (inst.primaryColor) {
+                formData.append("PrimaryColor", inst.primaryColor);
+            }
+            if (inst.logoUrl) {
+                formData.append("ExistingLogoUrl", inst.logoUrl);
+            }
+
+            // Backend'deki Update metoduna yolla
+            await institutionService.update(formData);
+            loadAllData(); // Tabloyu yenile
+        } catch (err) {
+            console.error("Durum değiştirme hatası:", err);
+            alert("Kurum durumu güncellenemedi.");
+        }
+    };
+
+    // ------------------------------------
 
     const handleResolveReport = async (reportId: number) => {
         if (!window.confirm("Bu şikayeti 'İhlal Yok / İncelendi' olarak işaretleyip kapatmak istediğinize emin misiniz?")) return;
@@ -221,7 +419,7 @@ const AdminDashboard = () => {
             if (roleType === 'Admin') await adminService.toggleAdminRole(userId);
             if (roleType === 'Expert') await adminService.toggleExpertRole(userId);
             if (roleType === 'Official') await adminService.toggleOfficialRole(userId);
-            loadAllData(); 
+            loadAllData();
         } catch (err) { alert("Yetki işlemi başarısız oldu."); }
     };
 
@@ -234,36 +432,29 @@ const AdminDashboard = () => {
     };
 
     const handleToggleProblemResolved = async (id: number) => {
-        try {
-            await adminService.toggleProblemResolved(id);
-            loadAllData(); // Veri tekrar çekildiğinde prob.isResolved güncellenecek
-        } catch (err) { alert("Çözüldü durumu güncellenemedi."); }
+        try { await adminService.toggleProblemResolved(id); loadAllData(); }
+        catch (err) { alert("Çözüldü durumu güncellenemedi."); }
     };
 
     const handleApproveSolution = async (sol: any) => {
         try {
             await adminService.approveSolution(sol.id);
-            
             const probRes = await problemService.getById(sol.problemId);
             if (probRes.data.success) {
                 const problemData = probRes.data.data;
-                // Daha önce admin onaylamamışsa veya uzman tarafından onaylanmamışsa toggle at
-                if (!problemData.isResolvedByExpert && !problemData.isResolved) { 
+                if (!problemData.isResolvedByExpert && !problemData.isResolved) {
                     await adminService.toggleProblemResolved(sol.problemId);
                 }
             }
             alert("Çözüm onaylandı ve sorun uzman çözümlü olarak işaretlendi!");
-            loadPendingSolutions(); 
+            loadPendingSolutions();
         } catch (err) { alert("Onay işlemi başarısız."); }
     };
 
     const handleRejectSolution = async (id: number) => {
         if (!window.confirm("Bu uzman çözümünü reddetmek istediğinize emin misiniz?")) return;
-        try {
-            await adminService.rejectSolution(id);
-            alert("Çözüm Reddedildi.");
-            loadPendingSolutions();
-        } catch (err) { alert("Hata"); }
+        try { await adminService.rejectSolution(id); alert("Çözüm Reddedildi."); loadPendingSolutions(); }
+        catch (err) { alert("Hata"); }
     };
 
     const handleFilterLogs = (e: React.FormEvent) => { e.preventDefault(); fetchLogs(); };
@@ -284,9 +475,9 @@ const AdminDashboard = () => {
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
             <Navbar />
-            
+
             <div className="flex-1 flex flex-col xl:flex-row max-w-[1600px] mx-auto w-full">
-                
+
                 {/* SOL MENÜ (SIDEBAR) */}
                 <aside className="w-full xl:w-72 bg-white border-r border-slate-200 p-6 shrink-0 xl:min-h-[calc(100vh-80px)] shadow-sm z-10">
                     <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 px-4">Yönetim Paneli</h2>
@@ -295,20 +486,21 @@ const AdminDashboard = () => {
                             { id: 'overview', label: 'Genel Bakış', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z', count: 0 },
                             { id: 'users', label: 'Kullanıcılar', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z', count: filteredUsers.length },
                             { id: 'topics', label: 'Kategoriler', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', count: topics.length },
+                            { id: 'institutions', label: 'Kurumlar (Ağlar)', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', count: institutions.length }, // YENİ EKLENDİ
                             { id: 'problems', label: 'Sorunlar', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', count: filteredProblems.length },
                             { id: 'solutions', label: 'Çözümler', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', count: filteredSolutions.length },
                             { id: 'expert-approvals', label: 'Uzman Onayları', icon: 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', count: pendingSolutions.length, isAlert: true },
                             { id: 'reports', label: 'Şikayet Merkezi', icon: 'M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9', count: pendingReports.length, isAlert: true },
                             { id: 'logs', label: 'Sistem Logları', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 }
                         ].map(item => (
-                            <button 
+                            <button
                                 key={item.id}
                                 onClick={() => setActiveTab(item.id as any)}
                                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all duration-300 ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 translate-x-2' : 'bg-transparent text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 border border-transparent hover:border-indigo-100'}`}
                             >
                                 <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
                                 {item.label}
-                                
+
                                 {item.count > 0 && (
                                     <span className={`ml-auto text-[10px] px-2.5 py-1 rounded-full border shadow-inner ${item.isAlert ? 'bg-red-500 text-white border-red-600' : (activeTab === item.id ? 'bg-white/20 text-white border-transparent' : 'bg-slate-100 text-slate-600 border-slate-200')}`}>
                                         {item.count}
@@ -321,7 +513,7 @@ const AdminDashboard = () => {
 
                 {/* SAĞ İÇERİK ALANI */}
                 <main className="flex-1 p-6 md:p-10 overflow-x-hidden">
-                    
+
                     {/* ÜST BAR */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-slate-200">
                         <div>
@@ -384,6 +576,10 @@ const AdminDashboard = () => {
                                             <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">Hızlı Durum</h3>
                                             <ul className="space-y-4">
                                                 <li className="flex justify-between items-center border-b border-slate-200 pb-3">
+                                                    <span className="text-slate-600 font-medium">Kurum Sayısı</span>
+                                                    <span className="font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 shadow-sm">{institutions.length} Ağ</span>
+                                                </li>
+                                                <li className="flex justify-between items-center border-b border-slate-200 pb-3">
                                                     <span className="text-slate-600 font-medium">Uzman / Yetkili Kişiler</span>
                                                     <span className="font-black text-slate-900 bg-white px-3 py-1 rounded-lg border shadow-sm">{users.filter(u => u.isExpert || u.isOfficial).length} Kişi</span>
                                                 </li>
@@ -423,7 +619,7 @@ const AdminDashboard = () => {
                                                     <td className="px-6 py-4">
                                                         <Link to={`/user/${u.id}`} target="_blank" className="flex items-center gap-3 group">
                                                             <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white group-hover:ring-indigo-200 transition">
-                                                                {u.profileImageUrl ? <img src={`/uploads/profiles/${u.profileImageUrl}`} className="w-full h-full object-cover"/> : u.userName[0].toUpperCase()}
+                                                                {u.profileImageUrl ? <img src={`/uploads/profiles/${u.profileImageUrl}`} className="w-full h-full object-cover" /> : u.userName[0].toUpperCase()}
                                                             </div>
                                                             <div>
                                                                 <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition">@{u.userName}</div>
@@ -460,33 +656,190 @@ const AdminDashboard = () => {
                         {/* 3. KATEGORİLER */}
                         {activeTab === 'topics' && (
                             <div className="animate-fade-in">
-                                <form onSubmit={handleAddTopic} className="mb-8 flex gap-4 bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-sm">
-                                    <input type="text" placeholder="Yeni Kategori Adı Yazın..." required className="flex-1 border border-slate-200 shadow-sm rounded-xl px-5 py-3.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" value={newTopicName} onChange={e => setNewTopicName(e.target.value)} />
+                                <form onSubmit={handleAddTopic} className="mb-8 flex flex-col sm:flex-row gap-4 bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                    <input type="text" placeholder="Yeni Kategori Adı..." required className="flex-1 border border-slate-200 shadow-sm rounded-xl px-5 py-3.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={newTopicName} onChange={e => setNewTopicName(e.target.value)} />
+                                    <input type="file" accept="image/*" onChange={e => setNewTopicImage(e.target.files ? e.target.files[0] : null)} className="border border-slate-200 shadow-sm rounded-xl px-3 py-3 bg-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                                     <button type="submit" className="bg-indigo-600 text-white font-bold px-8 py-3.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition">Ekle</button>
                                 </form>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+
+                                {/* YENİ KART TASARIMI */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                     {topics.map(topic => (
-                                        <div key={topic.id} className="flex justify-between items-center bg-white border border-slate-200 shadow-sm p-5 rounded-2xl hover:shadow-md hover:border-indigo-100 transition group">
-                                            <span className="font-bold text-slate-800 group-hover:text-indigo-700 transition">{topic.name}</span>
-                                            <button onClick={() => handleDeleteTopic(topic)} className="text-red-500 bg-red-50 border border-red-100 font-bold hover:bg-red-500 hover:text-white text-xs px-3 py-1.5 rounded-lg transition">Sil</button>
+                                        <div key={topic.id} className="bg-white border border-slate-200 shadow-sm rounded-2xl hover:shadow-md hover:border-indigo-100 transition overflow-hidden flex flex-col">
+                                            {/* Kartın Üst Kısmı (Resim, İsim ve Durum) */}
+                                            <div className="p-5 flex items-center gap-4 flex-1">
+                                                {topic.imageName && topic.imageName !== 'default.png' ? (
+                                                    <img src={`/uploads/topics/${topic.imageName}`} alt={topic.name} className="w-14 h-14 rounded-xl object-cover border border-slate-200 shadow-sm shrink-0 bg-slate-50" />
+                                                ) : (
+                                                    <div className="w-14 h-14 rounded-xl bg-indigo-50 text-indigo-300 flex items-center justify-center font-black text-xl border border-indigo-100 shrink-0">
+                                                        {topic.name.charAt(0)}
+                                                    </div>
+                                                )}
+                                                <div className="flex flex-col items-start gap-1.5">
+                                                    <span className="font-bold text-slate-800 text-base leading-tight">{topic.name}</span>
+                                                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded border ${topic.status ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                                                        {topic.status ? 'Aktif' : 'Pasif'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Kartın Alt Kısmı (Butonlar) */}
+                                            <div className="bg-slate-50 border-t border-slate-100 p-3 flex flex-wrap justify-between gap-2">
+                                                <button onClick={() => handleToggleTopicStatus(topic)} className={`flex-1 min-w-[70px] px-2 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition border shadow-sm ${topic.status ? 'bg-white text-rose-500 border-rose-200 hover:bg-rose-50' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
+                                                    {topic.status ? 'Gizle' : 'Aç'}
+                                                </button>
+
+                                                <button onClick={() => {
+                                                    setEditingTopic(topic);
+                                                    setEditTopicName(topic.name);
+                                                    setEditTopicImage(null);
+                                                    setEditTopicStatus(topic.status);
+                                                }} className="flex-1 min-w-[70px] px-2 py-2 bg-white text-blue-600 border border-blue-200 font-bold hover:bg-blue-50 text-[10px] uppercase tracking-wider rounded-lg transition shadow-sm">
+                                                    Düzenle
+                                                </button>
+
+                                                <button onClick={() => handleDeleteTopic(topic)} className="flex-1 min-w-[70px] px-2 py-2 bg-white text-red-500 border border-red-200 font-bold hover:bg-red-50 text-[10px] uppercase tracking-wider rounded-lg transition shadow-sm">
+                                                    Sil
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* 4. SORUNLAR (GELİŞMİŞ FİLTRE & NET UI) */}
+                        {/* 4. KURUMLAR (YENİ SEKME) */}
+                        {activeTab === 'institutions' && (
+                            <div className="animate-fade-in flex flex-col h-full gap-8">
+                                {/* Kurum Ekleme Formu */}
+                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                    <h3 className="text-lg font-black text-slate-800 mb-4">Yeni Kurum (Üniversite) Ekle</h3>
+                                    <form onSubmit={handleAddInstitution} className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kurum Adı</label>
+                                                <input type="text" name="name" required value={instFormData.name} onChange={handleInstChange} placeholder="Örn: Eskişehir Teknik Üniversitesi" className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Mail Domain'i</label>
+                                                <input type="text" name="domain" required value={instFormData.domain} onChange={handleInstChange} placeholder="Örn: eskisehir.edu.tr" className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kurum Logosu (Dosya Seçin)</label>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={e => setInstLogoFile(e.target.files ? e.target.files[0] : null)}
+                                                    className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tema Rengi</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input type="color" name="primaryColor" value={instFormData.primaryColor || '#2563eb'} onChange={handleInstChange} className="h-11 w-14 rounded-xl border border-slate-200 cursor-pointer bg-white" />
+                                                    <input type="text" name="primaryColor" value={instFormData.primaryColor || ''} onChange={handleInstChange} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <input id="inst-status" type="checkbox" name="status" checked={instFormData.status} onChange={handleInstChange} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
+                                            <label htmlFor="inst-status" className="text-sm font-bold text-slate-700">Kurum Aktif (Kayıt Olunabilir)</label>
+                                        </div>
+
+                                        {instError && <div className="text-red-600 text-xs font-bold bg-red-50 p-3 rounded-xl border border-red-100 mt-2">{instError}</div>}
+                                        {instSuccess && <div className="text-green-600 text-xs font-bold bg-green-50 p-3 rounded-xl border border-green-100 mt-2">{instSuccess}</div>}
+
+                                        <div className="pt-2 flex justify-end">
+                                            <button type="submit" disabled={instLoading} className="bg-indigo-600 text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition">
+                                                {instLoading ? 'Ekleniyor...' : 'Kurumu Ekle'}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                {/* Mevcut Kurumlar Tablosu */}
+                                <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[500px] overflow-y-auto bg-slate-50/50">
+                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                        <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
+                                            <tr>
+                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Kurum Adı</th>
+                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Domain</th>
+                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Renk & Durum</th>
+                                                <th className="px-6 py-4 text-right font-black text-slate-500 uppercase tracking-widest text-[10px]">İşlemler</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-slate-100">
+                                            {institutions.map(inst => (
+                                                <tr key={inst.id} className="hover:bg-indigo-50/30 transition">
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            {inst.logoUrl ? (
+                                                                <img src={inst.logoUrl} alt={inst.name} className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-sm bg-white p-0.5" />
+                                                            ) : (
+                                                                <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-black text-slate-500">{inst.name.charAt(0)}</div>
+                                                            )}
+                                                            <span className="font-bold text-slate-800">{inst.name}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-600 font-medium">@{inst.domain}</td>
+                                                    <td className="px-6 py-4 flex items-center gap-3">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="w-4 h-4 rounded-full border shadow-sm" style={{ backgroundColor: inst.primaryColor || '#2563eb' }}></span>
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase">{inst.primaryColor || '#2563eb'}</span>
+                                                        </div>
+                                                        <span className={`px-2 py-0.5 text-[10px] font-black uppercase tracking-widest rounded border ${inst.status ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                                            {inst.status ? 'Aktif' : 'Pasif'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="flex justify-end gap-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingInst(inst);
+                                                                    setEditInstData({ name: inst.name, domain: inst.domain, primaryColor: inst.primaryColor || '#2563eb', status: inst.status });
+                                                                    setEditInstLogo(null);
+                                                                }}
+                                                                className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm bg-white text-blue-600 border-blue-200 hover:bg-blue-50">
+                                                                Düzenle
+                                                            </button>
+                                                            <button onClick={() => handleToggleInstitutionStatus(inst)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${inst.status ? 'bg-white text-rose-500 border-rose-200 hover:bg-rose-50' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
+                                                                {inst.status ? 'Pasife Al' : 'Aktif Et'}
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {institutions.length === 0 && (
+                                                <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-500 font-medium">Henüz sisteme kurum eklenmemiş.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 5. SORUNLAR (GELİŞMİŞ FİLTRE & NET UI) */}
+                        {/* 5. SORUNLAR (GELİŞMİŞ FİLTRE, SAYFALAMA VE KURUMLAR) */}
                         {activeTab === 'problems' && (
                             <div className="animate-fade-in flex flex-col h-full">
+                                {/* ÜST FİLTRE BAR */}
                                 <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                    <input type="text" placeholder="Sorun başlığı veya yazar ara..." className="flex-1 border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={problemSearch} onChange={e => setProblemSearch(e.target.value)} />
-                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={problemStatus} onChange={e => setProblemStatus(e.target.value)}>
-                                        <option value="">Tüm Sorunlar</option>
+                                    <input type="text" placeholder="Sorun başlığı veya yazar ara..." className="flex-1 border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={problemSearch} onChange={e => { setProblemSearch(e.target.value); setProblemPage(1); }} />
+
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={problemInst} onChange={e => { setProblemInst(e.target.value); setProblemPage(1); }}>
+                                        <option value="">Tüm Kurumlar</option>
+                                        {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                    </select>
+
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={problemStatus} onChange={e => { setProblemStatus(e.target.value); setProblemPage(1); }}>
+                                        <option value="">Aktif Sorunlar</option>
                                         <option value="resolved">Sadece Çözülenler</option>
                                         <option value="highlighted">Sadece Vitrindekiler</option>
-                                        <option value="deleted">Sadece Silinenler</option>
                                     </select>
                                 </div>
+
+                                {/* TABLO */}
                                 <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[600px] overflow-y-auto bg-slate-50/50">
                                     <table className="min-w-full divide-y divide-slate-200 text-sm">
                                         <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
@@ -498,7 +851,8 @@ const AdminDashboard = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-slate-100">
-                                            {filteredProblems.map(prob => (
+                                            {/* DİKKAT: paginatedProblems KULLANILIYOR */}
+                                            {paginatedProblems.map(prob => (
                                                 <tr key={prob.id} className="hover:bg-indigo-50/30 transition">
                                                     <td className="px-6 py-4">
                                                         <Link to={`/problem/${prob.id}`} target="_blank" className="font-bold text-slate-800 text-sm hover:text-indigo-600 line-clamp-2 transition">{prob.title}</Link>
@@ -532,61 +886,88 @@ const AdminDashboard = () => {
                                         </tbody>
                                     </table>
                                 </div>
+
+                                {/* SAYFALAMA BUTONLARI */}
+                                <div className="flex justify-between items-center mt-4 px-2">
+                                    <button onClick={() => setProblemPage(p => Math.max(1, p - 1))} disabled={problemPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Önceki</button>
+                                    <span className="text-sm font-bold text-slate-600">Sayfa {problemPage} / {Math.ceil(filteredProblems.length / ITEMS_PER_PAGE) || 1}</span>
+                                    <button onClick={() => setProblemPage(p => p + 1)} disabled={problemPage >= Math.ceil(filteredProblems.length / ITEMS_PER_PAGE)} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Sonraki</button>
+                                </div>
                             </div>
                         )}
 
-                        {/* 5. ÇÖZÜMLER (GELİŞMİŞ FİLTRE) */}
+                        {/* 6. ÇÖZÜMLER (GELİŞMİŞ FİLTRE) */}
+                        {/* 6. ÇÖZÜMLER (GRUPLU GÖRÜNÜM, FİLTRE VE SAYFALAMA) */}
                         {activeTab === 'solutions' && (
                             <div className="animate-fade-in flex flex-col h-full">
+                                {/* ÜST FİLTRE BAR */}
                                 <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                    <input type="text" placeholder="Çözüm başlığı veya yazar ara..." className="flex-1 border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={solutionSearch} onChange={e => setSolutionSearch(e.target.value)} />
-                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={solutionStatus} onChange={e => setSolutionStatus(e.target.value)}>
-                                        <option value="">Tüm Çözümler</option>
+                                    <input type="text" placeholder="Çözüm veya yazar ara..." className="flex-1 border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={solutionSearch} onChange={e => { setSolutionSearch(e.target.value); setSolutionPage(1); }} />
+
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={solutionInst} onChange={e => { setSolutionInst(e.target.value); setSolutionPage(1); }}>
+                                        <option value="">Tüm Kurumlar</option>
+                                        {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                    </select>
+
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={solutionStatus} onChange={e => { setSolutionStatus(e.target.value); setSolutionPage(1); }}>
+                                        <option value="">Aktif Çözümler</option>
                                         <option value="highlighted">Sadece Vitrindekiler</option>
-                                        <option value="deleted">Sadece Silinenler</option>
                                     </select>
                                 </div>
-                                <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[600px] overflow-y-auto bg-slate-50/50">
-                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                        <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
-                                            <tr>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Çözüm Özeti</th>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Yazar</th>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Durum</th>
-                                                <th className="px-6 py-4 text-right font-black text-slate-500 uppercase tracking-widest text-[10px]">İşlemler</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-slate-100">
-                                            {filteredSolutions.map(sol => (
-                                                <tr key={sol.id} className="hover:bg-indigo-50/30 transition">
-                                                    <td className="px-6 py-4">
-                                                        <div className="font-bold text-slate-900 text-sm mb-1.5 line-clamp-2">{sol.title}</div>
-                                                        <Link to={`/problem/${sol.problemId}`} target="_blank" className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 hover:text-indigo-700 hover:bg-indigo-100 border border-indigo-100 bg-indigo-50 px-2.5 py-1 rounded-md transition shadow-sm">İlgili Soruna Git ↗</Link>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <Link to={`/user/${sol.senderId}`} target="_blank" className="text-slate-700 font-bold hover:text-indigo-600 transition">@{sol.senderUsername}</Link>
-                                                        <div className="text-[10px] text-slate-400 font-medium mt-1">{new Date(sol.sendDate).toLocaleDateString('tr-TR')}</div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        {sol.isHighlighted && <span className="bg-orange-100 text-orange-700 border border-orange-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">VİTRİN</span>}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex justify-end gap-2">
+
+                                {/* GRUPLANMIŞ ÇÖZÜMLER GÖRÜNÜMÜ */}
+                                <div className="space-y-6 flex-1 overflow-y-auto pr-2 max-h-[600px]">
+                                    {paginatedSolutionsGroups.map((group: any, idx: number) => (
+                                        <div key={idx} className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+                                            <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+                                                <div>
+                                                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest block mb-1">İlgili Sorun</span>
+                                                    <Link to={`/problem/${group.problemId}`} target="_blank" className="font-black text-slate-800 text-lg hover:text-indigo-600 transition flex items-center gap-2">
+                                                        {group.problemName}
+                                                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                    </Link>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-6 space-y-4">
+                                                {group.solutions.map((sol: any) => (
+                                                    <div key={sol.id} className="bg-slate-50 border border-slate-100 p-5 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-start gap-4 hover:shadow-md transition">
+                                                        <div>
+                                                            <div className="flex items-center gap-3 mb-2">
+                                                                <Link to={`/user/${sol.senderId}`} target="_blank" className="font-bold text-indigo-900 text-sm hover:underline">@{sol.senderUsername}</Link>
+                                                                <span className="text-[10px] text-slate-400 font-medium">{new Date(sol.sendDate).toLocaleDateString('tr-TR')}</span>
+                                                                {sol.isHighlighted && <span className="bg-orange-100 text-orange-700 border border-orange-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">VİTRİN</span>}
+                                                            </div>
+                                                            <p className="text-sm text-slate-700 line-clamp-2">{sol.title}</p>
+                                                        </div>
+                                                        <div className="flex gap-2 shrink-0">
                                                             <button onClick={() => handleToggleHighlight(sol.id, 'Solution')} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${sol.isHighlighted ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>
                                                                 {sol.isHighlighted ? 'Vitrinden Al' : 'Vitrine Koy'}
                                                             </button>
                                                             <button onClick={() => handleDeleteSolution(sol.id)} className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-rose-500 border border-rose-200 hover:bg-rose-50 transition shadow-sm">Sil</button>
                                                         </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {paginatedSolutionsGroups.length === 0 && (
+                                        <div className="text-center p-12 bg-white rounded-3xl border border-slate-200 text-slate-500 font-medium">
+                                            Bu filtrelere uygun çözüm bulunamadı.
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* SAYFALAMA BUTONLARI */}
+                                <div className="flex justify-between items-center mt-4 px-2">
+                                    <button onClick={() => setSolutionPage(p => Math.max(1, p - 1))} disabled={solutionPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Önceki</button>
+                                    <span className="text-sm font-bold text-slate-600">Sayfa {solutionPage} / {Math.ceil(groupedSolutionsArray.length / ITEMS_PER_PAGE) || 1}</span>
+                                    <button onClick={() => setSolutionPage(p => p + 1)} disabled={solutionPage >= Math.ceil(groupedSolutionsArray.length / ITEMS_PER_PAGE)} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Sonraki</button>
                                 </div>
                             </div>
                         )}
 
-                        {/* 6. BEKLEYEN UZMAN ONAYLARI */}
+                        {/* 7. BEKLEYEN UZMAN ONAYLARI */}
                         {activeTab === 'expert-approvals' && (
                             <div className="space-y-6 animate-fade-in-down">
                                 {groupedPendingSolutions.length === 0 ? (
@@ -609,14 +990,14 @@ const AdminDashboard = () => {
                                                     Soruna Git ↗
                                                 </Link>
                                             </div>
-                                            
+
                                             <div className="p-6 space-y-4 bg-white">
                                                 {group.solutions.map((sol: any) => (
                                                     <div key={sol.id} className="bg-indigo-50/40 border border-indigo-100 p-5 rounded-2xl relative shadow-sm">
                                                         <div className="flex justify-between items-start mb-3">
                                                             <div className="flex items-center gap-3">
                                                                 <Link to={`/user/${sol.senderId}`} target="_blank" className="h-10 w-10 rounded-full bg-indigo-200 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white hover:ring-indigo-300 transition">
-                                                                    {sol.senderImageUrl ? <img src={`/uploads/profiles/${sol.senderImageUrl}`} className="w-full h-full object-cover"/> : sol.senderUsername[0].toUpperCase()}
+                                                                    {sol.senderImageUrl ? <img src={`/uploads/profiles/${sol.senderImageUrl}`} className="w-full h-full object-cover" /> : sol.senderUsername[0].toUpperCase()}
                                                                 </Link>
                                                                 <div>
                                                                     <div className="flex items-center gap-2">
@@ -628,9 +1009,9 @@ const AdminDashboard = () => {
                                                             </div>
                                                             <span className="text-xs text-slate-400 font-bold bg-white px-2.5 py-1 rounded-md border border-slate-100 shadow-sm">{new Date(sol.sendDate).toLocaleDateString()}</span>
                                                         </div>
-                                                        
+
                                                         <p className="text-slate-700 text-sm leading-relaxed mb-5 bg-white p-4 rounded-xl border border-indigo-50 shadow-sm">{sol.description}</p>
-                                                        
+
                                                         <div className="flex gap-3 pt-4 border-t border-indigo-100/50">
                                                             <button onClick={() => handleApproveSolution(sol)} className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white text-xs font-black uppercase tracking-wider rounded-xl hover:from-emerald-600 hover:to-green-700 transition shadow-md shadow-emerald-500/20 flex items-center gap-2 active:scale-95">
                                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> Onayla & Çözüldü Yap
@@ -648,7 +1029,7 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {/* 7. ŞİKAYET MERKEZİ */}
+                        {/* 8. ŞİKAYET MERKEZİ */}
                         {activeTab === 'reports' && (
                             <div className="animate-fade-in flex flex-col h-full">
                                 <div className="flex bg-slate-50 p-2 rounded-2xl mb-8 border border-slate-200 shadow-inner">
@@ -804,7 +1185,7 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {/* 8. LOGLAR (YENİ PARSED MİMARİSİ) */}
+                        {/* 9. LOGLAR (YENİ PARSED MİMARİSİ) */}
                         {activeTab === 'logs' && (
                             <div className="animate-fade-in flex flex-col h-full">
                                 <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
@@ -815,7 +1196,7 @@ const AdminDashboard = () => {
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 shadow-inner mb-8">
                                     <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Gelişmiş Log Filtreleme</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-end">
-                                        
+
                                         {/* Backend Arama ve Tarih */}
                                         <div className="lg:col-span-2 flex flex-col sm:flex-row gap-4">
                                             <div className="flex-1">
@@ -831,21 +1212,21 @@ const AdminDashboard = () => {
                                         {/* Ayrıştırılmış CSV Filtreleri */}
                                         <div>
                                             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Nesne (Object)</label>
-                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.object} onChange={e => setLogFilter({...logFilter, object: e.target.value})}>
+                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.object} onChange={e => setLogFilter({ ...logFilter, object: e.target.value })}>
                                                 <option value="">Tüm Nesneler</option>
                                                 {uniqueObjects.map(obj => <option key={obj as string} value={obj as string}>{obj as string}</option>)}
                                             </select>
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">İşlem (Action)</label>
-                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.action} onChange={e => setLogFilter({...logFilter, action: e.target.value})}>
+                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.action} onChange={e => setLogFilter({ ...logFilter, action: e.target.value })}>
                                                 <option value="">Tüm İşlemler</option>
                                                 {uniqueActions.map(act => <option key={act as string} value={act as string}>{act as string}</option>)}
                                             </select>
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Durum (Status)</label>
-                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.status} onChange={e => setLogFilter({...logFilter, status: e.target.value})}>
+                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.status} onChange={e => setLogFilter({ ...logFilter, status: e.target.value })}>
                                                 <option value="">Tüm Durumlar</option>
                                                 {uniqueStatuses.map(stat => <option key={stat as string} value={stat as string}>{stat as string}</option>)}
                                             </select>
@@ -878,7 +1259,7 @@ const AdminDashboard = () => {
                                                 filteredLogs.map(log => (
                                                     <tr key={log.id} className="hover:bg-indigo-50/30 transition-colors">
                                                         <td className="px-6 py-4 text-xs font-bold text-slate-600 whitespace-nowrap">
-                                                            {new Date(log.creationDate).toLocaleDateString('tr-TR')} <br/>
+                                                            {new Date(log.creationDate).toLocaleDateString('tr-TR')} <br />
                                                             <span className="text-slate-400 font-normal">{new Date(log.creationDate).toLocaleTimeString('tr-TR')}</span>
                                                         </td>
                                                         <td className="px-6 py-4">
@@ -900,11 +1281,80 @@ const AdminDashboard = () => {
                                             )}
                                         </tbody>
                                     </table>
+                                    <div className="flex justify-between items-center mt-4 px-2">
+                                        <button onClick={() => setLogPage(p => Math.max(1, p - 1))} disabled={logPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Önceki Sayfa</button>
+                                        <span className="text-sm font-bold text-slate-600">Sayfa {logPage}</span>
+                                        {/* Eğer ekranda tam 20 log varsa, demek ki bir sonraki sayfa var olabilir. */}
+                                        <button onClick={() => setLogPage(p => p + 1)} disabled={logs.length < 20} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Sonraki Sayfa</button>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
                     </div>
+                    {/* KATEGORİ DÜZENLEME MODALI */}
+                    {editingTopic && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md animate-fade-in-down">
+                                <h3 className="text-xl font-black text-slate-800 mb-4">Kategori Düzenle</h3>
+                                <form onSubmit={handleUpdateTopic} className="space-y-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kategori Adı</label>
+                                        <input type="text" required value={editTopicName} onChange={e => setEditTopicName(e.target.value)} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-slate-50" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Yeni Resim (Opsiyonel)</label>
+                                        <input type="file" accept="image/*" onChange={e => setEditTopicImage(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-slate-50" />
+                                        {editingTopic.imageName && editingTopic.imageName !== 'default.png' && <p className="text-xs text-slate-500 mt-2">Mevcut Resim: {editingTopic.imageName}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-4 pt-2 border-t border-slate-100">
+                                        <input type="checkbox" id="topicStatus" checked={editTopicStatus} onChange={e => setEditTopicStatus(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
+                                        <label htmlFor="topicStatus" className="text-sm font-bold text-slate-700">Kategori Aktif (Sitede Gösterilsin)</label>
+                                    </div>
+                                    <div className="flex gap-3 pt-4">
+                                        <button type="button" onClick={() => setEditingTopic(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition">İptal</button>
+                                        <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition">Kaydet</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* KURUM DÜZENLEME MODALI */}
+                    {editingInst && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-lg animate-fade-in-down">
+                                <h3 className="text-xl font-black text-slate-800 mb-4">Kurum Düzenle</h3>
+                                <form onSubmit={handleUpdateInst} className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kurum Adı</label>
+                                            <input type="text" required value={editInstData.name} onChange={e => setEditInstData({ ...editInstData, name: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Domain</label>
+                                            <input type="text" required value={editInstData.domain} onChange={e => setEditInstData({ ...editInstData, domain: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tema Rengi</label>
+                                            <div className="flex items-center gap-2">
+                                                <input type="color" value={editInstData.primaryColor} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="h-11 w-14 rounded-xl border border-slate-200 cursor-pointer" />
+                                                <input type="text" value={editInstData.primaryColor} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Yeni Logo (Opsiyonel)</label>
+                                            <input type="file" accept="image/*" onChange={e => setEditInstLogo(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 outline-none text-sm bg-slate-50" />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 pt-4">
+                                        <button type="button" onClick={() => setEditingInst(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition">İptal</button>
+                                        <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition">Güncelle</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
                 </main>
             </div>
         </div>

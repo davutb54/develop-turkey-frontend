@@ -5,11 +5,14 @@ export const topicService = {
     getAll: async () => {
         return api.get<IDataResult<Topic[]>>('/topic/getall');
     },
-    add: async (topic: { name: string, imageName: string }) => {
-        // YENİ: imageName parametresi eklendi
-        return api.post<IResult>('/topic/add', topic);
+    add: async (formData: FormData) => {
+        return api.post<IResult>('/topic/add', formData);
+    },
+    update: async (formData: FormData) => {
+        return api.put<IResult>('/topic/update', formData);
     },
     delete: async (id: number) => {
         return api.delete<IResult>(`/topic/delete?id=${id}`);
-    }
+    },
+    getAllActive: async () => api.get<IDataResult<Topic[]>>('/topic/getallactive'),
 };
