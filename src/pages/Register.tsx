@@ -93,15 +93,6 @@ const Register = () => {
          }
       }
 
-      // --- ÖZEL MÜDAHALE BURADA BAŞLIYOR ---
-      // Eğer backend "Kayıt oldu ama..." diyorsa, aslında kayıt başarılıdır.
-      if (errorMessage.includes("Kayıt oldu")) {
-          alert("Kaydınız oluşturuldu ancak doğrulama e-postası gönderilemedi (Sunucu Hatası). Giriş yapabilirsiniz.");
-          navigate('/login'); // Kullanıcıyı giriş sayfasına at
-          return;
-      }
-      // -------------------------------------
-
       setError(errorMessage);
     }
   };

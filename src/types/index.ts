@@ -16,6 +16,7 @@ export interface IResult {
 export interface AccessToken {
     token: string;
     expiration: string;
+    userId: string;
 }
 
 // Kullanıcı Detayları (Entities/DTOs/User/UserDetailDto.cs)
@@ -142,7 +143,6 @@ export interface UserImageUpdateDto {
 
 // Sorun Eklemek İçin (ProblemAddDto)
 export interface ProblemAddDto {
-    senderId: number;
     title: string;
     description: string;
     cityCode: number;

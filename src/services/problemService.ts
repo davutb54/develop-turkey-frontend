@@ -38,7 +38,6 @@ export const problemService = {
     // Yeni sorun ekle
     add: async (data: ProblemAddDto) => {
         const formData = new FormData();
-        formData.append('senderId', data.senderId.toString());
         formData.append('title', data.title);
         formData.append('description', data.description);
         formData.append('cityCode', data.cityCode.toString());

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 
 const VerifyEmail = () => {
@@ -100,6 +100,7 @@ const VerifyEmail = () => {
             {canResend ? "Kodu Tekrar Gönder" : `Kodu Tekrar Gönder (${timeLeft}s)`}
           </button>
         </div>
+        <Link to="/" className="text-center block mt-4 text-sm text-gray-600 hover:underline">Ana Sayfaya Dön (Doğrulamayı sonra yap)</Link>
       </div>
     </div>
   );

@@ -68,19 +68,11 @@ const CreateProblem = () => {
         setLoading(true);
         setError('');
 
-        const userId = localStorage.getItem('userId');
-        if (!userId) {
-            setError("Kullanıcı kimliği bulunamadı. Lütfen tekrar giriş yapın.");
-            setLoading(false);
-            return;
-        }
-
         // Basit Validasyon
         if (cityCode === 0) { setError("Lütfen şehir seçin."); setLoading(false); return; }
         if (topicId === 0) { setError("Lütfen konu seçin."); setLoading(false); return; }
 
         const newProblem: ProblemAddDto = {
-            senderId: parseInt(userId),
             title,
             description,
             cityCode,

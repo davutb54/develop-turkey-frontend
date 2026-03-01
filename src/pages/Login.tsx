@@ -20,22 +20,7 @@ const Login = () => {
       // Eğer token varsa işlem başarılıdır.
       if (response.data && response.data.token) {
         localStorage.setItem('token', response.data.token);
-
-
-        const base64Url = response.data.token.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
-          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        }).join(''));
-
-        const tokenData = JSON.parse(jsonPayload);
-        // JWT içindeki "nameid" genelde ID'yi tutar
-        localStorage.setItem('userId', tokenData.nameid || tokenData.unique_name || tokenData.sub);
-
-
-
-        // Kullanıcıya bilgi verelim (isteğe bağlı, direkt yönlendirebilirsin)
-        // alert("Giriş Başarılı! Yönlendiriliyorsunuz...");
+        localStorage.setItem('userId', response.data.userId);
 
         navigate('/');
       } else {
