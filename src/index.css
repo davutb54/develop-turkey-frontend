@@ -1,7 +1,72 @@
 @import "tailwindcss";
 
+/* TIKANIP TAŞAN UZUN METİNLERİ OTOMATİK KIRAR */
+p,
+span,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+div {
+  word-break: break-word;
+  /* Kelime çok uzunsa alt satıra böler */
+  overflow-wrap: break-word;
+  /* Taşan kelimeyi sığdırır */
+  white-space: normal;
+}
+
+/* ÖZELLİKLE LİNKLERİN VE E-POSTALARIN TAŞMASINI ENGELLER */
+a {
+  word-break: break-all;
+}
+
+/* TABLOLARIN MOBİLDE SAYFAYI BOZMASINI ENGELLER VE SAĞA KAYDIRILABİLİR YAPAR */
+table {
+  width: 100%;
+  table-layout: auto;
+}
+
+.table-container,
+.overflow-x-auto {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Mobilde yumuşak kaydırma sağlar */
+}
+
 @layer components {
   .input-field {
     @apply appearance-none relative block px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm;
+  }
+}
+
+/* --- MOBİL UYGULAMA HİSSİ İÇİN GLOBAL AYARLAR --- */
+
+/* Mobilde butonlara tıklarken çıkan çirkin mavi arka planı kaldırır */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Mobilde daha pürüzsüz kaydırma sağlar (iOS için) */
+body {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+
+  /* Mobilde kaydırma çubuklarını (scrollbar) gizle ama kaydırmaya devam etsin */
+  ::-webkit-scrollbar {
+    width: 0px;
+    height: 0px;
+    background: transparent;
+  }
+
+  /* Eğer sayfalarda sığmayan tablolar varsa, mobilde otomatik yana kaydırmalı (scroll) yapar, siteyi bozmaz */
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 }

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { problemService } from '../services/problemService';
 import { solutionService, type SolutionAddDto } from '../services/solutionService';
 import { solutionVoteService } from '../services/solutionVoteService';
@@ -7,10 +7,15 @@ import type { ProblemDetailDto, SolutionDetailDto } from '../types';
 import Navbar from '../components/Navbar';
 import CommentSection from '../components/CommentSection';
 import ReportModal from '../components/ReportModal';
+import { topicService } from '../services/topicService';
 
 const ProblemDetail = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const highlightSolutionId = parseInt(searchParams.get('solution') || '0');
+    const solutionRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+    const [focusedSolutionId, setFocusedSolutionId] = useState<number | null>(null);
 
     const [problem, setProblem] = useState<ProblemDetailDto | null>(null);
     const [solutions, setSolutions] = useState<SolutionDetailDto[]>([]);
@@ -24,11 +29,41 @@ const ProblemDetail = () => {
 
     const currentUserId = parseInt(localStorage.getItem('userId') || '0');
 
+    const [isEditingProblem, setIsEditingProblem] = useState(false);
+    const [editProblemData, setEditProblemData] = useState({ title: '', description: '' });
+
+    // Kategorileri (Tagleri) Düzenlemek İçin:
+    const [topics, setTopics] = useState<any[]>([]); // Tüm mevcut kategoriler
+    const [editSelectedTopics, setEditSelectedTopics] = useState<number[]>([]);
+
+    // Çözüm (Solution) Düzenleme State'leri
+    const [editingSolutionId, setEditingSolutionId] = useState<number | null>(null);
+    const [editSolutionTitle, setEditSolutionTitle] = useState('');
+    const [editSolutionDesc, setEditSolutionDesc] = useState('');
+
     useEffect(() => {
         if (id) {
             loadData(parseInt(id));
         }
+        const fetchTopics = async () => {
+            const res = await topicService.getAll();
+            if (res.data.success) setTopics(res.data.data);
+        }
+        fetchTopics();
     }, [id]);
+
+    useEffect(() => {
+        if (highlightSolutionId && solutions.length > 0) {
+            const el = solutionRefs.current[highlightSolutionId];
+            if (el) {
+                setTimeout(() => {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setFocusedSolutionId(highlightSolutionId);
+                    setTimeout(() => setFocusedSolutionId(null), 3000);
+                }, 300);
+            }
+        }
+    }, [solutions, highlightSolutionId]);
 
     const loadData = async (problemId: number) => {
         try {
@@ -79,6 +114,26 @@ const ProblemDetail = () => {
         }
     };
 
+    const handleUpdateProblem = async () => {
+        try {
+            const updatedProblem = {
+                ...problem,
+                title: editProblemData.title,
+                description: editProblemData.description,
+                topicIds: editSelectedTopics
+            };
+
+            await problemService.update(updatedProblem);
+
+            // Arayüzü anında güncelle (Refresh atmadan)
+            const updatedTopicObjects = topics.filter(t => editSelectedTopics.includes(t.id));
+            setProblem(prev => prev ? { ...prev, title: editProblemData.title, description: editProblemData.description, topics: updatedTopicObjects } : null);
+            setIsEditingProblem(false);
+        } catch (err) {
+            alert("Güncellenemedi.");
+        }
+    };
+
     const handleVote = async (solutionId: number, isUpvote: boolean) => {
         if (!currentUserId) {
             alert("Oy vermek için giriş yapmalısınız.");
@@ -100,6 +155,24 @@ const ProblemDetail = () => {
             navigate('/');
         } catch (err) { alert("Sorun silinemedi."); }
     };
+
+    const handleUpdateSolution = async (solutionId: number, currentSolution: any) => {
+        try {
+            const updatedData = {
+                ...currentSolution,
+                title: editSolutionTitle,
+                description: editSolutionDesc
+            };
+            await solutionService.update(updatedData);
+
+            // UI'ı anında güncelle (Sayfa yenilemeden)
+            setSolutions(prev => prev.map(s => s.id === solutionId ? { ...s, title: editSolutionTitle, description: editSolutionDesc } : s));
+            setEditingSolutionId(null);
+        } catch (err) {
+            alert("Çözüm güncellenemedi.");
+        }
+    };
+
 
     const handleDeleteSolution = async (solutionId: number) => {
         if (!window.confirm("Çözümünüzü silmek istediğinize emin misiniz?")) return;
@@ -150,7 +223,6 @@ const ProblemDetail = () => {
                     <div className="p-8">
                         {/* Başlık ve Rozetler */}
                         <div className="flex flex-wrap gap-2 mb-4">
-                            <span className="bg-gray-100 text-gray-600 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg">{problem.topicName}</span>
                             <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg">{problem.cityName}</span>
 
                             {/* Sorun çözüldüyse Rozeti Göster */}
@@ -161,9 +233,72 @@ const ProblemDetail = () => {
                                 </span>
                             )}
                         </div>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {problem?.topics && problem.topics.map(t => (
+                                <span key={t.id} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm flex items-center gap-1">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+                                    {t.name}
+                                </span>
+                            ))}
+                        </div>
 
-                        <h1 className="text-3xl font-black text-gray-900 mb-4">{problem.title}</h1>
-                        <p className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap mb-8">{problem.description}</p>
+                        {/* DÜZENLEME FORMU AÇIKSA */}
+                        {isEditingProblem ? (
+                            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-6 animate-fade-in-down space-y-4">
+                                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-2 border-b pb-2">Sorunu Düzenle</h3>
+
+                                <input
+                                    type="text"
+                                    className="w-full border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none p-3 rounded-xl font-bold bg-white shadow-sm"
+                                    value={editProblemData.title}
+                                    onChange={e => setEditProblemData({ ...editProblemData, title: e.target.value })}
+                                />
+
+                                <textarea
+                                    className="w-full border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none p-3 rounded-xl text-sm bg-white shadow-sm"
+                                    rows={5}
+                                    value={editProblemData.description}
+                                    onChange={e => setEditProblemData({ ...editProblemData, description: e.target.value })}
+                                ></textarea>
+
+                                {/* ÇOKLU KATEGORİ (TAG) SEÇİCİ */}
+                                <div className="pt-2">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Kategoriler</label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {topics.map(topic => {
+                                            const isSelected = editSelectedTopics.includes(topic.id);
+                                            return (
+                                                <button
+                                                    key={topic.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setEditSelectedTopics(prev =>
+                                                            prev.includes(topic.id) ? prev.filter(id => id !== topic.id) : [...prev, topic.id]
+                                                        );
+                                                    }}
+                                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all flex items-center gap-1 shadow-sm ${isSelected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400'
+                                                        }`}
+                                                >
+                                                    {topic.name}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 justify-end pt-4 border-t mt-4">
+                                    <button onClick={() => setIsEditingProblem(false)} className="px-5 py-2.5 bg-white border border-slate-300 text-slate-700 font-bold text-xs rounded-xl shadow-sm hover:bg-slate-50">İptal</button>
+                                    <button onClick={handleUpdateProblem} className="px-6 py-2.5 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md hover:bg-indigo-700">Kaydet</button>
+                                </div>
+                            </div>
+                        ) : (
+                            // NORMAL GÖSTERİM (Form kapalıyken eski başlık vs çıkacak)
+                            <div>
+                                {/* Senin mevcut problem.title ve problem.description gösterdiğin HTML'ler burada kalsın */}
+                                <h1 className="text-3xl font-black text-gray-900 mb-4">{problem.title}</h1>
+                                <p className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap mb-8">{problem.description}</p>
+                            </div>
+                        )}
 
                         {/* Alt Bilgi & Aksiyonlar */}
                         <div className="flex flex-wrap items-center justify-between border-t border-gray-100 pt-6">
@@ -186,10 +321,24 @@ const ProblemDetail = () => {
 
                             <div className="flex items-center gap-3 mt-4 sm:mt-0">
                                 {currentUserId === problem.senderId && (
-                                    <button onClick={handleDeleteProblem} className="text-xs font-bold text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5">
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        Sorunumu Sil
-                                    </button>
+                                    <div className="flex justify-end mb-4 gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setIsEditingProblem(true);
+                                                setEditProblemData({ title: problem.title, description: problem.description });
+                                                setEditSelectedTopics(problem.topics ? problem.topics.map(t => t.id) : []);
+                                            }}
+                                            className="flex items-center gap-1.5 px-4 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 font-bold text-xs rounded-lg shadow-sm hover:bg-yellow-100 transition"
+                                        >
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            Sorunu Düzenle
+                                        </button>
+                                        <button onClick={handleDeleteProblem} className="text-xs font-bold text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            Sorunumu Sil
+                                        </button>
+                                    </div>
+
                                 )}
                                 {currentUserId !== problem.senderId && currentUserId !== 0 && (
                                     <button onClick={() => openReportModal('Problem', problem.id)} className="text-xs font-bold text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-100 px-4 py-2 rounded-xl transition flex items-center gap-1.5">
@@ -256,7 +405,11 @@ const ProblemDetail = () => {
                                         }
 
                                         return (
-                                            <div key={sol.id} className={`${bgColor} p-6 rounded-3xl shadow-sm border-l-4 border-y border-r ${borderColor} transition-all relative overflow-hidden`}>
+                                            <div
+                                                key={sol.id}
+                                                ref={el => { solutionRefs.current[sol.id] = el; }}
+                                                className={`${bgColor} p-6 rounded-3xl shadow-sm border-l-4 border-y border-r ${borderColor} transition-all relative overflow-hidden ${focusedSolutionId === sol.id ? 'ring-4 ring-blue-400 ring-offset-2 shadow-blue-200 shadow-lg' : ''}`}
+                                            >
 
                                                 {/* SAĞ ÜST ROZET */}
                                                 <div className="absolute top-5 right-5 z-10">
@@ -274,26 +427,52 @@ const ProblemDetail = () => {
                                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
                                                         </button>
                                                     </div>
-
-                                                    {/* İÇERİK KISMI */}
-                                                    <div className="flex-1 pr-0 md:pr-12">
-                                                        <h4 className="text-xl font-bold text-gray-900 mb-3">{sol.title}</h4>
-                                                        <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{sol.description}</p>
-
-                                                        <div className="mt-5 flex items-center gap-3">
-                                                            <Link to={`/user/${sol.senderId}`} className="h-10 w-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center shrink-0 border border-gray-100 shadow-sm">
-                                                                {sol.senderImageUrl ? (
-                                                                    <img src={`/uploads/profiles/${sol.senderImageUrl}`} alt={sol.senderUsername} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <span className="text-sm font-black text-blue-800">{sol.senderUsername[0].toUpperCase()}</span>
-                                                                )}
-                                                            </Link>
-                                                            <div>
-                                                                <Link to={`/user/${sol.senderId}`} className="font-bold text-gray-900 text-sm hover:underline">@{sol.senderUsername}</Link>
-                                                                <div className="text-[11px] text-gray-500">{formatDate(sol.sendDate)}</div>
+                                                    {/* EĞER DÜZENLE BUTONUNA BASILDIYSA FORM AÇILIR */}
+                                                    {editingSolutionId === sol.id ? (
+                                                        <div className="space-y-3 animate-fade-in-down bg-slate-50 p-5 rounded-xl border border-indigo-100">
+                                                            <input
+                                                                type="text"
+                                                                className="w-full border border-slate-200 p-3 rounded-xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white shadow-sm"
+                                                                value={editSolutionTitle}
+                                                                onChange={e => setEditSolutionTitle(e.target.value)}
+                                                                placeholder="Çözüm Başlığı"
+                                                            />
+                                                            <textarea
+                                                                className="w-full border border-slate-200 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white shadow-sm"
+                                                                rows={4}
+                                                                value={editSolutionDesc}
+                                                                onChange={e => setEditSolutionDesc(e.target.value)}
+                                                                placeholder="Çözüm Detayları"
+                                                            ></textarea>
+                                                            <div className="flex justify-end gap-2 pt-2">
+                                                                <button onClick={() => setEditingSolutionId(null)} className="px-4 py-2 bg-white border border-slate-300 text-slate-600 font-bold text-xs rounded-xl shadow-sm hover:bg-slate-50">İptal</button>
+                                                                <button onClick={() => handleUpdateSolution(sol.id, sol)} className="px-6 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md hover:bg-indigo-700">Kaydet</button>
                                                             </div>
                                                         </div>
-                                                    </div>
+                                                    ) : (
+                                                        // NORMAL GÖSTERİM MODU
+                                                        <div className="flex-1 pr-0 md:pr-12">
+                                                            <h4 className="text-xl font-bold text-gray-900 mb-3">{sol.title}</h4>
+                                                            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{sol.description}</p>
+
+                                                            <div className="mt-5 flex items-center gap-3">
+                                                                <Link to={`/user/${sol.senderId}`} className="h-10 w-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center shrink-0 border border-gray-100 shadow-sm">
+                                                                    {sol.senderImageUrl ? (
+                                                                        <img src={`/uploads/profiles/${sol.senderImageUrl}`} alt={sol.senderUsername} className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <span className="text-sm font-black text-blue-800">{sol.senderUsername[0].toUpperCase()}</span>
+                                                                    )}
+                                                                </Link>
+                                                                <div>
+                                                                    <Link to={`/user/${sol.senderId}`} className="font-bold text-gray-900 text-sm hover:underline">@{sol.senderUsername}</Link>
+                                                                    <div className="text-[11px] text-gray-500">{formatDate(sol.sendDate)}</div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* İÇERİK KISMI */}
+
                                                 </div>
 
                                                 <div className="mt-6">
@@ -302,9 +481,22 @@ const ProblemDetail = () => {
 
                                                 <div className="flex justify-end mt-4 pt-4 border-t border-gray-100/60 gap-2">
                                                     {currentUserId === sol.senderId && (
-                                                        <button onClick={() => handleDeleteSolution(sol.id)} className="text-[10px] text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 border border-gray-200 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider transition">
-                                                            🗑️ Çözümü Sil
-                                                        </button>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingSolutionId(sol.id);
+                                                                    setEditSolutionTitle(sol.title);
+                                                                    setEditSolutionDesc(sol.description);
+                                                                }}
+                                                                className="px-3 py-1.5 bg-yellow-50 text-yellow-700 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-yellow-200 hover:bg-yellow-100 transition shadow-sm"
+                                                            >
+                                                                Düzenle
+                                                            </button>
+                                                            <button onClick={() => handleDeleteSolution(sol.id)} className="text-[10px] text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 border border-gray-200 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider transition">
+                                                                🗑️ Çözümü Sil
+                                                            </button>
+                                                        </div>
+
                                                     )}
                                                     {currentUserId !== sol.senderId && currentUserId !== 0 && (
                                                         <button onClick={() => openReportModal('Solution', sol.id)} className="text-[10px] text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-100 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider transition">

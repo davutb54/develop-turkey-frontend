@@ -11,6 +11,10 @@ export const commentService = {
     add: async (data: CommentAddDto) => {
         return api.post<IResult>('/comment/add', data);
     },
+    // Yorum Güncelle
+    update: async (data: { id: number; content: string }) => {
+        return api.post<IResult>('/comment/update', data);
+    },
     // delete metodunu şu şekilde değiştir:
     // Yorum Silme
     delete: async (id: number) => {

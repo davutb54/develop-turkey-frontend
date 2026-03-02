@@ -41,14 +41,25 @@ export const problemService = {
         formData.append('title', data.title);
         formData.append('description', data.description);
         formData.append('cityCode', data.cityCode.toString());
-        formData.append('topicId', data.topicId.toString());
+
+        // YENİ: Seçilen her bir kategori ID'sini FormData'ya ekliyoruz
+        if (data.topicIds && data.topicIds.length > 0) {
+            data.topicIds.forEach(id => {
+                formData.append('TopicIds', id.toString());
+            });
+        }
 
         if (data.image) {
             formData.append('Image', data.image);
         }
+        if (data.solutionTitle) {
+            formData.append('SolutionTitle', data.solutionTitle);
+        }
+        if (data.solutionDescription) {
+            formData.append('SolutionDescription', data.solutionDescription);
+        }
 
-        return api.post<IResult>('/problem/add', formData, {
-        });
+        return api.post<IResult>('/problem/add', formData);
     },
 
     // Mevcut fonksiyonların yanına ekle:

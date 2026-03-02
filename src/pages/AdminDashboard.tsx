@@ -5,8 +5,9 @@ import { topicService } from '../services/topicService';
 import { problemService } from '../services/problemService';
 import { solutionService } from '../services/solutionService';
 import { reportService } from '../services/reportService';
-import { institutionService } from '../services/institutionService'; // YENİ EKLENDİ
-import type { AdminDashboardDto, ProblemDetailDto, SolutionDetailDto, LogDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution } from '../types'; // Institution eklendi
+import { institutionService } from '../services/institutionService';
+import { feedbackService } from '../services/feedbackService'; // YENİ EKLENDİ
+import type { AdminDashboardDto, ProblemDetailDto, SolutionDetailDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution, Log } from '../types';
 import Navbar from '../components/Navbar';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -17,59 +18,69 @@ const AdminDashboard = () => {
     const [topics, setTopics] = useState<Topic[]>([]);
     const [problems, setProblems] = useState<ProblemDetailDto[]>([]);
     const [solutions, setSolutions] = useState<SolutionDetailDto[]>([]);
-    const [logs, setLogs] = useState<LogDto[]>([]);
+    const [logs, setLogs] = useState<Log[]>([]);
     const [pendingReports, setPendingReports] = useState<ReportDto[]>([]);
     const [pendingSolutions, setPendingSolutions] = useState<any[]>([]);
-    const [institutions, setInstitutions] = useState<Institution[]>([]); // YENİ EKLENDİ
+    const [institutions, setInstitutions] = useState<Institution[]>([]);
+    
+    // YENİ: FEEDBACK (GERİ BİLDİRİM) STATE'İ
+    const [feedbacks, setFeedbacks] = useState<any[]>([]);
 
     // --- ARAMA VE FİLTRE STATE'LERİ ---
     const [userSearch, setUserSearch] = useState('');
     const [userStatus, setUserStatus] = useState('');
+    
+    // Problem Filtreleri
     const [problemSearch, setProblemSearch] = useState('');
     const [problemStatus, setProblemStatus] = useState('');
+    const [problemInst, setProblemInst] = useState('');
+    const [problemTopicFilter, setProblemTopicFilter] = useState('');
+    
+    // Solution Filtreleri
     const [solutionSearch, setSolutionSearch] = useState('');
     const [solutionStatus, setSolutionStatus] = useState('');
-    const [newTopicName, setNewTopicName] = useState('');
-
-    // --- YENİ EKLENEN FİLTRE VE SAYFALAMA STATE'LERİ ---
-    const [problemInst, setProblemInst] = useState('');
     const [solutionInst, setSolutionInst] = useState('');
+    
+    // Topic (Kategori) Filtresi
+    const [topicInstFilter, setTopicInstFilter] = useState('');
+
+    // --- SAYFALAMA STATE'LERİ ---
     const [problemPage, setProblemPage] = useState(1);
     const [solutionPage, setSolutionPage] = useState(1);
-    const ITEMS_PER_PAGE = 8; // Bir sayfada kaç veri görünecek
+    const ITEMS_PER_PAGE = 8;
 
-    // --- KURUM EKLEME STATE'LERİ (YENİ) ---
+    // --- EKLEME STATE'LERİ ---
+    const [newTopicName, setNewTopicName] = useState('');
+    const [newTopicInstId, setNewTopicInstId] = useState(''); 
+    const [newTopicImage, setNewTopicImage] = useState<File | null>(null);
+    
     const [instFormData, setInstFormData] = useState<Institution>({
         name: '', domain: '', logoUrl: '', primaryColor: '#2563eb', status: true
     });
     const [instLoading, setInstLoading] = useState(false);
     const [instError, setInstError] = useState('');
     const [instSuccess, setInstSuccess] = useState('');
+    const [instLogoFile, setInstLogoFile] = useState<File | null>(null);
 
-    // LOG FİLTRELEME STATE'LERİ
-    const [logFilter, setLogFilter] = useState({
-        object: '', action: '', status: '', searchText: '', endDate: ''
-    });
+    // --- YENİ LOG FİLTRELEME STATE'LERİ ---
+    const [logFilter, setLogFilter] = useState<LogFilterDto>({});
     const [logPage, setLogPage] = useState(1);
 
     // --- SEKME STATE'LERİ ---
-    const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals' | 'feedbacks'>('overview');
     const [reportTab, setReportTab] = useState<'problems' | 'solutions' | 'users'>('problems');
     const [loading, setLoading] = useState(true);
 
-    const [newTopicImage, setNewTopicImage] = useState<File | null>(null);
-    const [instLogoFile, setInstLogoFile] = useState<File | null>(null);
-
-    // --- DÜZENLEME (EDIT) MODAL STATE'LERİ ---
+    // --- DÜZENLEME MODAL STATE'LERİ ---
     const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
     const [editTopicName, setEditTopicName] = useState('');
+    const [editTopicInstId, setEditTopicInstId] = useState('');
     const [editTopicImage, setEditTopicImage] = useState<File | null>(null);
+    const [editTopicStatus, setEditTopicStatus] = useState(true);
 
     const [editingInst, setEditingInst] = useState<Institution | null>(null);
     const [editInstData, setEditInstData] = useState({ name: '', domain: '', primaryColor: '', status: true });
     const [editInstLogo, setEditInstLogo] = useState<File | null>(null);
-
-    const [editTopicStatus, setEditTopicStatus] = useState(true);
 
     const navigate = useNavigate();
 
@@ -102,14 +113,15 @@ const AdminDashboard = () => {
     const loadAllData = async () => {
         setLoading(true);
         try {
-            const [statsRes, usersRes, topicsRes, problemsRes, solutionsRes, reportsRes, instRes] = await Promise.all([
+            const [statsRes, usersRes, topicsRes, problemsRes, solutionsRes, reportsRes, instRes, feedbacksRes] = await Promise.all([
                 adminService.getDashboardStats(),
                 userService.getAll(),
-                topicService.getAll(),
-                problemService.getAll(),
-                solutionService.getAll(),
+                adminService.getAllTopics(),
+                adminService.getAllProblems(),
+                adminService.getAllSolutions(),
                 reportService.getPending(),
-                institutionService.getAll() // Kurumlar da çekiliyor
+                institutionService.getAll(),
+                feedbackService.getAll() // YENİ EKLENDİ
             ]);
 
             if (statsRes.data.success) setStats(statsRes.data.data);
@@ -119,55 +131,43 @@ const AdminDashboard = () => {
             if (solutionsRes.data.success) setSolutions(solutionsRes.data.data);
             if (reportsRes.data.success) setPendingReports(reportsRes.data.data);
             if (instRes.data.success) setInstitutions(instRes.data.data);
+            if (feedbacksRes.data.success) setFeedbacks(feedbacksRes.data.data); // YENİ EKLENDİ
 
             fetchLogs();
         } catch (err) { console.error("Veriler yüklenemedi", err); }
         finally { setLoading(false); }
     };
 
-    // YENİ FETCH LOGS FONKSİYONU
     const fetchLogs = async () => {
         try {
-            // Frontend'deki parçalı filtreleri birleştirip tek bir zeki filtre haline getiriyoruz
-            const typeParts = [logFilter.object, logFilter.action, logFilter.status].filter(Boolean);
-            const typeString = typeParts.length > 0 ? typeParts.join(',') : undefined;
-
             const filterToSend: LogFilterDto = {
                 searchText: logFilter.searchText || undefined,
                 endDate: logFilter.endDate ? `${logFilter.endDate}T23:59:59` : undefined,
-                type: typeString,
-                page: logPage,     // Backend'e hangi sayfada olduğumuzu söylüyoruz
-                pageSize: 20       // Tek seferde sadece 20 veri istiyoruz
+                category: logFilter.category || undefined,
+                action: logFilter.action || undefined,
+                level: logFilter.level || undefined,
+                page: logPage,
+                pageSize: 20
             };
             const res = await adminService.getLogs(filterToSend);
             if (res.data.success) {
-                // Backend'den filtrelenmiş ve 20'şerli kesilmiş veri gelecek
                 setLogs(res.data.data);
             }
         } catch (err) { console.error("Loglar çekilemedi", err); }
     };
 
-    // logPage (Sayfa numarası) her değiştiğinde backend'den yeni sayfayı İSTE!
-    useEffect(() => {
-        fetchLogs();
-    }, [logPage]);
+    useEffect(() => { fetchLogs(); }, [logPage]);
 
-    const parsedLogs = logs.map(log => {
-        const parts = log.type ? log.type.split(',') : ['Bilinmiyor', 'Bilinmiyor', 'Bilinmiyor'];
-        return {
-            ...log, logObject: parts[0]?.trim() || 'Bilinmiyor', logAction: parts[1]?.trim() || 'Bilinmiyor', logStatus: parts[2]?.trim() || 'Bilinmiyor',
-        };
+    const handleFilterLogs = (e: React.FormEvent) => { e.preventDefault(); setLogPage(1); fetchLogs(); };
+    const clearLogFilters = () => { setLogFilter({}); setLogPage(1); setTimeout(fetchLogs, 100); };
+
+    // --- FİLTRELEME İŞLEMLERİ ---
+
+    // Kategori Filtreleme (Kuruma Göre)
+    const filteredTopics = topics.filter(t => {
+        if (topicInstFilter === '') return true;
+        return t.institutionId?.toString() === topicInstFilter;
     });
-
-    const uniqueObjects = Array.from(new Set(parsedLogs.map(l => l.logObject))).filter(o => o !== 'Bilinmiyor');
-    const uniqueActions = Array.from(new Set(parsedLogs.map(l => l.logAction))).filter(a => a !== 'Bilinmiyor');
-    const uniqueStatuses = Array.from(new Set(parsedLogs.map(l => l.logStatus))).filter(s => s !== 'Bilinmiyor');
-
-    const filteredLogs = parsedLogs.filter(l =>
-        (logFilter.object === '' || l.logObject === logFilter.object) &&
-        (logFilter.action === '' || l.logAction === logFilter.action) &&
-        (logFilter.status === '' || l.logStatus === logFilter.status)
-    );
 
     const filteredUsers = users.filter(u => {
         const matchSearch = (u.userName + u.name + u.surname + u.email).toLowerCase().includes(userSearch.toLowerCase());
@@ -175,25 +175,28 @@ const AdminDashboard = () => {
         return matchSearch && matchStatus;
     });
 
-    // --- AKILLI FİLTRELER VE SAYFALAMA ---
+    // Problem Filtreleme (Yeni Çoklu Kategoriye Uygun)
     const filteredProblems = problems.filter(p => {
         const matchSearch = p.title.toLowerCase().includes(problemSearch.toLowerCase()) || p.senderUsername.toLowerCase().includes(problemSearch.toLowerCase());
-
         let matchStatus = true;
         if (problemStatus === 'highlighted') matchStatus = p.isHighlighted;
         if (problemStatus === 'resolved') matchStatus = p.isResolved || p.isResolvedByExpert;
-
+        
         let matchInst = problemInst === '' || p.institutionId?.toString() === problemInst;
-        return matchSearch && matchStatus && matchInst;
+        
+        let matchTopic = true;
+        if (problemTopicFilter !== '') {
+            matchTopic = p.topics && p.topics.some(t => t.id.toString() === problemTopicFilter);
+        }
+
+        return matchSearch && matchStatus && matchInst && matchTopic;
     });
     const paginatedProblems = filteredProblems.slice((problemPage - 1) * ITEMS_PER_PAGE, problemPage * ITEMS_PER_PAGE);
 
     const filteredSolutions = solutions.filter(s => {
         const matchSearch = s.title.toLowerCase().includes(solutionSearch.toLowerCase()) || s.senderUsername.toLowerCase().includes(solutionSearch.toLowerCase());
-
         let matchStatus = true;
         if (solutionStatus === 'highlighted') matchStatus = s.isHighlighted;
-
         let matchInst = true;
         if (solutionInst !== '') {
             const relatedProblem = problems.find(p => p.id === s.problemId);
@@ -202,7 +205,6 @@ const AdminDashboard = () => {
         return matchSearch && matchStatus && matchInst;
     });
 
-    // ÇÖZÜMLERİ SORUNLARINA GÖRE GRUPLA
     const groupedSolutions = filteredSolutions.reduce((acc, sol) => {
         if (!acc[sol.problemId]) acc[sol.problemId] = { problemId: sol.problemId, problemName: problems.find(p => p.id === sol.problemId)?.title || "Bilinmeyen Sorun", solutions: [] };
         acc[sol.problemId].solutions.push(sol);
@@ -217,7 +219,7 @@ const AdminDashboard = () => {
     const userReports = pendingReports.filter(r => r.targetType === 'User');
 
     const topicDistribution = topics.map(t => {
-        const count = problems.filter(p => p.topicId === t.id).length;
+        const count = problems.filter(p => p.topics && p.topics.some(pt => pt.id === t.id)).length;
         return { name: t.name, count };
     }).sort((a, b) => b.count - a.count);
 
@@ -227,7 +229,24 @@ const AdminDashboard = () => {
         return acc;
     }, {}));
 
+
     // --- İŞLEMLER ---
+
+    const handleRemoveTopicFromProblem = async (problemId: number, topicId: number, topicName: string) => {
+        if (!window.confirm(`'${topicName}' etiketini bu sorundan tamamen kaldırmak istediğinize emin misiniz?`)) return;
+        try {
+            await adminService.removeTopicFromProblem(problemId, topicId);
+            setProblems(prev => prev.map(p => {
+                if(p.id === problemId && p.topics) {
+                    return { ...p, topics: p.topics.filter(t => t.id !== topicId) };
+                }
+                return p;
+            }));
+        } catch (err) {
+            alert("Etiket silinemedi.");
+        }
+    };
+
     const handleBanToggle = async (userId: number, isBanned: boolean) => {
         if (!window.confirm(`Kullanıcıyı ${isBanned ? 'açmak' : 'banlamak'} istediğinize emin misiniz?`)) return;
         try {
@@ -240,14 +259,13 @@ const AdminDashboard = () => {
     const handleToggleTopicStatus = async (topic: Topic) => {
         const actionText = topic.status ? 'pasife almak (gizlemek)' : 'tekrar aktif etmek';
         if (!window.confirm(`'${topic.name}' kategorisini ${actionText} istediğinize emin misiniz?`)) return;
-
         try {
             const formData = new FormData();
             formData.append("Id", topic.id.toString());
             formData.append("Name", topic.name);
             formData.append("ExistingImageName", topic.imageName);
-            formData.append("Status", (!topic.status).toString()); // TERSİNE ÇEVİR
-
+            formData.append("Status", (!topic.status).toString());
+            formData.append("InstitutionId", topic.institutionId?.toString() || '1');
             await topicService.update(formData);
             loadAllData();
         } catch { alert("Durum güncellenemedi."); }
@@ -256,16 +274,17 @@ const AdminDashboard = () => {
     const handleAddTopic = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newTopicName.trim()) return;
+        if (!newTopicInstId) { alert("Lütfen kategori için bir kurum seçiniz!"); return; }
 
         const formData = new FormData();
         formData.append("Name", newTopicName);
-        if (newTopicImage) {
-            formData.append("Image", newTopicImage);
-        }
+        formData.append("InstitutionId", newTopicInstId);
+        if (newTopicImage) formData.append("Image", newTopicImage);
 
         try {
             await topicService.add(formData);
             setNewTopicName('');
+            setNewTopicInstId('');
             setNewTopicImage(null);
             loadAllData();
         } catch { alert("Kategori eklenemedi."); }
@@ -286,13 +305,11 @@ const AdminDashboard = () => {
         try { await solutionService.delete(id); loadAllData(); } catch { alert("Silinemedi."); }
     };
 
-    // --- KURUM (INSTITUTION) İŞLEMLERİ ---
     const handleInstChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target;
         setInstFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     };
 
-    // --- GÜNCELLEME İŞLEMLERİ ---
     const handleUpdateTopic = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingTopic) return;
@@ -301,12 +318,13 @@ const AdminDashboard = () => {
         formData.append("Name", editTopicName);
         formData.append("ExistingImageName", editingTopic.imageName);
         formData.append("Status", editTopicStatus.toString());
+        formData.append("InstitutionId", editTopicInstId || '1');
         if (editTopicImage) formData.append("Image", editTopicImage);
 
         try {
             await topicService.update(formData);
-            setEditingTopic(null); // Modalı kapat
-            loadAllData(); // Tabloyu yenile
+            setEditingTopic(null);
+            loadAllData();
         } catch { alert("Kategori güncellenemedi."); }
     };
 
@@ -324,8 +342,8 @@ const AdminDashboard = () => {
 
         try {
             await institutionService.update(formData);
-            setEditingInst(null); // Modalı kapat
-            loadAllData(); // Tabloyu yenile
+            setEditingInst(null);
+            loadAllData();
         } catch { alert("Kurum güncellenemedi."); }
     };
 
@@ -333,26 +351,22 @@ const AdminDashboard = () => {
         e.preventDefault();
         setInstLoading(true); setInstError(''); setInstSuccess('');
         if (!instFormData.name || !instFormData.domain) {
-            setInstError("Kurum adı ve Domain zorunludur.");
-            setInstLoading(false); return;
+            setInstError("Kurum adı ve Domain zorunludur."); setInstLoading(false); return;
         }
 
-        // JSON YERİNE FORMDATA YAPILIYOR:
         const formData = new FormData();
         formData.append("Name", instFormData.name);
         formData.append("Domain", instFormData.domain);
         formData.append("PrimaryColor", instFormData.primaryColor || '#2563eb');
         formData.append("Status", instFormData.status.toString());
-        if (instLogoFile) {
-            formData.append("Logo", instLogoFile);
-        }
+        if (instLogoFile) formData.append("Logo", instLogoFile);
 
         try {
             const response = await institutionService.add(formData);
             if (response.data.success) {
                 setInstSuccess(`${instFormData.name} başarıyla eklendi!`);
                 setInstFormData({ name: '', domain: '', logoUrl: '', primaryColor: '#2563eb', status: true });
-                setInstLogoFile(null); // Dosyayı temizle
+                setInstLogoFile(null);
                 loadAllData();
             } else { setInstError(response.data.message); }
         } catch (err: any) { setInstError(err.response?.data?.message || "Kurum eklenirken hata."); }
@@ -360,47 +374,26 @@ const AdminDashboard = () => {
     };
 
     const handleToggleInstitutionStatus = async (inst: Institution) => {
-        if (inst.id === 1) {
-            alert("Sistemin ana (varsayılan) ağı pasife alınamaz!");
-            return;
-        }
-
-        const actionText = inst.status ? 'pasife almak (dondurmak)' : 'tekrar aktif etmek';
+        if (inst.id === 1) { alert("Sistemin ana ağı pasife alınamaz!"); return; }
+        const actionText = inst.status ? 'pasife almak' : 'aktif etmek';
         if (!window.confirm(`'${inst.name}' ağını ${actionText} istediğinize emin misiniz?`)) return;
 
         try {
-            // BACKEND ARTIK [FromForm] BEKLEDİĞİ İÇİN VERİYİ FORMDATA'YA ÇEVİRİYORUZ
             const formData = new FormData();
-
-            // Mevcut verileri ekliyoruz
             formData.append("Id", inst.id!.toString());
             formData.append("Name", inst.name);
             formData.append("Domain", inst.domain);
-
-            // SİHİRLİ KISIM: Status'ü tersine çevirerek (toggle) ekliyoruz
             formData.append("Status", (!inst.status).toString());
+            if (inst.primaryColor) formData.append("PrimaryColor", inst.primaryColor);
+            if (inst.logoUrl) formData.append("ExistingLogoUrl", inst.logoUrl);
 
-            // Eğer renk ve eski logo varsa onları da kaybolmasın diye ekliyoruz
-            if (inst.primaryColor) {
-                formData.append("PrimaryColor", inst.primaryColor);
-            }
-            if (inst.logoUrl) {
-                formData.append("ExistingLogoUrl", inst.logoUrl);
-            }
-
-            // Backend'deki Update metoduna yolla
             await institutionService.update(formData);
-            loadAllData(); // Tabloyu yenile
-        } catch (err) {
-            console.error("Durum değiştirme hatası:", err);
-            alert("Kurum durumu güncellenemedi.");
-        }
+            loadAllData();
+        } catch (err) { alert("Kurum durumu güncellenemedi."); }
     };
 
-    // ------------------------------------
-
     const handleResolveReport = async (reportId: number) => {
-        if (!window.confirm("Bu şikayeti 'İhlal Yok / İncelendi' olarak işaretleyip kapatmak istediğinize emin misiniz?")) return;
+        if (!window.confirm("Bu şikayeti kapatmak istediğinize emin misiniz?")) return;
         try { await reportService.resolve(reportId); loadAllData(); } catch { alert("Şikayet kapatılamadı."); }
     };
 
@@ -446,7 +439,7 @@ const AdminDashboard = () => {
                     await adminService.toggleProblemResolved(sol.problemId);
                 }
             }
-            alert("Çözüm onaylandı ve sorun uzman çözümlü olarak işaretlendi!");
+            alert("Çözüm onaylandı!");
             loadPendingSolutions();
         } catch (err) { alert("Onay işlemi başarısız."); }
     };
@@ -455,12 +448,6 @@ const AdminDashboard = () => {
         if (!window.confirm("Bu uzman çözümünü reddetmek istediğinize emin misiniz?")) return;
         try { await adminService.rejectSolution(id); alert("Çözüm Reddedildi."); loadPendingSolutions(); }
         catch (err) { alert("Hata"); }
-    };
-
-    const handleFilterLogs = (e: React.FormEvent) => { e.preventDefault(); fetchLogs(); };
-    const clearLogFilters = () => {
-        setLogFilter({ object: '', action: '', status: '', searchText: '', endDate: '' });
-        setTimeout(fetchLogs, 100);
     };
 
     if (loading) return (
@@ -477,8 +464,7 @@ const AdminDashboard = () => {
             <Navbar />
 
             <div className="flex-1 flex flex-col xl:flex-row max-w-[1600px] mx-auto w-full">
-
-                {/* SOL MENÜ (SIDEBAR) */}
+                {/* SOL MENÜ */}
                 <aside className="w-full xl:w-72 bg-white border-r border-slate-200 p-6 shrink-0 xl:min-h-[calc(100vh-80px)] shadow-sm z-10">
                     <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 px-4">Yönetim Paneli</h2>
                     <nav className="space-y-1.5">
@@ -486,12 +472,14 @@ const AdminDashboard = () => {
                             { id: 'overview', label: 'Genel Bakış', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z', count: 0 },
                             { id: 'users', label: 'Kullanıcılar', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z', count: filteredUsers.length },
                             { id: 'topics', label: 'Kategoriler', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', count: topics.length },
-                            { id: 'institutions', label: 'Kurumlar (Ağlar)', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', count: institutions.length }, // YENİ EKLENDİ
+                            { id: 'institutions', label: 'Kurumlar (Ağlar)', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', count: institutions.length },
                             { id: 'problems', label: 'Sorunlar', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', count: filteredProblems.length },
                             { id: 'solutions', label: 'Çözümler', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', count: filteredSolutions.length },
                             { id: 'expert-approvals', label: 'Uzman Onayları', icon: 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', count: pendingSolutions.length, isAlert: true },
                             { id: 'reports', label: 'Şikayet Merkezi', icon: 'M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9', count: pendingReports.length, isAlert: true },
-                            { id: 'logs', label: 'Sistem Logları', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 }
+                            // YENİ EKLENEN GELEN KUTUSU SEKME MENÜSÜ
+                            { id: 'feedbacks', label: 'Gelen Kutusu', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', count: feedbacks.filter(f => !f.isRead).length, isAlert: feedbacks.filter(f => !f.isRead).length > 0 },
+                            { id: 'logs', label: 'Sistem Logları (SIEM)', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 }
                         ].map(item => (
                             <button
                                 key={item.id}
@@ -500,7 +488,6 @@ const AdminDashboard = () => {
                             >
                                 <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
                                 {item.label}
-
                                 {item.count > 0 && (
                                     <span className={`ml-auto text-[10px] px-2.5 py-1 rounded-full border shadow-inner ${item.isAlert ? 'bg-red-500 text-white border-red-600' : (activeTab === item.id ? 'bg-white/20 text-white border-transparent' : 'bg-slate-100 text-slate-600 border-slate-200')}`}>
                                         {item.count}
@@ -511,16 +498,14 @@ const AdminDashboard = () => {
                     </nav>
                 </aside>
 
-                {/* SAĞ İÇERİK ALANI */}
+                {/* SAĞ İÇERİK */}
                 <main className="flex-1 p-6 md:p-10 overflow-x-hidden">
-
-                    {/* ÜST BAR */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-slate-200">
                         <div>
                             <h1 className="text-3xl font-black text-slate-900 tracking-tight">Komuta Merkezi</h1>
                             <p className="text-slate-500 text-sm mt-1 font-medium">Sistem verilerini ve kullanıcıları buradan yönetin.</p>
                         </div>
-                        <button onClick={loadAllData} className="flex items-center gap-2 bg-white px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm transition-all duration-200 active:scale-95">
+                        <button onClick={loadAllData} className="flex items-center gap-2 bg-white px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition-all duration-200 active:scale-95">
                             <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                             Verileri Yenile
                         </button>
@@ -549,10 +534,9 @@ const AdminDashboard = () => {
                                         <span className="text-5xl font-black relative z-10">{pendingReports.length}</span>
                                     </div>
                                 </div>
-
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                                        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">Kategorilere Göre Sorunlar</h3>
+                                        <h3 className="text-lg font-black text-slate-800 mb-6">Kategorilere Göre Sorunlar</h3>
                                         <div className="space-y-5">
                                             {topicDistribution.slice(0, 5).map((td, index) => {
                                                 const percentage = problems.length > 0 ? Math.round((td.count / problems.length) * 100) : 0;
@@ -571,24 +555,22 @@ const AdminDashboard = () => {
                                             })}
                                         </div>
                                     </div>
-                                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col justify-between">
-                                        <div>
-                                            <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">Hızlı Durum</h3>
-                                            <ul className="space-y-4">
-                                                <li className="flex justify-between items-center border-b border-slate-200 pb-3">
-                                                    <span className="text-slate-600 font-medium">Kurum Sayısı</span>
-                                                    <span className="font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 shadow-sm">{institutions.length} Ağ</span>
-                                                </li>
-                                                <li className="flex justify-between items-center border-b border-slate-200 pb-3">
-                                                    <span className="text-slate-600 font-medium">Uzman / Yetkili Kişiler</span>
-                                                    <span className="font-black text-slate-900 bg-white px-3 py-1 rounded-lg border shadow-sm">{users.filter(u => u.isExpert || u.isOfficial).length} Kişi</span>
-                                                </li>
-                                                <li className="flex justify-between items-center border-b border-slate-200 pb-3">
-                                                    <span className="text-slate-600 font-medium">Banlı Kullanıcılar</span>
-                                                    <span className="font-black text-red-600 bg-red-50 px-3 py-1 rounded-lg border border-red-100 shadow-sm">{stats.bannedUsers} Kişi</span>
-                                                </li>
-                                            </ul>
-                                        </div>
+                                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                        <h3 className="text-lg font-black text-slate-800 mb-6">Hızlı Durum</h3>
+                                        <ul className="space-y-4">
+                                            <li className="flex justify-between items-center border-b border-slate-200 pb-3">
+                                                <span className="text-slate-600 font-medium">Kurum Sayısı</span>
+                                                <span className="font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 shadow-sm">{institutions.length} Ağ</span>
+                                            </li>
+                                            <li className="flex justify-between items-center border-b border-slate-200 pb-3">
+                                                <span className="text-slate-600 font-medium">Uzman / Yetkili Kişiler</span>
+                                                <span className="font-black text-slate-900 bg-white px-3 py-1 rounded-lg border shadow-sm">{users.filter(u => u.isExpert || u.isOfficial).length} Kişi</span>
+                                            </li>
+                                            <li className="flex justify-between items-center border-b border-slate-200 pb-3">
+                                                <span className="text-slate-600 font-medium">Banlı Kullanıcılar</span>
+                                                <span className="font-black text-red-600 bg-red-50 px-3 py-1 rounded-lg border border-red-100 shadow-sm">{stats.bannedUsers} Kişi</span>
+                                            </li>
+                                        </ul>
                                     </div>
                                 </div>
                             </div>
@@ -599,7 +581,7 @@ const AdminDashboard = () => {
                             <div className="animate-fade-in flex flex-col h-full">
                                 <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                     <input type="text" placeholder="İsim, Kullanıcı Adı veya E-Posta Ara..." className="flex-1 border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={userSearch} onChange={e => setUserSearch(e.target.value)} />
-                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={userStatus} onChange={e => setUserStatus(e.target.value)}>
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={userStatus} onChange={e => setUserStatus(e.target.value)}>
                                         <option value="">Tüm Kullanıcılar</option><option value="banned">Sadece Banlılar</option><option value="admin">Sadece Adminler</option>
                                     </select>
                                 </div>
@@ -656,18 +638,41 @@ const AdminDashboard = () => {
                         {/* 3. KATEGORİLER */}
                         {activeTab === 'topics' && (
                             <div className="animate-fade-in">
-                                <form onSubmit={handleAddTopic} className="mb-8 flex flex-col sm:flex-row gap-4 bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-sm">
-                                    <input type="text" placeholder="Yeni Kategori Adı..." required className="flex-1 border border-slate-200 shadow-sm rounded-xl px-5 py-3.5 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={newTopicName} onChange={e => setNewTopicName(e.target.value)} />
-                                    <input type="file" accept="image/*" onChange={e => setNewTopicImage(e.target.files ? e.target.files[0] : null)} className="border border-slate-200 shadow-sm rounded-xl px-3 py-3 bg-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    <button type="submit" className="bg-indigo-600 text-white font-bold px-8 py-3.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition">Ekle</button>
+                                <form onSubmit={handleAddTopic} className="mb-8 flex flex-col md:flex-row gap-4 bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-sm items-end">
+                                    <div className="flex-1 w-full">
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">Yeni Kategori Adı</label>
+                                        <input type="text" placeholder="Örn: Ulaşım Sorunları" required className="w-full border border-slate-200 shadow-sm rounded-xl px-5 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={newTopicName} onChange={e => setNewTopicName(e.target.value)} />
+                                    </div>
+                                    <div className="flex-1 w-full">
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">Bağlı Olacağı Kurum</label>
+                                        <select required className="w-full border border-slate-200 shadow-sm rounded-xl px-5 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white font-medium" value={newTopicInstId} onChange={e => setNewTopicInstId(e.target.value)}>
+                                            <option value="">Kurum Seçin...</option>
+                                            {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="w-full md:w-auto">
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">Görsel (Opsiyonel)</label>
+                                        <input type="file" accept="image/*" onChange={e => setNewTopicImage(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    </div>
+                                    <button type="submit" className="w-full md:w-auto bg-indigo-600 text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition">Ekle</button>
                                 </form>
 
-                                {/* YENİ KART TASARIMI */}
+                                <div className="mb-6 flex justify-end">
+                                    <select className="border border-slate-200 shadow-sm p-3 rounded-xl text-sm bg-white font-bold text-indigo-700" value={topicInstFilter} onChange={e => setTopicInstFilter(e.target.value)}>
+                                        <option value="">Tüm Kurumların Kategorileri</option>
+                                        {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                    </select>
+                                </div>
+
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                    {topics.map(topic => (
-                                        <div key={topic.id} className="bg-white border border-slate-200 shadow-sm rounded-2xl hover:shadow-md hover:border-indigo-100 transition overflow-hidden flex flex-col">
-                                            {/* Kartın Üst Kısmı (Resim, İsim ve Durum) */}
-                                            <div className="p-5 flex items-center gap-4 flex-1">
+                                    {filteredTopics.map(topic => {
+                                        const topicInst = institutions.find(i => i.id === topic.institutionId);
+                                        return (
+                                        <div key={topic.id} className="bg-white border border-slate-200 shadow-sm rounded-2xl hover:shadow-md hover:border-indigo-100 transition overflow-hidden flex flex-col relative">
+                                            <div className="p-5 flex items-center gap-4 flex-1 mt-2">
+                                                <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: topicInst?.primaryColor || '#4f46e5' }}></div>
+                                                <span className="absolute top-2 right-2 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{topicInst?.name || 'Genel Ağ'}</span>
+                                                
                                                 {topic.imageName && topic.imageName !== 'default.png' ? (
                                                     <img src={`/uploads/topics/${topic.imageName}`} alt={topic.name} className="w-14 h-14 rounded-xl object-cover border border-slate-200 shadow-sm shrink-0 bg-slate-50" />
                                                 ) : (
@@ -683,35 +688,32 @@ const AdminDashboard = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Kartın Alt Kısmı (Butonlar) */}
                                             <div className="bg-slate-50 border-t border-slate-100 p-3 flex flex-wrap justify-between gap-2">
                                                 <button onClick={() => handleToggleTopicStatus(topic)} className={`flex-1 min-w-[70px] px-2 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition border shadow-sm ${topic.status ? 'bg-white text-rose-500 border-rose-200 hover:bg-rose-50' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
                                                     {topic.status ? 'Gizle' : 'Aç'}
                                                 </button>
-
                                                 <button onClick={() => {
                                                     setEditingTopic(topic);
                                                     setEditTopicName(topic.name);
+                                                    setEditTopicInstId(topic.institutionId?.toString() || '1');
                                                     setEditTopicImage(null);
                                                     setEditTopicStatus(topic.status);
                                                 }} className="flex-1 min-w-[70px] px-2 py-2 bg-white text-blue-600 border border-blue-200 font-bold hover:bg-blue-50 text-[10px] uppercase tracking-wider rounded-lg transition shadow-sm">
                                                     Düzenle
                                                 </button>
-
                                                 <button onClick={() => handleDeleteTopic(topic)} className="flex-1 min-w-[70px] px-2 py-2 bg-white text-red-500 border border-red-200 font-bold hover:bg-red-50 text-[10px] uppercase tracking-wider rounded-lg transition shadow-sm">
                                                     Sil
                                                 </button>
                                             </div>
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
                             </div>
                         )}
 
-                        {/* 4. KURUMLAR (YENİ SEKME) */}
+                        {/* 4. KURUMLAR */}
                         {activeTab === 'institutions' && (
                             <div className="animate-fade-in flex flex-col h-full gap-8">
-                                {/* Kurum Ekleme Formu */}
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-sm">
                                     <h3 className="text-lg font-black text-slate-800 mb-4">Yeni Kurum (Üniversite) Ekle</h3>
                                     <form onSubmit={handleAddInstitution} className="space-y-4">
@@ -726,12 +728,7 @@ const AdminDashboard = () => {
                                             </div>
                                             <div>
                                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kurum Logosu (Dosya Seçin)</label>
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={e => setInstLogoFile(e.target.files ? e.target.files[0] : null)}
-                                                    className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
-                                                />
+                                                <input type="file" accept="image/*" onChange={e => setInstLogoFile(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" />
                                             </div>
                                             <div>
                                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tema Rengi</label>
@@ -741,15 +738,12 @@ const AdminDashboard = () => {
                                                 </div>
                                             </div>
                                         </div>
-
                                         <div className="flex items-center gap-2 mt-2">
                                             <input id="inst-status" type="checkbox" name="status" checked={instFormData.status} onChange={handleInstChange} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
                                             <label htmlFor="inst-status" className="text-sm font-bold text-slate-700">Kurum Aktif (Kayıt Olunabilir)</label>
                                         </div>
-
                                         {instError && <div className="text-red-600 text-xs font-bold bg-red-50 p-3 rounded-xl border border-red-100 mt-2">{instError}</div>}
                                         {instSuccess && <div className="text-green-600 text-xs font-bold bg-green-50 p-3 rounded-xl border border-green-100 mt-2">{instSuccess}</div>}
-
                                         <div className="pt-2 flex justify-end">
                                             <button type="submit" disabled={instLoading} className="bg-indigo-600 text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition">
                                                 {instLoading ? 'Ekleniyor...' : 'Kurumu Ekle'}
@@ -757,8 +751,6 @@ const AdminDashboard = () => {
                                         </div>
                                     </form>
                                 </div>
-
-                                {/* Mevcut Kurumlar Tablosu */}
                                 <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[500px] overflow-y-auto bg-slate-50/50">
                                     <table className="min-w-full divide-y divide-slate-200 text-sm">
                                         <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
@@ -810,63 +802,79 @@ const AdminDashboard = () => {
                                                     </td>
                                                 </tr>
                                             ))}
-                                            {institutions.length === 0 && (
-                                                <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-500 font-medium">Henüz sisteme kurum eklenmemiş.</td></tr>
-                                            )}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                         )}
 
-                        {/* 5. SORUNLAR (GELİŞMİŞ FİLTRE & NET UI) */}
-                        {/* 5. SORUNLAR (GELİŞMİŞ FİLTRE, SAYFALAMA VE KURUMLAR) */}
+                        {/* 5. SORUNLAR */}
                         {activeTab === 'problems' && (
                             <div className="animate-fade-in flex flex-col h-full">
-                                {/* ÜST FİLTRE BAR */}
-                                <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                    <input type="text" placeholder="Sorun başlığı veya yazar ara..." className="flex-1 border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={problemSearch} onChange={e => { setProblemSearch(e.target.value); setProblemPage(1); }} />
-
-                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={problemInst} onChange={e => { setProblemInst(e.target.value); setProblemPage(1); }}>
+                                <div className="flex flex-wrap gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                    <input type="text" placeholder="Sorun başlığı veya yazar ara..." className="flex-1 min-w-[200px] border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={problemSearch} onChange={e => { setProblemSearch(e.target.value); setProblemPage(1); }} />
+                                    
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={problemInst} onChange={e => { setProblemInst(e.target.value); setProblemPage(1); }}>
                                         <option value="">Tüm Kurumlar</option>
                                         {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                                     </select>
 
-                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={problemStatus} onChange={e => { setProblemStatus(e.target.value); setProblemPage(1); }}>
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={problemTopicFilter} onChange={e => { setProblemTopicFilter(e.target.value); setProblemPage(1); }}>
+                                        <option value="">Tüm Kategoriler</option>
+                                        {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={problemStatus} onChange={e => { setProblemStatus(e.target.value); setProblemPage(1); }}>
                                         <option value="">Aktif Sorunlar</option>
                                         <option value="resolved">Sadece Çözülenler</option>
                                         <option value="highlighted">Sadece Vitrindekiler</option>
                                     </select>
                                 </div>
 
-                                {/* TABLO */}
                                 <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[600px] overflow-y-auto bg-slate-50/50">
-                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                    <table className="min-w-full divide-y divide-slate-200 text-sm text-left">
                                         <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
                                             <tr>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Sorun / Tarih</th>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Kategori & Yazar</th>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Durum</th>
+                                                <th className="px-6 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Sorun Bilgisi</th>
+                                                <th className="px-6 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Kategoriler (Etiketler)</th>
+                                                <th className="px-6 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Durum</th>
                                                 <th className="px-6 py-4 text-right font-black text-slate-500 uppercase tracking-widest text-[10px]">İşlemler</th>
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-slate-100">
-                                            {/* DİKKAT: paginatedProblems KULLANILIYOR */}
                                             {paginatedProblems.map(prob => (
                                                 <tr key={prob.id} className="hover:bg-indigo-50/30 transition">
                                                     <td className="px-6 py-4">
-                                                        <Link to={`/problem/${prob.id}`} target="_blank" className="font-bold text-slate-800 text-sm hover:text-indigo-600 line-clamp-2 transition">{prob.title}</Link>
-                                                        <div className="text-xs text-slate-400 mt-1 font-medium">{new Date(prob.sendDate).toLocaleDateString('tr-TR')}</div>
+                                                        <Link to={`/problem/${prob.id}`} target="_blank" className="font-bold text-slate-800 text-sm hover:text-indigo-600 line-clamp-2 transition mb-1">{prob.title}</Link>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs text-slate-400 font-medium">{new Date(prob.sendDate).toLocaleDateString('tr-TR')}</span>
+                                                            <span className="text-slate-300">•</span>
+                                                            <Link to={`/user/${prob.senderId}`} target="_blank" className="text-indigo-600 font-bold text-xs hover:underline">@{prob.senderUsername}</Link>
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <div className="flex flex-col items-start gap-1">
-                                                            <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-black tracking-widest uppercase border border-slate-200 shadow-sm">{prob.topicName}</span>
-                                                            <Link to={`/user/${prob.senderId}`} target="_blank" className="text-indigo-600 font-bold text-xs hover:underline mt-1">@{prob.senderUsername}</Link>
+                                                        <div className="flex flex-wrap gap-1.5 max-w-[250px]">
+                                                            {prob.topics && prob.topics.length > 0 ? (
+                                                                prob.topics.map(t => (
+                                                                    <div key={t.id} className="flex items-center bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md shadow-sm overflow-hidden group">
+                                                                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">{t.name}</span>
+                                                                        <button 
+                                                                            onClick={() => handleRemoveTopicFromProblem(prob.id, t.id, t.name)}
+                                                                            title="Bu etiketi sorundan kaldır"
+                                                                            className="px-1.5 bg-indigo-100 hover:bg-red-500 hover:text-white text-indigo-400 transition-colors h-full flex items-center justify-center opacity-0 group-hover:opacity-100"
+                                                                        >
+                                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                                        </button>
+                                                                    </div>
+                                                                ))
+                                                            ) : (
+                                                                <span className="text-xs text-slate-400 italic">Kategori Yok</span>
+                                                            )}
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 flex gap-1.5 flex-wrap">
                                                         {prob.isHighlighted && <span className="bg-orange-100 text-orange-700 border border-orange-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">VİTRİN</span>}
-                                                        {prob.isResolved && <span className="bg-green-100 text-green-700 border border-green-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm" title="Admin Tarafından Manuel Onaylandı">ÇÖZÜLDÜ (ADMİN)</span>}
+                                                        {prob.isResolved && <span className="bg-green-100 text-green-700 border border-green-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">ÇÖZÜLDÜ (ADMİN)</span>}
                                                         {prob.isResolvedByExpert && <span className="bg-teal-100 text-teal-700 border border-teal-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">UZMAN ÇÖZÜMÜ</span>}
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
@@ -877,7 +885,6 @@ const AdminDashboard = () => {
                                                             <button onClick={() => handleToggleHighlight(prob.id, 'Problem')} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${prob.isHighlighted ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>
                                                                 {prob.isHighlighted ? 'Vitrinden Al' : 'Vitrine Koy'}
                                                             </button>
-                                                            <div className="w-px h-6 bg-slate-200 mx-0.5"></div>
                                                             <button onClick={() => handleDeleteProblem(prob.id)} className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-rose-500 border border-rose-200 hover:bg-rose-50 transition shadow-sm">Sil</button>
                                                         </div>
                                                     </td>
@@ -886,36 +893,28 @@ const AdminDashboard = () => {
                                         </tbody>
                                     </table>
                                 </div>
-
-                                {/* SAYFALAMA BUTONLARI */}
                                 <div className="flex justify-between items-center mt-4 px-2">
-                                    <button onClick={() => setProblemPage(p => Math.max(1, p - 1))} disabled={problemPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Önceki</button>
+                                    <button onClick={() => setProblemPage(p => Math.max(1, p - 1))} disabled={problemPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm">Önceki</button>
                                     <span className="text-sm font-bold text-slate-600">Sayfa {problemPage} / {Math.ceil(filteredProblems.length / ITEMS_PER_PAGE) || 1}</span>
-                                    <button onClick={() => setProblemPage(p => p + 1)} disabled={problemPage >= Math.ceil(filteredProblems.length / ITEMS_PER_PAGE)} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Sonraki</button>
+                                    <button onClick={() => setProblemPage(p => p + 1)} disabled={problemPage >= Math.ceil(filteredProblems.length / ITEMS_PER_PAGE)} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm">Sonraki</button>
                                 </div>
                             </div>
                         )}
 
-                        {/* 6. ÇÖZÜMLER (GELİŞMİŞ FİLTRE) */}
-                        {/* 6. ÇÖZÜMLER (GRUPLU GÖRÜNÜM, FİLTRE VE SAYFALAMA) */}
+                        {/* 6. ÇÖZÜMLER */}
                         {activeTab === 'solutions' && (
                             <div className="animate-fade-in flex flex-col h-full">
-                                {/* ÜST FİLTRE BAR */}
                                 <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                     <input type="text" placeholder="Çözüm veya yazar ara..." className="flex-1 border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={solutionSearch} onChange={e => { setSolutionSearch(e.target.value); setSolutionPage(1); }} />
-
-                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={solutionInst} onChange={e => { setSolutionInst(e.target.value); setSolutionPage(1); }}>
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={solutionInst} onChange={e => { setSolutionInst(e.target.value); setSolutionPage(1); }}>
                                         <option value="">Tüm Kurumlar</option>
                                         {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                                     </select>
-
-                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-medium text-slate-700" value={solutionStatus} onChange={e => { setSolutionStatus(e.target.value); setSolutionPage(1); }}>
+                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={solutionStatus} onChange={e => { setSolutionStatus(e.target.value); setSolutionPage(1); }}>
                                         <option value="">Aktif Çözümler</option>
                                         <option value="highlighted">Sadece Vitrindekiler</option>
                                     </select>
                                 </div>
-
-                                {/* GRUPLANMIŞ ÇÖZÜMLER GÖRÜNÜMÜ */}
                                 <div className="space-y-6 flex-1 overflow-y-auto pr-2 max-h-[600px]">
                                     {paginatedSolutionsGroups.map((group: any, idx: number) => (
                                         <div key={idx} className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
@@ -924,11 +923,9 @@ const AdminDashboard = () => {
                                                     <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest block mb-1">İlgili Sorun</span>
                                                     <Link to={`/problem/${group.problemId}`} target="_blank" className="font-black text-slate-800 text-lg hover:text-indigo-600 transition flex items-center gap-2">
                                                         {group.problemName}
-                                                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                                     </Link>
                                                 </div>
                                             </div>
-
                                             <div className="p-6 space-y-4">
                                                 {group.solutions.map((sol: any) => (
                                                     <div key={sol.id} className="bg-slate-50 border border-slate-100 p-5 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-start gap-4 hover:shadow-md transition">
@@ -941,6 +938,7 @@ const AdminDashboard = () => {
                                                             <p className="text-sm text-slate-700 line-clamp-2">{sol.title}</p>
                                                         </div>
                                                         <div className="flex gap-2 shrink-0">
+                                                            <Link to={`/problem/${group.problemId}?solution=${sol.id}`} target="_blank" className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-50 transition shadow-sm">Çözüme Git</Link>
                                                             <button onClick={() => handleToggleHighlight(sol.id, 'Solution')} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${sol.isHighlighted ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>
                                                                 {sol.isHighlighted ? 'Vitrinden Al' : 'Vitrine Koy'}
                                                             </button>
@@ -951,23 +949,16 @@ const AdminDashboard = () => {
                                             </div>
                                         </div>
                                     ))}
-                                    {paginatedSolutionsGroups.length === 0 && (
-                                        <div className="text-center p-12 bg-white rounded-3xl border border-slate-200 text-slate-500 font-medium">
-                                            Bu filtrelere uygun çözüm bulunamadı.
-                                        </div>
-                                    )}
                                 </div>
-
-                                {/* SAYFALAMA BUTONLARI */}
                                 <div className="flex justify-between items-center mt-4 px-2">
-                                    <button onClick={() => setSolutionPage(p => Math.max(1, p - 1))} disabled={solutionPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Önceki</button>
+                                    <button onClick={() => setSolutionPage(p => Math.max(1, p - 1))} disabled={solutionPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm">Önceki</button>
                                     <span className="text-sm font-bold text-slate-600">Sayfa {solutionPage} / {Math.ceil(groupedSolutionsArray.length / ITEMS_PER_PAGE) || 1}</span>
-                                    <button onClick={() => setSolutionPage(p => p + 1)} disabled={solutionPage >= Math.ceil(groupedSolutionsArray.length / ITEMS_PER_PAGE)} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Sonraki</button>
+                                    <button onClick={() => setSolutionPage(p => p + 1)} disabled={solutionPage >= Math.ceil(groupedSolutionsArray.length / ITEMS_PER_PAGE)} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm">Sonraki</button>
                                 </div>
                             </div>
                         )}
 
-                        {/* 7. BEKLEYEN UZMAN ONAYLARI */}
+                        {/* 7. BEKLEYEN ONAYLAR */}
                         {activeTab === 'expert-approvals' && (
                             <div className="space-y-6 animate-fade-in-down">
                                 {groupedPendingSolutions.length === 0 ? (
@@ -986,11 +977,10 @@ const AdminDashboard = () => {
                                                         {group.problemName}
                                                     </Link>
                                                 </div>
-                                                <Link to={`/problem/${group.problemId}`} target="_blank" className="shrink-0 text-[11px] uppercase tracking-wider bg-white border border-slate-200 px-4 py-2 rounded-xl font-black text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition shadow-sm flex items-center gap-1.5">
+                                                <Link to={`/problem/${group.problemId}`} target="_blank" className="shrink-0 text-[11px] uppercase tracking-wider bg-white border border-slate-200 px-4 py-2 rounded-xl font-black text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition shadow-sm">
                                                     Soruna Git ↗
                                                 </Link>
                                             </div>
-
                                             <div className="p-6 space-y-4 bg-white">
                                                 {group.solutions.map((sol: any) => (
                                                     <div key={sol.id} className="bg-indigo-50/40 border border-indigo-100 p-5 rounded-2xl relative shadow-sm">
@@ -1009,15 +999,13 @@ const AdminDashboard = () => {
                                                             </div>
                                                             <span className="text-xs text-slate-400 font-bold bg-white px-2.5 py-1 rounded-md border border-slate-100 shadow-sm">{new Date(sol.sendDate).toLocaleDateString()}</span>
                                                         </div>
-
                                                         <p className="text-slate-700 text-sm leading-relaxed mb-5 bg-white p-4 rounded-xl border border-indigo-50 shadow-sm">{sol.description}</p>
-
                                                         <div className="flex gap-3 pt-4 border-t border-indigo-100/50">
-                                                            <button onClick={() => handleApproveSolution(sol)} className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white text-xs font-black uppercase tracking-wider rounded-xl hover:from-emerald-600 hover:to-green-700 transition shadow-md shadow-emerald-500/20 flex items-center gap-2 active:scale-95">
-                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> Onayla & Çözüldü Yap
+                                                            <button onClick={() => handleApproveSolution(sol)} className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white text-xs font-black uppercase tracking-wider rounded-xl hover:from-emerald-600 hover:to-green-700 transition shadow-md shadow-emerald-500/20 active:scale-95">
+                                                                Onayla & Çözüldü Yap
                                                             </button>
-                                                            <button onClick={() => handleRejectSolution(sol.id)} className="px-6 py-2.5 bg-white border border-rose-200 text-rose-600 text-xs font-black uppercase tracking-wider rounded-xl hover:bg-rose-50 transition shadow-sm flex items-center gap-2 active:scale-95">
-                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg> Reddet
+                                                            <button onClick={() => handleRejectSolution(sol.id)} className="px-6 py-2.5 bg-white border border-rose-200 text-rose-600 text-xs font-black uppercase tracking-wider rounded-xl hover:bg-rose-50 transition shadow-sm active:scale-95">
+                                                                Reddet
                                                             </button>
                                                         </div>
                                                     </div>
@@ -1029,7 +1017,7 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {/* 8. ŞİKAYET MERKEZİ */}
+                        {/* 8. ŞİKAYETLER */}
                         {activeTab === 'reports' && (
                             <div className="animate-fade-in flex flex-col h-full">
                                 <div className="flex bg-slate-50 p-2 rounded-2xl mb-8 border border-slate-200 shadow-inner">
@@ -1043,141 +1031,60 @@ const AdminDashboard = () => {
                                         Kullanıcı Şikayetleri <span className="ml-1 bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">{userReports.length}</span>
                                     </button>
                                 </div>
-
-                                <div className="flex-1 overflow-y-auto pr-2 space-y-5">
-                                    {/* SORUN ŞİKAYETLERİ */}
-                                    {reportTab === 'problems' && problemReports.length === 0 && <div className="text-center py-16 bg-slate-50 rounded-3xl border border-slate-100"><div className="text-5xl mb-4">✨</div><p className="text-slate-500 font-bold text-lg">Bekleyen sorun şikayeti yok.</p></div>}
+                                <div className="flex-1 overflow-y-auto pr-2 space-y-5 max-h-[600px]">
                                     {reportTab === 'problems' && problemReports.map(report => {
                                         const targetProblem = problems.find(p => p.id === report.targetId);
-                                        const reporterUser = users.find(u => u.id === report.reporterUserId);
                                         return (
-                                            <div key={report.id} className="border border-red-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden group">
+                                            <div key={report.id} className="border border-red-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden">
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-red-400 to-rose-600"></div>
-                                                <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4">
-                                                    <div className="flex items-center gap-2 text-sm">
-                                                        <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase tracking-widest">Şikayet Eden</span>
-                                                        <Link to={`/user/${report.reporterUserId}`} target="_blank" className="text-indigo-600 font-bold hover:underline">@{reporterUser ? reporterUser.userName : 'Bilinmeyen'}</Link>
-                                                    </div>
-                                                    <span className="text-xs text-slate-400 font-bold bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">{new Date(report.reportDate).toLocaleDateString('tr-TR')}</span>
-                                                </div>
-                                                <div className="mb-6">
-                                                    <span className="text-[10px] font-black uppercase text-red-500 block mb-2 tracking-widest">Şikayet Sebebi</span>
-                                                    <p className="text-rose-900 font-medium bg-rose-50 p-4 rounded-xl border border-rose-100 text-sm">{report.reason}</p>
-                                                </div>
+                                                <div className="mb-6"><p className="text-rose-900 font-medium bg-rose-50 p-4 rounded-xl border border-rose-100 text-sm">{report.reason}</p></div>
                                                 {targetProblem ? (
                                                     <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                                         <div>
-                                                            <span className="text-[10px] font-black uppercase text-slate-400 block mb-1 tracking-widest">Hedef İçerik (Sorun)</span>
-                                                            <Link to={`/problem/${targetProblem.id}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-indigo-600 transition flex items-center gap-2">
-                                                                {targetProblem.title}
-                                                                <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                                            </Link>
-                                                            <div className="text-xs text-slate-500 mt-2 font-medium flex items-center gap-1"><span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span> Sahibi: <Link to={`/user/${targetProblem.senderId}`} target="_blank" className="text-indigo-500 hover:underline">@{targetProblem.senderUsername}</Link></div>
+                                                            <Link to={`/problem/${targetProblem.id}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-indigo-600 transition">{targetProblem.title}</Link>
                                                         </div>
                                                         <div className="flex gap-2 shrink-0">
-                                                            <button onClick={() => handleResolveReport(report.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 hover:text-slate-900 shadow-sm transition">İhlal Yok (Kapat)</button>
-                                                            <button onClick={() => handleDeleteReportedContent(report.id, 'Problem', targetProblem.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-red-500 rounded-xl hover:bg-red-600 shadow-md shadow-red-500/20 transition">İçeriği Sil</button>
+                                                            <button onClick={() => handleResolveReport(report.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 shadow-sm transition">Kapat</button>
+                                                            <button onClick={() => handleDeleteReportedContent(report.id, 'Problem', targetProblem.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-red-500 rounded-xl hover:bg-red-600 shadow-md transition">Sil</button>
                                                         </div>
                                                     </div>
-                                                ) : (
-                                                    <div className="flex justify-between items-center mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-500 italic text-sm">
-                                                        <span>Bu içerik zaten silinmiş.</span>
-                                                        <button onClick={() => handleResolveReport(report.id)} className="px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition shadow-sm">Şikayeti Arşivle</button>
-                                                    </div>
-                                                )}
+                                                ) : <button onClick={() => handleResolveReport(report.id)} className="text-xs bg-slate-100 p-2 rounded">Kapat (Zaten Silinmiş)</button>}
                                             </div>
                                         )
                                     })}
-
-                                    {/* ÇÖZÜM ŞİKAYETLERİ */}
-                                    {reportTab === 'solutions' && solutionReports.length === 0 && <div className="text-center py-16 bg-slate-50 rounded-3xl border border-slate-100"><div className="text-5xl mb-4">✨</div><p className="text-slate-500 font-bold text-lg">Bekleyen çözüm şikayeti yok.</p></div>}
                                     {reportTab === 'solutions' && solutionReports.map(report => {
                                         const targetSolution = solutions.find(s => s.id === report.targetId);
-                                        const reporterUser = users.find(u => u.id === report.reporterUserId);
                                         return (
-                                            <div key={report.id} className="border border-orange-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden group">
+                                            <div key={report.id} className="border border-orange-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden">
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-orange-400 to-amber-500"></div>
-                                                <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4">
-                                                    <div className="flex items-center gap-2 text-sm">
-                                                        <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase tracking-widest">Şikayet Eden</span>
-                                                        <Link to={`/user/${report.reporterUserId}`} target="_blank" className="text-indigo-600 font-bold hover:underline">@{reporterUser ? reporterUser.userName : 'Bilinmeyen'}</Link>
-                                                    </div>
-                                                    <span className="text-xs text-slate-400 font-bold bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">{new Date(report.reportDate).toLocaleDateString('tr-TR')}</span>
-                                                </div>
-                                                <div className="mb-6">
-                                                    <span className="text-[10px] font-black uppercase text-orange-500 block mb-2 tracking-widest">Şikayet Sebebi</span>
-                                                    <p className="text-orange-900 font-medium bg-orange-50 p-4 rounded-xl border border-orange-100 text-sm">{report.reason}</p>
-                                                </div>
+                                                <div className="mb-6"><p className="text-orange-900 font-medium bg-orange-50 p-4 rounded-xl border border-orange-100 text-sm">{report.reason}</p></div>
                                                 {targetSolution ? (
                                                     <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                                        <div>
-                                                            <span className="text-[10px] font-black uppercase text-slate-400 block mb-1 tracking-widest">Hedef İçerik (Çözüm Özeti)</span>
-                                                            <div className="font-black text-lg text-slate-800 line-clamp-2">{targetSolution.title}</div>
-                                                            <div className="text-xs text-slate-500 mt-3 font-medium flex items-center gap-3">
-                                                                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span> Sahibi: <Link to={`/user/${targetSolution.senderId}`} target="_blank" className="text-indigo-500 hover:underline">@{targetSolution.senderUsername}</Link></span>
-                                                                <Link to={`/problem/${targetSolution.problemId}`} target="_blank" className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition uppercase tracking-wider font-bold">Soruna Git ↗</Link>
-                                                            </div>
-                                                        </div>
+                                                        <div className="font-black text-lg text-slate-800 line-clamp-2">{targetSolution.title}</div>
                                                         <div className="flex gap-2 shrink-0">
-                                                            <button onClick={() => handleResolveReport(report.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 hover:text-slate-900 shadow-sm transition">İhlal Yok (Kapat)</button>
-                                                            <button onClick={() => handleDeleteReportedContent(report.id, 'Solution', targetSolution.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-orange-500 rounded-xl hover:bg-orange-600 shadow-md shadow-orange-500/20 transition">Çözümü Sil</button>
+                                                            <button onClick={() => handleResolveReport(report.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 shadow-sm transition">Kapat</button>
+                                                            <button onClick={() => handleDeleteReportedContent(report.id, 'Solution', targetSolution.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-orange-500 rounded-xl hover:bg-orange-600 shadow-md transition">Sil</button>
                                                         </div>
                                                     </div>
-                                                ) : (
-                                                    <div className="flex justify-between items-center mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-500 italic text-sm">
-                                                        <span>Çözüm silinmiş.</span>
-                                                        <button onClick={() => handleResolveReport(report.id)} className="px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition shadow-sm">Kapat</button>
-                                                    </div>
-                                                )}
+                                                ) : <button onClick={() => handleResolveReport(report.id)} className="text-xs bg-slate-100 p-2 rounded">Kapat (Zaten Silinmiş)</button>}
                                             </div>
                                         )
                                     })}
-
-                                    {/* KULLANICI ŞİKAYETLERİ */}
-                                    {reportTab === 'users' && userReports.length === 0 && <div className="text-center py-16 bg-slate-50 rounded-3xl border border-slate-100"><div className="text-5xl mb-4">✨</div><p className="text-slate-500 font-bold text-lg">Bekleyen kullanıcı şikayeti yok.</p></div>}
                                     {reportTab === 'users' && userReports.map(report => {
                                         const targetUser = users.find(u => u.id === report.targetId);
-                                        const reporterUser = users.find(u => u.id === report.reporterUserId);
                                         return (
-                                            <div key={report.id} className="border border-purple-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden group">
+                                            <div key={report.id} className="border border-purple-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden">
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-purple-400 to-indigo-600"></div>
-                                                <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4">
-                                                    <div className="flex items-center gap-2 text-sm">
-                                                        <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase tracking-widest">Şikayet Eden</span>
-                                                        <Link to={`/user/${report.reporterUserId}`} target="_blank" className="text-indigo-600 font-bold hover:underline">@{reporterUser ? reporterUser.userName : 'Bilinmeyen'}</Link>
-                                                    </div>
-                                                    <span className="text-xs text-slate-400 font-bold bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">{new Date(report.reportDate).toLocaleDateString('tr-TR')}</span>
-                                                </div>
-                                                <div className="mb-6">
-                                                    <span className="text-[10px] font-black uppercase text-purple-500 block mb-2 tracking-widest">Şikayet Sebebi</span>
-                                                    <p className="text-purple-900 font-medium bg-purple-50 p-4 rounded-xl border border-purple-100 text-sm">{report.reason}</p>
-                                                </div>
+                                                <div className="mb-6"><p className="text-purple-900 font-medium bg-purple-50 p-4 rounded-xl border border-purple-100 text-sm">{report.reason}</p></div>
                                                 {targetUser ? (
                                                     <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                                        <div>
-                                                            <span className="text-[10px] font-black uppercase text-slate-400 block mb-1 tracking-widest">Hedef İçerik (Kullanıcı)</span>
-                                                            <Link to={`/user/${targetUser.id}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-purple-600 transition flex items-center gap-2">
-                                                                @{targetUser.userName}
-                                                                <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                                            </Link>
-                                                            <div className="text-xs text-slate-500 mt-2 font-medium flex items-center gap-3">
-                                                                <span>{targetUser.email}</span>
-                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${targetUser.isBanned ? 'bg-red-100 text-red-700 border-red-200' : 'bg-green-100 text-green-700 border-green-200'}`}>
-                                                                    {targetUser.isBanned ? 'BANLI HESAP' : 'AKTİF HESAP'}
-                                                                </span>
-                                                            </div>
-                                                        </div>
+                                                        <Link to={`/user/${targetUser.id}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-purple-600 transition">@{targetUser.userName}</Link>
                                                         <div className="flex gap-2 shrink-0">
-                                                            <button onClick={() => handleResolveReport(report.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 hover:text-slate-900 shadow-sm transition">İhlal Yok (Kapat)</button>
-                                                            <button onClick={() => { handleBanToggle(targetUser.id, targetUser.isBanned); handleResolveReport(report.id); }} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-purple-600 rounded-xl hover:bg-purple-700 shadow-md shadow-purple-600/20 transition">Kullanıcıyı Banla</button>
+                                                            <button onClick={() => handleResolveReport(report.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 shadow-sm transition">Kapat</button>
+                                                            <button onClick={() => { handleBanToggle(targetUser.id, targetUser.isBanned); handleResolveReport(report.id); }} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-purple-600 rounded-xl hover:bg-purple-700 shadow-md transition">Banla</button>
                                                         </div>
                                                     </div>
-                                                ) : (
-                                                    <div className="flex justify-between items-center mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-500 italic text-sm">
-                                                        <span>Kullanıcı hesabı silinmiş.</span>
-                                                        <button onClick={() => handleResolveReport(report.id)} className="px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition shadow-sm">Kapat</button>
-                                                    </div>
-                                                )}
+                                                ) : <button onClick={() => handleResolveReport(report.id)} className="text-xs bg-slate-100 p-2 rounded">Kapat (Zaten Silinmiş)</button>}
                                             </div>
                                         )
                                     })}
@@ -1185,178 +1092,255 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
-                        {/* 9. LOGLAR (YENİ PARSED MİMARİSİ) */}
+                        {/* 9. YENİ: İSTEK VE ÖNERİLER (GELEN KUTUSU) */}
+                        {activeTab === 'feedbacks' && (
+                            <div className="animate-fade-in flex flex-col h-full">
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
+                                    <h2 className="text-2xl font-black text-slate-800">İstek ve Öneriler</h2>
+                                    <span className="bg-amber-50 text-amber-700 px-4 py-1.5 rounded-lg text-sm font-bold border border-amber-100 shadow-sm">
+                                        {feedbacks.filter(f => !f.isRead).length} Okunmamış Mesaj
+                                    </span>
+                                </div>
+
+                                <div className="space-y-4 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
+                                    {feedbacks.length === 0 ? (
+                                        <div className="text-center py-12 text-slate-500 font-medium">Henüz hiçbir istek veya öneri gelmedi.</div>
+                                    ) : (
+                                        feedbacks.sort((a, b) => b.isRead === a.isRead ? 0 : a.isRead ? 1 : -1).map(fb => (
+                                            <div key={fb.id} className={`p-6 rounded-3xl border transition shadow-sm relative overflow-hidden ${fb.isRead ? 'bg-white border-slate-200 opacity-80 hover:opacity-100' : 'bg-amber-50/40 border-amber-200'}`}>
+                                                {!fb.isRead && <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>}
+                                                
+                                                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+                                                    <div>
+                                                        <h4 className="text-lg font-black text-slate-800">{fb.title}</h4>
+                                                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                                            <Link to={`/user/${fb.userId}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline transition">@{fb.userName}</Link>
+                                                            <span className="text-slate-300">•</span>
+                                                            <span className="text-[10px] font-medium text-slate-500">{fb.userEmail}</span>
+                                                            <span className="text-slate-300">•</span>
+                                                            <span className="text-[10px] font-medium text-slate-500">{new Date(fb.sendDate).toLocaleString('tr-TR')}</span>
+                                                        </div>
+                                                    </div>
+                                                    {!fb.isRead && (
+                                                        <button 
+                                                            onClick={async () => {
+                                                                try {
+                                                                    await feedbackService.markAsRead(fb.id);
+                                                                    setFeedbacks(prev => prev.map(item => item.id === fb.id ? { ...item, isRead: true } : item));
+                                                                } catch { alert("İşlem başarısız."); }
+                                                            }}
+                                                            className="shrink-0 px-4 py-2 bg-white border border-amber-200 text-amber-600 font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm hover:bg-amber-50 hover:border-amber-300 transition active:scale-95 flex items-center gap-1.5"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                            Okundu İşaretle
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="bg-white p-5 rounded-2xl text-sm text-slate-700 leading-relaxed border border-slate-100 shadow-sm whitespace-pre-wrap">
+                                                    {fb.message}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 10. SİEM LOGLARI */}
                         {activeTab === 'logs' && (
                             <div className="animate-fade-in flex flex-col h-full">
                                 <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
-                                    <h2 className="text-2xl font-black text-slate-800">Sistem Logları</h2>
-                                    <span className="bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-lg text-sm font-bold border border-indigo-100 shadow-sm">{filteredLogs.length} Kayıt Gösteriliyor</span>
+                                    <h2 className="text-2xl font-black text-slate-800">Sistem Logları (SIEM)</h2>
+                                    <span className="bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-lg text-sm font-bold border border-indigo-100 shadow-sm">{logs.length} Kayıt Gösteriliyor</span>
                                 </div>
 
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 shadow-inner mb-8">
-                                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Gelişmiş Log Filtreleme</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-end">
-
-                                        {/* Backend Arama ve Tarih */}
+                                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Veritabanı Filtreleme</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                                         <div className="lg:col-span-2 flex flex-col sm:flex-row gap-4">
                                             <div className="flex-1">
-                                                <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Metin Ara (Backend)</label>
-                                                <input type="text" placeholder="Detaylarda ara..." className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.searchText} onChange={e => setLogFilter({ ...logFilter, searchText: e.target.value })} />
+                                                <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Arama (IP, User, Hata)</label>
+                                                <input type="text" placeholder="IP Adresi veya metin..." className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.searchText || ''} onChange={e => setLogFilter({ ...logFilter, searchText: e.target.value })} />
                                             </div>
                                             <div className="sm:w-40 shrink-0">
-                                                <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Tarihe Kadar</label>
+                                                <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Tarih</label>
                                                 <input type="date" className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.endDate ? logFilter.endDate.split('T')[0] : ''} onChange={e => setLogFilter({ ...logFilter, endDate: e.target.value })} />
                                             </div>
                                         </div>
-
-                                        {/* Ayrıştırılmış CSV Filtreleri */}
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Nesne (Object)</label>
-                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.object} onChange={e => setLogFilter({ ...logFilter, object: e.target.value })}>
-                                                <option value="">Tüm Nesneler</option>
-                                                {uniqueObjects.map(obj => <option key={obj as string} value={obj as string}>{obj as string}</option>)}
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Kategori</label>
+                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-white" value={logFilter.category || ''} onChange={e => { setLogFilter({ ...logFilter, category: e.target.value }); setLogPage(1); }}>
+                                                <option value="">Tümü</option>
+                                                <option value="Auth">Auth (Giriş/Kayıt)</option>
+                                                <option value="Content">Content (İçerik)</option>
+                                                <option value="Institution">Institution (Kurum)</option>
+                                                <option value="Moderation">Moderation (Yönetim)</option>
+                                                <option value="System">System (Sistem)</option>
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">İşlem (Action)</label>
-                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.action} onChange={e => setLogFilter({ ...logFilter, action: e.target.value })}>
-                                                <option value="">Tüm İşlemler</option>
-                                                {uniqueActions.map(act => <option key={act as string} value={act as string}>{act as string}</option>)}
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Seviye</label>
+                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-white" value={logFilter.level || ''} onChange={e => { setLogFilter({ ...logFilter, level: e.target.value }); setLogPage(1); }}>
+                                                <option value="">Tümü</option>
+                                                <option value="Info">Bilgi (Info)</option>
+                                                <option value="Warning">Uyarı (Warning)</option>
+                                                <option value="Error">Hata (Error)</option>
+                                                <option value="Critical">Kritik (Critical)</option>
                                             </select>
                                         </div>
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Durum (Status)</label>
-                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.status} onChange={e => setLogFilter({ ...logFilter, status: e.target.value })}>
-                                                <option value="">Tüm Durumlar</option>
-                                                {uniqueStatuses.map(stat => <option key={stat as string} value={stat as string}>{stat as string}</option>)}
-                                            </select>
-                                        </div>
-
-                                        <div className="lg:col-span-3 flex gap-3 mt-2">
-                                            <button onClick={handleFilterLogs} className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl text-sm shadow-md hover:bg-black transition active:scale-95 flex items-center justify-center gap-2">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
-                                                Filtreyi Uygula
-                                            </button>
-                                            <button onClick={clearLogFilters} className="px-6 py-3 bg-white border border-slate-300 text-slate-600 font-bold rounded-xl text-sm shadow-sm hover:bg-slate-50 transition active:scale-95">Temizle</button>
+                                        <div className="flex gap-2">
+                                            <button onClick={handleFilterLogs} className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl text-sm shadow-md hover:bg-black transition">Filtrele</button>
+                                            <button onClick={clearLogFilters} className="px-4 py-3 bg-white border border-slate-300 text-slate-600 font-bold rounded-xl text-sm shadow-sm hover:bg-slate-50">Sil</button>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[600px] overflow-y-auto bg-slate-50/50">
+                                <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[600px] bg-slate-50/50">
                                     <table className="min-w-full divide-y divide-slate-200 text-sm text-left">
                                         <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
                                             <tr>
-                                                <th className="px-6 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Tarih / Saat</th>
-                                                <th className="px-6 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Nesne & İşlem</th>
-                                                <th className="px-6 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Durum</th>
-                                                <th className="px-6 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Mesaj Detayı (Backend)</th>
+                                                <th className="px-5 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px] whitespace-nowrap">Tarih</th>
+                                                <th className="px-5 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Tetikleyen & Kaynak</th>
+                                                <th className="px-5 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px]">Olay Tipi</th>
+                                                <th className="px-5 py-4 font-black text-slate-500 uppercase tracking-widest text-[10px] w-1/2">Mesaj & Detay</th>
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-slate-100">
-                                            {filteredLogs.length === 0 ? (
-                                                <tr><td colSpan={4} className="px-6 py-16 text-center text-slate-500 font-medium text-lg bg-slate-50">Bu filtrelere uygun log bulunamadı.</td></tr>
+                                            {logs.length === 0 ? (
+                                                <tr><td colSpan={4} className="px-6 py-16 text-center text-slate-500 font-medium text-lg bg-slate-50">Log kaydı bulunamadı.</td></tr>
                                             ) : (
-                                                filteredLogs.map(log => (
+                                                logs.map(log => (
                                                     <tr key={log.id} className="hover:bg-indigo-50/30 transition-colors">
-                                                        <td className="px-6 py-4 text-xs font-bold text-slate-600 whitespace-nowrap">
+                                                        <td className="px-5 py-4 text-xs font-bold text-slate-600 whitespace-nowrap align-top">
                                                             {new Date(log.creationDate).toLocaleDateString('tr-TR')} <br />
                                                             <span className="text-slate-400 font-normal">{new Date(log.creationDate).toLocaleTimeString('tr-TR')}</span>
                                                         </td>
-                                                        <td className="px-6 py-4">
+                                                        <td className="px-5 py-4 align-top">
                                                             <div className="flex flex-col gap-1.5 items-start">
-                                                                <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-slate-200 shadow-sm">{log.logObject}</span>
-                                                                <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-blue-200 shadow-sm">{log.logAction}</span>
+                                                                <div className="flex items-center gap-1 text-xs font-bold text-indigo-900 bg-indigo-50 px-2 py-1 rounded">
+                                                                    <svg className="w-3 h-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                                                    {log.userName || 'Sistem'}
+                                                                </div>
+                                                                <div className="flex items-center gap-1 text-[10px] font-mono font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                                                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                                                                    {log.ipAddress}:{log.port}
+                                                                </div>
                                                             </div>
                                                         </td>
-                                                        <td className="px-6 py-4">
-                                                            <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border shadow-sm ${log.logStatus.toLowerCase().includes('success') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : log.logStatus.toLowerCase().includes('error') || log.logStatus.toLowerCase().includes('fail') ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                                                                {log.logStatus}
-                                                            </span>
+                                                        <td className="px-5 py-4 align-top">
+                                                            <div className="flex flex-col gap-1.5 items-start">
+                                                                <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest border shadow-sm 
+                                                            ${log.level === 'Info' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                                                        log.level === 'Warning' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+                                                                            log.level === 'Error' ? 'bg-rose-50 text-rose-600 border-rose-200' :
+                                                                                log.level === 'Critical' ? 'bg-red-600 text-white border-red-700' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                                                    {log.level}
+                                                                </span>
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                                                    {log.category} / {log.action}
+                                                                </span>
+                                                            </div>
                                                         </td>
-                                                        <td className="px-6 py-4 text-xs text-slate-600 font-mono leading-relaxed max-w-md break-words">
+                                                        <td className="px-5 py-4 text-xs text-slate-700 font-medium leading-relaxed max-w-lg break-words align-top">
                                                             {log.message}
+                                                            {log.details && (
+                                                                <details className="mt-2 text-[10px] font-mono text-slate-400 bg-slate-50 p-2 rounded border border-slate-100 cursor-pointer">
+                                                                    <summary className="font-bold text-slate-500 hover:text-indigo-500">Teknik Detayı Göster (Exception StackTrace)</summary>
+                                                                    <div className="mt-2 whitespace-pre-wrap">{log.details}</div>
+                                                                </details>
+                                                            )}
                                                         </td>
                                                     </tr>
                                                 ))
                                             )}
                                         </tbody>
                                     </table>
-                                    <div className="flex justify-between items-center mt-4 px-2">
-                                        <button onClick={() => setLogPage(p => Math.max(1, p - 1))} disabled={logPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Önceki Sayfa</button>
-                                        <span className="text-sm font-bold text-slate-600">Sayfa {logPage}</span>
-                                        {/* Eğer ekranda tam 20 log varsa, demek ki bir sonraki sayfa var olabilir. */}
-                                        <button onClick={() => setLogPage(p => p + 1)} disabled={logs.length < 20} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition">Sonraki Sayfa</button>
-                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center mt-4 px-2">
+                                    <button onClick={() => setLogPage(p => Math.max(1, p - 1))} disabled={logPage === 1} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm">Önceki Sayfa</button>
+                                    <span className="text-sm font-bold text-slate-600">Sayfa {logPage}</span>
+                                    <button onClick={() => setLogPage(p => p + 1)} disabled={logs.length < 20} className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm">Sonraki Sayfa</button>
                                 </div>
                             </div>
                         )}
 
                     </div>
-                    {/* KATEGORİ DÜZENLEME MODALI */}
-                    {editingTopic && (
-                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-                            <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md animate-fade-in-down">
-                                <h3 className="text-xl font-black text-slate-800 mb-4">Kategori Düzenle</h3>
-                                <form onSubmit={handleUpdateTopic} className="space-y-4">
-                                    <div>
-                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kategori Adı</label>
-                                        <input type="text" required value={editTopicName} onChange={e => setEditTopicName(e.target.value)} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-slate-50" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Yeni Resim (Opsiyonel)</label>
-                                        <input type="file" accept="image/*" onChange={e => setEditTopicImage(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-slate-50" />
-                                        {editingTopic.imageName && editingTopic.imageName !== 'default.png' && <p className="text-xs text-slate-500 mt-2">Mevcut Resim: {editingTopic.imageName}</p>}
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-4 pt-2 border-t border-slate-100">
-                                        <input type="checkbox" id="topicStatus" checked={editTopicStatus} onChange={e => setEditTopicStatus(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
-                                        <label htmlFor="topicStatus" className="text-sm font-bold text-slate-700">Kategori Aktif (Sitede Gösterilsin)</label>
-                                    </div>
-                                    <div className="flex gap-3 pt-4">
-                                        <button type="button" onClick={() => setEditingTopic(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition">İptal</button>
-                                        <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition">Kaydet</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* KURUM DÜZENLEME MODALI */}
-                    {editingInst && (
-                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-                            <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-lg animate-fade-in-down">
-                                <h3 className="text-xl font-black text-slate-800 mb-4">Kurum Düzenle</h3>
-                                <form onSubmit={handleUpdateInst} className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kurum Adı</label>
-                                            <input type="text" required value={editInstData.name} onChange={e => setEditInstData({ ...editInstData, name: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Domain</label>
-                                            <input type="text" required value={editInstData.domain} onChange={e => setEditInstData({ ...editInstData, domain: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tema Rengi</label>
-                                            <div className="flex items-center gap-2">
-                                                <input type="color" value={editInstData.primaryColor} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="h-11 w-14 rounded-xl border border-slate-200 cursor-pointer" />
-                                                <input type="text" value={editInstData.primaryColor} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Yeni Logo (Opsiyonel)</label>
-                                            <input type="file" accept="image/*" onChange={e => setEditInstLogo(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 outline-none text-sm bg-slate-50" />
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-3 pt-4">
-                                        <button type="button" onClick={() => setEditingInst(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition">İptal</button>
-                                        <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition">Güncelle</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
                 </main>
             </div>
+
+            {/* DÜZENLEME MODALLARI KISMI */}
+            {editingTopic && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md animate-fade-in-down border border-slate-100">
+                        <h3 className="text-xl font-black text-slate-800 mb-4">Kategori Düzenle</h3>
+                        <form onSubmit={handleUpdateTopic} className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kategori Adı</label>
+                                <input type="text" required value={editTopicName} onChange={e => setEditTopicName(e.target.value)} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-slate-50" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Bağlı Olduğu Kurum</label>
+                                <select required value={editTopicInstId} onChange={e => setEditTopicInstId(e.target.value)} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-slate-50 font-medium text-slate-700">
+                                    <option value="">Kurum Seçin...</option>
+                                    {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Yeni Resim (Opsiyonel)</label>
+                                <input type="file" accept="image/*" onChange={e => setEditTopicImage(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-slate-50" />
+                                {editingTopic.imageName && editingTopic.imageName !== 'default.png' && <p className="text-xs text-slate-500 mt-2">Mevcut Resim: {editingTopic.imageName}</p>}
+                            </div>
+                            <div className="flex items-center gap-2 mt-4 pt-2 border-t border-slate-100">
+                                <input type="checkbox" id="topicStatus" checked={editTopicStatus} onChange={e => setEditTopicStatus(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
+                                <label htmlFor="topicStatus" className="text-sm font-bold text-slate-700">Kategori Aktif (Sitede Gösterilsin)</label>
+                            </div>
+                            <div className="flex gap-3 pt-4">
+                                <button type="button" onClick={() => setEditingTopic(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm">İptal</button>
+                                <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition active:scale-95">Kaydet</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {editingInst && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-lg animate-fade-in-down border border-slate-100">
+                        <h3 className="text-xl font-black text-slate-800 mb-4">Kurum Düzenle</h3>
+                        <form onSubmit={handleUpdateInst} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kurum Adı</label>
+                                    <input type="text" required value={editInstData.name} onChange={e => setEditInstData({ ...editInstData, name: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Domain</label>
+                                    <input type="text" required value={editInstData.domain} onChange={e => setEditInstData({ ...editInstData, domain: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tema Rengi</label>
+                                    <div className="flex items-center gap-2">
+                                        <input type="color" value={editInstData.primaryColor} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="h-11 w-14 rounded-xl border border-slate-200 cursor-pointer shadow-sm" />
+                                        <input type="text" value={editInstData.primaryColor} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Yeni Logo (Opsiyonel)</label>
+                                    <input type="file" accept="image/*" onChange={e => setEditInstLogo(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 outline-none text-sm bg-slate-50" />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 mt-4 pt-2 border-t border-slate-100">
+                                <input type="checkbox" id="instStatus" checked={editInstData.status} onChange={e => setEditInstData({ ...editInstData, status: e.target.checked })} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
+                                <label htmlFor="instStatus" className="text-sm font-bold text-slate-700">Kurum Aktif (Sitede Gösterilsin)</label>
+                            </div>
+                            <div className="flex gap-3 pt-4">
+                                <button type="button" onClick={() => setEditingInst(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm">İptal</button>
+                                <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition active:scale-95">Güncelle</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

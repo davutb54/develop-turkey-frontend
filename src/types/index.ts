@@ -46,6 +46,7 @@ export interface UserDetailDto {
 
 // Konu Başlıkları (Entities/Concrete/Topic.cs)
 export interface Topic {
+    institutionId: any;
     id: number;
     name: string;
     imageName: string;
@@ -64,6 +65,7 @@ export interface ProblemDetailDto {
     senderIsOfficial: boolean;
     title: string;
     description: string;
+    topics: TopicDto[];
     cityCode: number;
     topicId: number;
     cityName: string;
@@ -76,6 +78,11 @@ export interface ProblemDetailDto {
     solutionCount: number;
     viewCount: number;
     senderImageUrl?: string | null;
+}
+
+export interface TopicDto {
+    id: number;
+    name: string;
 }
 
 // Çözüm Detayları (Entities/DTOs/SolutionDetailDto.cs)
@@ -149,8 +156,10 @@ export interface ProblemAddDto {
     title: string;
     description: string;
     cityCode: number;
-    topicId: number;
+    topicIds: number[];
     image?: File | null;
+    solutionTitle?: string;       // YENİ EKLENDİ
+    solutionDescription?: string;
 }
 
 export interface Gender {
@@ -202,15 +211,24 @@ export interface AdminDashboardDto {
     bannedUsers: number;
 }
 
-export interface LogDto {
+export interface Log {
     id: number;
+    userId?: number | null;
+    userName?: string | null;
+    ipAddress?: string | null;
+    port?: string | null;
+    category: string;
+    action: string;
+    level: string;
     message: string;
+    details?: string | null;
     creationDate: string;
-    type: string;
 }
 
 export interface LogFilterDto {
-    type?: string;
+    category?: string;
+    action?: string;
+    level?: string;
     searchText?: string;
     startDate?: string;
     endDate?: string;

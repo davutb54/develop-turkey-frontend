@@ -7,6 +7,7 @@ import { solutionService } from '../services/solutionService';
 import { topicService } from '../services/topicService';
 import { constantService } from '../services/constantService';
 import type { ProblemDetailDto, Topic, City } from '../types';
+import SearchableSelect from '../components/SearchableSelect';
 
 const Home = () => {
     // --- VERİ STATE'LERİ (SAYFALAMA İÇİN) ---
@@ -33,6 +34,7 @@ const Home = () => {
     const [reportTarget, setReportTarget] = useState<{ type: 'Problem', id: number } | null>(null);
 
     const currentUserId = parseInt(localStorage.getItem('userId') || '0');
+
 
     // SAYFA İLK YÜKLENDİĞİNDE SABİT VERİLERİ (VİTRİN, KATEGORİ) ÇEK
     useEffect(() => {
@@ -195,7 +197,7 @@ const Home = () => {
                         <div className="flex gap-5 animate-scroll whitespace-nowrap px-4 py-2">
                             {infiniteSliderItems.map((item: any, idx: number) => (
                                 <Link
-                                    to={`/problem/${item._type === 'Problem' ? item.id : item.problemId}`}
+                                to={item._type === 'Problem' ? `/problem/${item.id}` : `/problem/${item.problemId}?solution=${item.id}`}
                                     key={`slide-${item.id}-${idx}`}
                                     onClick={() => item._type === 'Problem' && handleProblemClick(item.id)}
                                     className="w-[300px] shrink-0 bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 hover:border-blue-400/30 rounded-3xl p-5 transition-all duration-300 group flex flex-col h-[170px] shadow-xl hover:shadow-blue-900/20"
@@ -270,12 +272,20 @@ const Home = () => {
                                 <label className="block text-xs font-black text-indigo-800 uppercase tracking-wider mb-2">Kelime Ara</label>
                                 <input type="text" placeholder="Hangi sorunu arıyorsun?" className="w-full px-5 py-3.5 bg-white border border-indigo-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition" value={filters.searchText} onChange={e => setFilters({ ...filters, searchText: e.target.value })} />
                             </div>
-                            <div className="w-full md:w-64">
-                                <label className="block text-xs font-black text-indigo-800 uppercase tracking-wider mb-2">Şehir Filtresi</label>
-                                <select className="w-full px-5 py-3.5 bg-white border border-indigo-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition" value={filters.cityCode} onChange={e => setFilters({ ...filters, cityCode: e.target.value })}>
-                                    <option value="">Tüm Türkiye</option>
-                                    {cities.map(c => <option key={c.key} value={c.value}>{c.text}</option>)}
-                                </select>
+                            <div className="flex flex-col md:flex-row gap-4 relative z-20">
+                                <div className="flex-1 min-w-[200px]">
+                                    <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 pl-1">Bölge / Şehir Filtresi</label>
+                                    {/* YENİ ARAMALI ŞEHİR SEÇİCİ */}
+                                    <div className="h-[50px] flex items-center">
+                                        <SearchableSelect
+                                            options={cities.filter(c => c.value !== 0).map(c => ({ value: c.value, label: c.text }))}
+                                            value={filters.cityCode}
+                                            onChange={(val) => setFilters({ ...filters, cityCode: val === 0 ? '' : String(val) })}
+                                            placeholder="Tüm Türkiye (Şehir Ara...)"
+                                        />
+                                    </div>
+                                </div>
+
                             </div>
                             <button type="submit" className="w-full md:w-auto px-10 py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-600/30">Filtrele</button>
                         </form>
@@ -354,9 +364,18 @@ const Home = () => {
 
                                                         {/* KENDİ SORUNUYSA: SİL */}
                                                         {prob.senderId === currentUserId && (
-                                                            <button onClick={() => handleDeleteOwnProblem(prob.id)} className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2">
-                                                                🗑️ Sorunu Sil
-                                                            </button>
+                                                            <div className="absolute right-0 mt-1 w-32 bg-white rounded-lg shadow-lg border border-slate-100 z-50 overflow-hidden animate-fade-in-down">
+                                                                <button onClick={() => handleDeleteOwnProblem(prob.id)} className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2">
+                                                                    🗑️ Sorunu Sil
+                                                                </button>
+                                                                <Link
+                                                                    to="/profile" // Veya direkt düzenleme ekranı varsa oraya yönlendir
+                                                                    className="block w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                                                                >
+                                                                    Profilde Düzenle
+                                                                </Link>
+                                                            </div>
+
                                                         )}
                                                     </div>
                                                 </div>
@@ -366,7 +385,19 @@ const Home = () => {
 
                                     {/* KART İÇERİĞİ */}
                                     <div className="px-7 pb-4">
-                                        <span className="bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg mb-4 inline-block border border-indigo-100/50 shadow-sm">{prob.topicName}</span>
+                                        <div className="flex flex-wrap gap-1.5 my-2">
+                                            {prob.topics && prob.topics.length > 0 ? (
+                                                prob.topics.map((t: { id: number, name: string }) => (
+                                                    <span key={t.id} className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shadow-sm">
+                                                        {t.name}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="bg-gray-50 text-gray-500 border border-gray-200 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                                                    Genel
+                                                </span>
+                                            )}
+                                        </div>
                                         <Link to={`/problem/${prob.id}`} onClick={() => handleProblemClick(prob.id)} className="block group">
                                             <h3 className="text-xl sm:text-2xl font-black text-gray-900 mb-3 group-hover:text-indigo-600 transition duration-300">{prob.title}</h3>
                                             <p className="text-gray-600 text-sm leading-relaxed mb-6 line-clamp-3">{prob.description}</p>
@@ -425,6 +456,17 @@ const Home = () => {
                         )}
                     </div>
                 )}
+
+                {/* --- MOBİL YÜZEN "SORUN EKLE" BUTONU (FLOATING ACTION BUTTON) --- */}
+                {/* sm:hidden ile sadece mobilde görünür. z-50 ile her şeyin üstünde durur. */}
+                <Link
+                    to="/add-problem"
+                    className="sm:hidden fixed bottom-6 right-6 z-50 bg-gradient-to-r from-blue-600 to-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(79,70,229,0.4)] hover:scale-105 active:scale-95 transition-transform"
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                </Link>
             </main>
 
             {/* ŞİKAYET MODALI */}
