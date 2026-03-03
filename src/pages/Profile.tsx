@@ -13,7 +13,7 @@ import { topicService } from '../services/topicService';
 const Profile = () => {
     const [user, setUser] = useState<UserDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    const [error] = useState('');
     const [uploading, setUploading] = useState(false);
     const [myProblems, setMyProblems] = useState<ProblemDetailDto[]>([]);
     const [mySolutions, setMySolutions] = useState<SolutionDetailDto[]>([]);
