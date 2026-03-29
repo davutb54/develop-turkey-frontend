@@ -10,8 +10,10 @@ import { feedbackService } from '../services/feedbackService'; // YENİ EKLENDİ
 import type { AdminDashboardDto, ProblemDetailDto, SolutionDetailDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution, Log } from '../types';
 import Navbar from '../components/Navbar';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const AdminDashboard = () => {
+    const { userId } = useAuth();
     // --- TEMEL VERİ STATE'LERİ ---
     const [stats, setStats] = useState<AdminDashboardDto | null>(null);
     const [users, setUsers] = useState<UserDetailDto[]>([]);
@@ -86,10 +88,10 @@ const AdminDashboard = () => {
 
     useEffect(() => {
         const checkAdmin = async () => {
-            const userId = localStorage.getItem('userId');
-            if (!userId) { navigate('/login'); return; }
+            if (userId === null) return; // Wait for auth check
+            if (userId === false) { navigate('/login'); return; }
             try {
-                const userRes = await userService.getById(parseInt(userId));
+                const userRes = await userService.getById(userId);
                 if (!userRes.data.data.isAdmin) {
                     alert("Bu sayfaya erişim yetkiniz yok!"); navigate('/'); return;
                 }
@@ -97,7 +99,7 @@ const AdminDashboard = () => {
             } catch { navigate('/'); }
         };
         checkAdmin();
-    }, []);
+    }, [userId]);
 
     const loadPendingSolutions = async () => {
         try {

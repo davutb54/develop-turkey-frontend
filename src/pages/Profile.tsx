@@ -9,8 +9,11 @@ import { authService } from '../services/authService';
 import { constantService } from '../services/constantService';
 import SearchableSelect from '../components/SearchableSelect';
 import { topicService } from '../services/topicService';
+import { useAuth } from '../context/AuthContext';
 
 const Profile = () => {
+    const { userId } = useAuth();
+    const navigate = useNavigate();
     const [user, setUser] = useState<UserDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
     const [error] = useState('');
@@ -42,19 +45,19 @@ const Profile = () => {
     const [topics, setTopics] = useState<any[]>([]); // Tüm kategorileri tutacak
     const [editSelectedTopics, setEditSelectedTopics] = useState<number[]>([]); // Düzenlerken seçilen kategoriler
 
-    const navigate = useNavigate();
-
     useEffect(() => {
-        loadUserAndConstants();
-    }, []);
+        if (userId !== null) {
+            loadUserAndConstants();
+            fetchProfileData();
+        }
+    }, [userId]);
 
     const loadUserAndConstants = async () => {
-        const userId = localStorage.getItem('userId');
         if (!userId) { navigate('/login'); return; }
 
         try {
             const [userRes, citiesRes, gendersRes, topicsRes] = await Promise.all([
-                userService.getById(parseInt(userId)),
+                userService.getById(userId),
                 constantService.getCities(),
                 constantService.getGenders(),
                 topicService.getAll()
@@ -77,14 +80,12 @@ const Profile = () => {
     };
 
     const fetchProfileData = async () => {
-        const userId = localStorage.getItem('userId');
         if (!userId) return;
 
         try {
-            const id = parseInt(userId);
             const [probRes, solRes] = await Promise.all([
-                problemService.getBySender(id),
-                solutionService.getBySender(id)
+                problemService.getBySender(userId),
+                solutionService.getBySender(userId)
             ]);
 
             if (probRes.data.success) setMyProblems(probRes.data.data);
@@ -94,28 +95,23 @@ const Profile = () => {
         }
     };
 
-    useEffect(() => {
-        fetchProfileData();
-    }, []);
-
     // --- GÜNCELLEME İŞLEMLERİ ---
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            const userId = localStorage.getItem('userId');
 
             if (!userId) return;
 
             setUploading(true);
             try {
                 const response = await userService.uploadProfileImage({
-                    userId: parseInt(userId),
+                    userId: userId,
                     image: file
                 });
 
                 if (response.data.success || response.status === 200) {
                     // Sayfayı yenilemek yerine, kullanıcının güncel verisini arka planda tekrar çek!
-                    const userRes = await userService.getById(parseInt(userId));
+                    const userRes = await userService.getById(userId);
                     if (userRes.data.success) {
                         setUser(userRes.data.data); // Profil resmi otomatik değişecek!
                     }
@@ -170,13 +166,12 @@ const Profile = () => {
             return;
         }
 
-        const userId = localStorage.getItem('userId');
         if (!userId) return;
 
         setIsPassUpdating(true);
         try {
             const result = await userService.updatePassword({
-                id: parseInt(userId),
+                id: userId,
                 oldPassword: passForm.oldPassword,
                 newPassword: passForm.newPassword
             });

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { commentService } from '../services/commentService';
 import type { CommentDetailDto } from '../types';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 interface Props {
     solutionId: number;
@@ -19,8 +20,8 @@ const CommentSection = ({ solutionId }: Props) => {
     const [replyingTo, setReplyingTo] = useState<number | null>(null); // Hangi yoruma yanıt veriliyor?
     const [replyText, setReplyText] = useState('');
 
-    // Oturum açmış kullanıcının ID'si (Kendi yorumlarını anlaması için)
-    const currentUserId = parseInt(localStorage.getItem('userId') || '0');
+    const { userId } = useAuth();
+    const currentUserId = userId || 0;
 
     // Düzenleme (Edit) state'leri
     const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
@@ -56,7 +57,6 @@ const CommentSection = ({ solutionId }: Props) => {
     // Ortak Yorum Gönderme Fonksiyonu (Ana veya Yanıt)
     const handleSendComment = async (e: React.FormEvent, parentId: number | null = null) => {
         e.preventDefault();
-        const userId = localStorage.getItem('userId');
         if (!userId) {
             alert("Yorum yapmak için giriş yapmalısınız.");
             return;
@@ -68,7 +68,7 @@ const CommentSection = ({ solutionId }: Props) => {
         try {
             const result = await commentService.add({
                 solutionId,
-                senderId: parseInt(userId),
+                senderId: userId as number,
                 text: textToSend,
                 parentCommentId: parentId
             });

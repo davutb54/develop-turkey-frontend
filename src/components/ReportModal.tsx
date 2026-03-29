@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { reportService } from '../services/reportService';
+import { useAuth } from '../context/AuthContext';
 
 interface ReportModalProps {
     isOpen: boolean;
@@ -9,6 +10,7 @@ interface ReportModalProps {
 }
 
 const ReportModal = ({ isOpen, onClose, targetType, targetId }: ReportModalProps) => {
+    const { userId } = useAuth();
     const [reason, setReason] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -16,7 +18,6 @@ const ReportModal = ({ isOpen, onClose, targetType, targetId }: ReportModalProps
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const userId = localStorage.getItem('userId');
         
         if (!userId) {
             alert("Şikayet edebilmek için giriş yapmalısınız.");
@@ -31,7 +32,7 @@ const ReportModal = ({ isOpen, onClose, targetType, targetId }: ReportModalProps
         setLoading(true);
         try {
             await reportService.add({
-                reporterUserId: parseInt(userId),
+                reporterUserId: userId,
                 targetType,
                 targetId,
                 reason

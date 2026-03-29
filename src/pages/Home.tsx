@@ -8,6 +8,7 @@ import { topicService } from '../services/topicService';
 import { constantService } from '../services/constantService';
 import type { ProblemDetailDto, Topic, City } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
+import { useAuth } from '../context/AuthContext';
 
 const Home = () => {
     // --- VERİ STATE'LERİ (SAYFALAMA İÇİN) ---
@@ -33,7 +34,8 @@ const Home = () => {
     const [openMenuId, setOpenMenuId] = useState<number | null>(null);
     const [reportTarget, setReportTarget] = useState<{ type: 'Problem', id: number } | null>(null);
 
-    const currentUserId = parseInt(localStorage.getItem('userId') || '0');
+    const { userId } = useAuth();
+    const currentUserId = userId || 0;
 
 
     // SAYFA İLK YÜKLENDİĞİNDE SABİT VERİLERİ (VİTRİN, KATEGORİ) ÇEK

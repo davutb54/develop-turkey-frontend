@@ -4,8 +4,10 @@ import { userService } from '../services/userService';
 import { institutionService } from '../services/institutionService';
 import { feedbackService } from '../services/feedbackService';
 import type { UserDetailDto, Institution } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
+  const { userId } = useAuth();
   const [user, setUser] = useState<UserDetailDto | null>(null);
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,11 +23,9 @@ const Navbar = () => {
 
   useEffect(() => {
     const fetchUserAndTheme = async () => {
-      const userId = localStorage.getItem('userId');
-
       try {
         if (userId) {
-          const response = await userService.getById(parseInt(userId));
+          const response = await userService.getById(userId);
           if (response.data.success) {
             const userData = response.data.data;
             setUser(userData);
@@ -53,11 +53,10 @@ const Navbar = () => {
     };
 
     fetchUserAndTheme();
-  }, []);
+  }, [userId]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('userId');
+  const handleLogout = async () => {
+    try { await userService.logout(); } catch (e) { console.error(e); }
     setUser(null);
     document.documentElement.style.removeProperty('--theme-color');
     window.location.href = '/login';
@@ -65,7 +64,6 @@ const Navbar = () => {
 
   const handleSendFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
-    const userId = localStorage.getItem('userId');
     if (!userId) {
       alert("Öneri göndermek için giriş yapmalısınız.");
       return;
@@ -74,7 +72,7 @@ const Navbar = () => {
     setFeedbackLoading(true);
     try {
       await feedbackService.add({
-        userId: parseInt(userId),
+        userId: userId,
         title: feedbackTitle,
         message: feedbackMessage
       });

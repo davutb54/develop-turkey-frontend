@@ -4,9 +4,12 @@ import { constantService } from '../services/constantService';
 import { useNavigate, Link } from 'react-router-dom';
 import type { City, Gender } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
+import { useAuth } from '../context/AuthContext';
+import { Turnstile } from '@marsidev/react-turnstile';
 
 const Register = () => {
   const navigate = useNavigate();
+  const { checkAuth } = useAuth();
 
   // Form Verileri
   const [formData, setFormData] = useState({
@@ -26,6 +29,7 @@ const Register = () => {
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   // --- SÖZLEŞME STATE'LERİ ---
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
@@ -80,12 +84,10 @@ const Register = () => {
     setLoading(true);
 
     try {
-      const response = await userService.register(formData);
+      const response = await userService.register({ ...formData, captchaToken: captchaToken || undefined });
 
-      if (response.data && response.data.token) {
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('userId', response.data.userId);
-
+      if (response.data && (response.data as any).success) {
+        await checkAuth();
         alert("Kayıt Başarılı! Hoşgeldiniz.");
         navigate('/verify-email', { state: { email: formData.email } });
       } else {
@@ -192,11 +194,21 @@ const Register = () => {
 
           {error && <div className="text-red-500 text-xs text-center font-bold bg-red-50 p-2.5 rounded-xl border border-red-100">{error}</div>}
 
+          {/* Cloudflare Turnstile Bot Koruması */}
+          <div className="flex justify-center">
+            <Turnstile
+              siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
+              onSuccess={(token) => setCaptchaToken(token)}
+              onError={() => setCaptchaToken(null)}
+              onExpire={() => setCaptchaToken(null)}
+            />
+          </div>
+
           <button
             type="submit"
-            disabled={loading || !isAccepted}
+            disabled={loading || !isAccepted || !captchaToken}
             className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-transparent text-sm font-black rounded-xl text-white shadow-lg transition-all active:scale-95 
-                ${(loading || !isAccepted) ? 'bg-slate-300 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700 shadow-green-100'}`}
+                ${(loading || !isAccepted || !captchaToken) ? 'bg-slate-300 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700 shadow-green-100'}`}
           >
             {loading ? (
               <>

@@ -8,6 +8,7 @@ import Navbar from '../components/Navbar';
 import CommentSection from '../components/CommentSection';
 import ReportModal from '../components/ReportModal';
 import { topicService } from '../services/topicService';
+import { useAuth } from '../context/AuthContext';
 
 const ProblemDetail = () => {
     const { id } = useParams<{ id: string }>();
@@ -27,7 +28,8 @@ const ProblemDetail = () => {
     const [solutionForm, setSolutionForm] = useState({ title: '', description: '' });
     const [submitMessage, setSubmitMessage] = useState({ text: '', type: '' });
 
-    const currentUserId = parseInt(localStorage.getItem('userId') || '0');
+    const { userId } = useAuth();
+    const currentUserId = userId || 0;
 
     const [isEditingProblem, setIsEditingProblem] = useState(false);
     const [editProblemData, setEditProblemData] = useState({ title: '', description: '' });

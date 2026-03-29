@@ -131,6 +131,7 @@ export interface City {
 export interface UserForLoginDto {
     userName: string;
     password: string;
+    captchaToken?: string;
 }
 
 // Kayıt Olmak İçin (UserForRegisterDto)
@@ -143,6 +144,7 @@ export interface UserForRegisterDto {
     cityCode: number;
     genderCode: number;
     emailNotificationPermission: boolean;
+    captchaToken?: string;
 }
 
 // Profil Resmi Yüklemek İçin (UserImageUpdateDto)

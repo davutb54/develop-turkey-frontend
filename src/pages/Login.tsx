@@ -2,30 +2,31 @@
 import { useState } from 'react';
 import { userService } from '../services/userService';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { Turnstile } from '@marsidev/react-turnstile';
 
 const Login = () => {
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { checkAuth } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     try {
-      const response = await userService.login({ userName, password });
+      const response = await userService.login({ userName, password, captchaToken: captchaToken || undefined });
 
-      // DEĞİŞİKLİK BURADA: response.data artık doğrudan Token objesidir.
-      // Eğer token varsa işlem başarılıdır.
-      if (response.data && response.data.token) {
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('userId', response.data.userId);
-
+      // Backend artık HttpOnly cookie dönüyor ve response.data.success = true gönderiyor
+      if (response.data && (response.data as any).success) {
+        await checkAuth();
         navigate('/');
       } else {
-        // Token gelmediyse bir sorun vardır
-        setError("Giriş başarısız, token alınamadı.");
+        // Hata
+        setError("Giriş başarısız.");
       }
     } catch (err: any) {
       // Backend'den gelen hata mesajını yakalama kısmı
@@ -89,10 +90,21 @@ const Login = () => {
             </div>
           )}
 
+          {/* Cloudflare Turnstile Bot Koruması */}
+          <div className="flex justify-center">
+            <Turnstile
+              siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
+              onSuccess={(token) => setCaptchaToken(token)}
+              onError={() => setCaptchaToken(null)}
+              onExpire={() => setCaptchaToken(null)}
+            />
+          </div>
+
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out"
+              disabled={!captchaToken}
+              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white transition duration-150 ease-in-out ${!captchaToken ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'}`}
             >
               Giriş Yap
             </button>

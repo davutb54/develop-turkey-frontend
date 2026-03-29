@@ -26,6 +26,14 @@ export const userService = {
         return api.get<IDataResult<UserDetailDto>>(`/user/getbyid?id=${id}`);
     },
 
+    getMe: async () => {
+        return api.get<IDataResult<UserDetailDto>>('/user/me');
+    },
+
+    logout: async () => {
+        return api.post<IResult>('/user/logout');
+    },
+
     uploadProfileImage: async (data: UserImageUpdateDto) => {
         const formData = new FormData();
         formData.append('userId', data.userId.toString());

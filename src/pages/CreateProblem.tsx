@@ -6,9 +6,11 @@ import { problemService } from '../services/problemService';
 import type { City, Topic, ProblemAddDto } from '../types';
 import Navbar from '../components/Navbar';
 import SearchableSelect from '../components/SearchableSelect';
+import { useAuth } from '../context/AuthContext';
 
 const CreateProblem = () => {
     const navigate = useNavigate();
+    const { userId } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -28,8 +30,11 @@ const CreateProblem = () => {
 
     // Sayfa açılışında verileri çek
     useEffect(() => {
+        // Henüz auth yükleniyorsa bekle
+        if (userId === null) return;
+
         // Giriş kontrolü
-        if (!localStorage.getItem('token')) {
+        if (userId === false) {
             alert("Sorun eklemek için giriş yapmalısınız.");
             navigate('/login');
             return;
@@ -50,7 +55,7 @@ const CreateProblem = () => {
             }
         };
         loadData();
-    }, []);
+    }, [userId, navigate]);
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
