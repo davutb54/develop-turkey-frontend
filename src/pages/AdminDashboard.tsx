@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { adminService } from '../services/adminService';
 import { userService } from '../services/userService';
 import { topicService } from '../services/topicService';
@@ -6,16 +6,20 @@ import { problemService } from '../services/problemService';
 import { solutionService } from '../services/solutionService';
 import { reportService } from '../services/reportService';
 import { institutionService } from '../services/institutionService';
-import { feedbackService } from '../services/feedbackService'; // YENİ EKLENDİ
-import type { AdminDashboardDto, ProblemDetailDto, SolutionDetailDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution, Log } from '../types';
+import { feedbackService } from '../services/feedbackService'; 
+import type { AdminDashboardDto, DashboardAnalyticsDto, SystemHealthDto, ProblemDetailDto, SolutionDetailDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution, Log } from '../types';
 import Navbar from '../components/Navbar';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { LineChart, Line, AreaChart, Area, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+import TurkeyMap from 'turkey-map-react';
 
 const AdminDashboard = () => {
     const { userId } = useAuth();
     // --- TEMEL VERİ STATE'LERİ ---
     const [stats, setStats] = useState<AdminDashboardDto | null>(null);
+    const [analytics, setAnalytics] = useState<DashboardAnalyticsDto | null>(null);
+    const [systemHealth, setSystemHealth] = useState<SystemHealthDto | null>(null);
     const [users, setUsers] = useState<UserDetailDto[]>([]);
     const [topics, setTopics] = useState<Topic[]>([]);
     const [problems, setProblems] = useState<ProblemDetailDto[]>([]);
@@ -27,10 +31,24 @@ const AdminDashboard = () => {
     
     // YENİ: FEEDBACK (GERİ BİLDİRİM) STATE'İ
     const [feedbacks, setFeedbacks] = useState<any[]>([]);
+    const [feedbackSearch, setFeedbackSearch] = useState('');
+    const [feedbackReadFilter, setFeedbackReadFilter] = useState<string>('');
+    const [feedbackPage, setFeedbackPage] = useState(1);
+    const [feedbackTotalPages, setFeedbackTotalPages] = useState(1);
+    const [feedbackTotalCount, setFeedbackTotalCount] = useState(0);
+    const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const FEEDBACK_PAGE_SIZE = 10;
 
     // --- ARAMA VE FİLTRE STATE'LERİ ---
     const [userSearch, setUserSearch] = useState('');
-    const [userStatus, setUserStatus] = useState('');
+    const [userRoleFilter, setUserRoleFilter] = useState('');
+    const [userEmailFilter, setUserEmailFilter] = useState('');
+    const [userInstitutionFilter, setUserInstitutionFilter] = useState('');
+    const [userPage, setUserPage] = useState(1);
+    const [userTotalPages, setUserTotalPages] = useState(1);
+    const [userTotalCount, setUserTotalCount] = useState(0);
+    const [userLoading, setUserLoading] = useState(false);
+    const USER_PAGE_SIZE = 10;
     
     // Problem Filtreleri
     const [problemSearch, setProblemSearch] = useState('');
@@ -45,6 +63,7 @@ const AdminDashboard = () => {
     
     // Topic (Kategori) Filtresi
     const [topicInstFilter, setTopicInstFilter] = useState('');
+    const [overviewInstFilter, setOverviewInstFilter] = useState(''); // Overview sekmesi için kurum bazlı kategori filtresi
 
     // --- SAYFALAMA STATE'LERİ ---
     const [problemPage, setProblemPage] = useState(1);
@@ -67,14 +86,21 @@ const AdminDashboard = () => {
     // --- YENİ LOG FİLTRELEME STATE'LERİ ---
     const [logFilter, setLogFilter] = useState<LogFilterDto>({});
     const [logPage, setLogPage] = useState(1);
+    const [selectedLog, setSelectedLog] = useState<Log | null>(null);
+
+    const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
 
     // --- SEKME STATE'LERİ ---
-    const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals' | 'feedbacks'>('overview');
+    const [activeTab, setActiveTab] = useState<'command-center' | 'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals' | 'feedbacks'>('command-center');
     const [reportTab, setReportTab] = useState<'problems' | 'solutions' | 'users'>('problems');
     const [loading, setLoading] = useState(true);
 
     // --- DÜZENLEME MODAL STATE'LERİ ---
+    const [mapHoveredCity, setMapHoveredCity] = useState<any>(null);
+    const [mapSelectedCity, setMapSelectedCity] = useState<any>(null);
     const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
+    const [impersonatingUser, setImpersonatingUser] = useState<number | null>(null);
+    const [impersonatePassword, setImpersonatePassword] = useState('');
     const [editTopicName, setEditTopicName] = useState('');
     const [editTopicInstId, setEditTopicInstId] = useState('');
     const [editTopicImage, setEditTopicImage] = useState<File | null>(null);
@@ -91,7 +117,7 @@ const AdminDashboard = () => {
             if (userId === null) return; // Wait for auth check
             if (userId === false) { navigate('/login'); return; }
             try {
-                const userRes = await userService.getById(userId);
+                const userRes = await userService.getMe();
                 if (!userRes.data.data.isAdmin) {
                     alert("Bu sayfaya erişim yetkiniz yok!"); navigate('/'); return;
                 }
@@ -112,30 +138,80 @@ const AdminDashboard = () => {
         loadPendingSolutions();
     }, []);
 
+    const fetchUsers = async (page: number = 1) => {
+        setUserLoading(true);
+        try {
+            const res = await userService.getAllPaged({
+                page,
+                pageSize: USER_PAGE_SIZE,
+                searchText: userSearch || undefined,
+                roleFilter: userRoleFilter || undefined,
+                emailStatus: userEmailFilter || undefined,
+                institutionId: userInstitutionFilter ? parseInt(userInstitutionFilter) : undefined,
+            });
+            if (res.data.success) {
+                setUsers(res.data.data);
+                setUserTotalPages(res.data.totalPages || 1);
+                setUserTotalCount(res.data.totalCount || 0);
+                setUserPage(page);
+            }
+        } catch (err) {
+            console.error('Kullanıcılar yüklenemedi', err);
+        } finally {
+            setUserLoading(false);
+        }
+    };
+
+    const fetchFeedbacks = async (page: number = 1) => {
+        setFeedbackLoading(true);
+        try {
+            const isReadParam = feedbackReadFilter === 'read' ? true
+                : feedbackReadFilter === 'unread' ? false
+                : undefined;
+
+            const res = await feedbackService.getAllPaged({
+                page,
+                pageSize: FEEDBACK_PAGE_SIZE,
+                searchText: feedbackSearch || undefined,
+                isRead: isReadParam,
+            });
+            if (res.data.success) {
+                setFeedbacks(res.data.data);
+                setFeedbackTotalPages(res.data.totalPages || 1);
+                setFeedbackTotalCount(res.data.totalCount || 0);
+                setFeedbackPage(page);
+            }
+        } catch (err) {
+            console.error('Feedbackler yüklenemedi', err);
+        } finally {
+            setFeedbackLoading(false);
+        }
+    };
+
     const loadAllData = async () => {
         setLoading(true);
         try {
-            const [statsRes, usersRes, topicsRes, problemsRes, solutionsRes, reportsRes, instRes, feedbacksRes] = await Promise.all([
+            const [statsRes, analyticsRes, topicsRes, problemsRes, solutionsRes, reportsRes, instRes] = await Promise.all([
                 adminService.getDashboardStats(),
-                userService.getAll(),
+                adminService.getDashboardAnalytics(),
                 adminService.getAllTopics(),
                 adminService.getAllProblems(),
                 adminService.getAllSolutions(),
                 reportService.getPending(),
-                institutionService.getAll(),
-                feedbackService.getAll() // YENİ EKLENDİ
+                institutionService.getAll()
             ]);
 
             if (statsRes.data.success) setStats(statsRes.data.data);
-            if (usersRes.data.success) setUsers(usersRes.data.data);
+            if (analyticsRes.data.success) setAnalytics(analyticsRes.data.data);
             if (topicsRes.data.success) setTopics(topicsRes.data.data);
             if (problemsRes.data.success) setProblems(problemsRes.data.data);
             if (solutionsRes.data.success) setSolutions(solutionsRes.data.data);
             if (reportsRes.data.success) setPendingReports(reportsRes.data.data);
             if (instRes.data.success) setInstitutions(instRes.data.data);
-            if (feedbacksRes.data.success) setFeedbacks(feedbacksRes.data.data); // YENİ EKLENDİ
 
             fetchLogs();
+            fetchUsers(1);
+            fetchFeedbacks(1);
         } catch (err) { console.error("Veriler yüklenemedi", err); }
         finally { setLoading(false); }
     };
@@ -160,8 +236,97 @@ const AdminDashboard = () => {
 
     useEffect(() => { fetchLogs(); }, [logPage]);
 
+    useEffect(() => {
+        if (activeTab === 'users') {
+            fetchUsers(1);
+        }
+        setSelectedReportIds([]);
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'feedbacks') fetchFeedbacks(1);
+    }, [activeTab]);
+
+    useEffect(() => {
+        let interval: any;
+        if (activeTab === 'command-center') {
+            const fetchHealth = async () => {
+                try {
+                    const res = await adminService.getSystemHealthStatus();
+                    if (res.data.success) setSystemHealth(res.data.data);
+                } catch(err) { console.error("Sağlık verileri okunamadı", err); }
+            };
+            fetchHealth();
+            interval = setInterval(fetchHealth, 3000); // 3 sn'de bir yenile
+        }
+        return () => clearInterval(interval);
+    }, [activeTab]);
+
     const handleFilterLogs = (e: React.FormEvent) => { e.preventDefault(); setLogPage(1); fetchLogs(); };
     const clearLogFilters = () => { setLogFilter({}); setLogPage(1); setTimeout(fetchLogs, 100); };
+
+    const exportToJSON = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(logs, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", `logs_export_${new Date().getTime()}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    };
+
+    const exportToCSV = () => {
+        if (logs.length === 0) return;
+        const headers = Object.keys(logs[0]).join(',');
+        const rows = logs.map(log => Object.values(log).map(val => `"${String(val).replace(/"/g, '""')}"`).join(','));
+        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+        
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", encodeURI(csvContent));
+        downloadAnchorNode.setAttribute("download", `logs_export_${new Date().getTime()}.csv`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    };
+
+    const renderLogDetail = (detailsString: string) => {
+        try {
+            const obj = JSON.parse(detailsString);
+            // Eğer obje exception detayına benziyorsa (ExceptionType var ise) özellikli render yap
+            if (obj.ExceptionType) {
+                return (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border">
+                            <div><span className="text-xs font-bold text-slate-500 uppercase">Tip</span><br/><span className="text-red-600 font-bold">{obj.ExceptionType}</span></div>
+                            <div><span className="text-xs font-bold text-slate-500 uppercase">IP & User</span><br/>{obj.ClientIp} - ID: {obj.UserId || 'Anonim'}</div>
+                            <div className="col-span-2"><span className="text-xs font-bold text-slate-500 uppercase">Endpoint</span><br/><span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-mono text-sm">{obj.Endpoint}</span></div>
+                        </div>
+
+                        {obj.SuggestedSolutions && obj.SuggestedSolutions.length > 0 && (
+                            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+                                <h4 className="font-bold text-amber-800 flex items-center gap-2 mb-2"><i className="fas fa-lightbulb"></i> Olası Çözümler</h4>
+                                <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
+                                    {obj.SuggestedSolutions.map((sol:string, i:number) => <li key={i}>{sol}</li>)}
+                                </ul>
+                            </div>
+                        )}
+
+                        <div>
+                            <span className="text-xs font-bold text-slate-500 uppercase mb-2 block">Stack Trace</span>
+                            <pre className="bg-[#1e1e1e] text-[#d4d4d4] p-4 rounded-xl overflow-x-auto text-xs whitespace-pre-wrap font-mono shadow-inner border border-slate-800">
+                                {obj.StackTrace}
+                            </pre>
+                        </div>
+                    </div>
+                );
+            }
+            // Başka x bir JSON ise (ör. audit log json'ı vs)
+            return <pre className="bg-slate-100 p-4 rounded-xl text-xs overflow-x-auto">{JSON.stringify(obj, null, 2)}</pre>;
+        } catch {
+            // Düz metin ise
+            return <pre className="whitespace-pre-wrap font-mono text-xs text-slate-600 bg-slate-50 p-4 rounded-xl border">{detailsString}</pre>;
+        }
+    };
 
     // --- FİLTRELEME İŞLEMLERİ ---
 
@@ -171,11 +336,7 @@ const AdminDashboard = () => {
         return t.institutionId?.toString() === topicInstFilter;
     });
 
-    const filteredUsers = users.filter(u => {
-        const matchSearch = (u.userName + u.name + u.surname + u.email).toLowerCase().includes(userSearch.toLowerCase());
-        const matchStatus = userStatus === 'banned' ? u.isBanned : userStatus === 'admin' ? u.isAdmin : true;
-        return matchSearch && matchStatus;
-    });
+
 
     // Problem Filtreleme (Yeni Çoklu Kategoriye Uygun)
     const filteredProblems = problems.filter(p => {
@@ -222,8 +383,12 @@ const AdminDashboard = () => {
 
     const topicDistribution = topics.map(t => {
         const count = problems.filter(p => p.topics && p.topics.some(pt => pt.id === t.id)).length;
-        return { name: t.name, count };
+        return { name: t.name, count, institutionId: t.institutionId };
     }).sort((a, b) => b.count - a.count);
+
+    const filteredTopicDistribution = overviewInstFilter 
+        ? topicDistribution.filter(t => t.institutionId?.toString() === overviewInstFilter)
+        : topicDistribution;
 
     const groupedPendingSolutions = Object.values(pendingSolutions.reduce((acc, sol) => {
         if (!acc[sol.problemId]) acc[sol.problemId] = { problemId: sol.problemId, problemName: sol.problemName, solutions: [] };
@@ -254,7 +419,7 @@ const AdminDashboard = () => {
         try {
             if (isBanned) await adminService.unbanUser(userId);
             else await adminService.banUser(userId);
-            loadAllData();
+            fetchUsers(userPage);
         } catch { alert("İşlem başarısız."); }
     };
 
@@ -414,8 +579,39 @@ const AdminDashboard = () => {
             if (roleType === 'Admin') await adminService.toggleAdminRole(userId);
             if (roleType === 'Expert') await adminService.toggleExpertRole(userId);
             if (roleType === 'Official') await adminService.toggleOfficialRole(userId);
-            loadAllData();
+            fetchUsers(userPage);
         } catch (err) { alert("Yetki işlemi başarısız oldu."); }
+    };
+
+    const toggleReportSelection = (reportId: number) => {
+        setSelectedReportIds(prev => prev.includes(reportId) ? prev.filter(id => id !== reportId) : [...prev, reportId]);
+    };
+
+    const handleBulkResolve = async (reportIds: number[]) => {
+        if (!window.confirm(`${reportIds.length} adet şikayeti topluca kapatmak istediğinize emin misiniz?`)) return;
+        try {
+            await Promise.all(reportIds.map(id => reportService.resolve(id)));
+            setSelectedReportIds([]);
+            loadAllData();
+        } catch { alert("İşlem başarısız."); }
+    };
+
+    const handleBulkDeleteContent = async (reportIds: number[]) => {
+        if (!window.confirm(`${reportIds.length} adet İÇERİĞİ SİLMEK ve şikayetleri kapatmak istediğinize emin misiniz?`)) return;
+        try {
+            const promises = reportIds.map(async (reportId) => {
+                const report = pendingReports.find(r => r.id === reportId);
+                if (!report) return;
+                
+                if (report.targetType === 'Problem') await adminService.deleteProblem(report.targetId);
+                if (report.targetType === 'Solution') await solutionService.delete(report.targetId);
+                
+                await reportService.resolve(reportId);
+            });
+            await Promise.all(promises);
+            setSelectedReportIds([]);
+            loadAllData();
+        } catch { alert("İşlem başarısız."); }
     };
 
     const handleToggleHighlight = async (id: number, type: 'Problem' | 'Solution') => {
@@ -471,8 +667,9 @@ const AdminDashboard = () => {
                     <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 px-4">Yönetim Paneli</h2>
                     <nav className="space-y-1.5">
                         {[
+                            { id: 'command-center', label: 'Özel Radar (Canlı)', icon: 'M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z', count: 0 },
                             { id: 'overview', label: 'Genel Bakış', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z', count: 0 },
-                            { id: 'users', label: 'Kullanıcılar', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z', count: filteredUsers.length },
+                            { id: 'users', label: 'Kullanıcılar', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z', count: userTotalCount },
                             { id: 'topics', label: 'Kategoriler', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', count: topics.length },
                             { id: 'institutions', label: 'Kurumlar (Ağlar)', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', count: institutions.length },
                             { id: 'problems', label: 'Sorunlar', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', count: filteredProblems.length },
@@ -480,7 +677,7 @@ const AdminDashboard = () => {
                             { id: 'expert-approvals', label: 'Uzman Onayları', icon: 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', count: pendingSolutions.length, isAlert: true },
                             { id: 'reports', label: 'Şikayet Merkezi', icon: 'M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9', count: pendingReports.length, isAlert: true },
                             // YENİ EKLENEN GELEN KUTUSU SEKME MENÜSÜ
-                            { id: 'feedbacks', label: 'Gelen Kutusu', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', count: feedbacks.filter(f => !f.isRead).length, isAlert: feedbacks.filter(f => !f.isRead).length > 0 },
+                            { id: 'feedbacks', label: 'Gelen Kutusu', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', count: feedbackTotalCount, isAlert: feedbackTotalCount > 0 },
                             { id: 'logs', label: 'Sistem Logları (SIEM)', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 }
                         ].map(item => (
                             <button
@@ -515,6 +712,99 @@ const AdminDashboard = () => {
 
                     <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 md:p-8 border border-slate-100 min-h-[700px]">
 
+                        {/* 0. KOMUTA MERKEZİ (RADAR) */}
+                        {activeTab === 'command-center' && systemHealth && (
+                            <div className="animate-fade-in space-y-8">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                                            <svg className="w-24 h-24 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+                                        </div>
+                                        <span className="text-sm font-bold text-slate-400 block mb-2">Canlı Aktif Kullanıcı (5dk)</span>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></div>
+                                            <span className="text-5xl font-black">{systemHealth.activeUsers}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
+                                        <span className="text-sm font-bold text-slate-400 block mb-2">Toplam İstek & Hata Oranı</span>
+                                        <span className="text-5xl font-black">{systemHealth.totalRequests}</span>
+                                        <div className="mt-2 text-sm text-red-400 font-bold">
+                                            {systemHealth.totalErrors} Hata ({systemHealth.totalRequests > 0 ? ((systemHealth.totalErrors / systemHealth.totalRequests)*100).toFixed(2) : 0}%)
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
+                                        <span className="text-sm font-bold text-slate-400 block mb-2">Ortalama API Gecikmesi</span>
+                                        <span className="text-5xl font-black">{systemHealth.averageResponseTimeMs} <span className="text-lg text-slate-500">ms</span></span>
+                                        <div className="mt-2 text-sm text-slate-400 font-bold">Ram Tüketimi: <span className="text-indigo-400">{systemHealth.ramUsageMb} MB</span></div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:h-[450px]">
+                                    <div className="bg-slate-900 border border-slate-800 rounded-3xl flex flex-col items-center justify-center relative overflow-hidden p-6 shadow-xl">
+                                        <h3 className="absolute top-6 left-6 text-lg font-black text-white">Canlı Ağ Kaynakları (Tr)</h3>
+                                        {(mapHoveredCity || mapSelectedCity) && (
+                                            <div className="absolute top-6 right-6 bg-slate-800 border border-slate-700 text-white rounded-xl shadow-2xl p-4 w-48 pointer-events-none z-10 animate-fade-in">
+                                                <h4 className="font-bold border-b border-slate-700 pb-2 mb-2">{(mapHoveredCity || mapSelectedCity).name}</h4>
+                                                {(() => {
+                                                    const density = systemHealth.turkeyMapData.find(c => c.cityCode == (mapHoveredCity || mapSelectedCity).plateNumber);
+                                                    return (
+                                                        <div className="space-y-1 text-sm">
+                                                            <div className="flex justify-between">
+                                                                <span className="text-slate-400">Kullanıcı:</span>
+                                                                <span className="font-medium text-emerald-400">{density?.userCount || 0}</span>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span className="text-slate-400">Aktif Sorun:</span>
+                                                                <span className="font-medium text-red-400">{density?.problemCount || 0}</span>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })()}
+                                            </div>
+                                        )}
+                                        <div className="w-full h-full flex items-center justify-center mt-6 relative" onMouseLeave={() => setMapHoveredCity(null)}>
+                                            <TurkeyMap 
+                                                hoverable={true} 
+                                                customStyle={{ idleColor: '#1e293b', hoverColor: '#4f46e5' }}
+                                                onClick={(city: any) => setMapSelectedCity(mapSelectedCity?.plateNumber === city.plateNumber ? null : city)}
+                                                onHover={(city: any) => setMapHoveredCity(city)}
+                                                cityWrapper={(cityComponent: any, cityData: any) => {
+                                                    const density = systemHealth.turkeyMapData.find(c => c.cityCode == cityData.plateNumber);
+                                                    const hasProblems = density ? density.problemCount > 0 : false;
+                                                    const isSelected = mapSelectedCity?.plateNumber === cityData.plateNumber;
+                                                    const color = isSelected ? '#4f46e5' : (hasProblems ? '#ef4444' : '#1e293b'); 
+                                                    return React.cloneElement(cityComponent, { style: { fill: color, stroke: '#334155', outline: 'none', cursor: 'pointer', transition: 'fill 0.3s' } });
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl flex flex-col">
+                                        <h3 className="text-lg font-black text-white mb-6">Trafik Yükü (Son Dakika)</h3>
+                                        <div className="flex-1 w-full relative">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <AreaChart data={systemHealth.trafficHistory}>
+                                                    <defs>
+                                                        <linearGradient id="colorTraffic" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <XAxis dataKey="timestamp" tick={false} axisLine={false} />
+                                                    <YAxis tick={{fill: '#475569'}} axisLine={false} tickLine={false} />
+                                                    <Tooltip contentStyle={{backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', color: '#fff'}} />
+                                                    <Area type="monotone" dataKey="totalRequests" stroke="#6366f1" fillOpacity={1} fill="url(#colorTraffic)" />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* 1. ÖZET */}
                         {activeTab === 'overview' && stats && (
                             <div className="animate-fade-in">
@@ -538,16 +828,27 @@ const AdminDashboard = () => {
                                 </div>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                                        <h3 className="text-lg font-black text-slate-800 mb-6">Kategorilere Göre Sorunlar</h3>
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="text-lg font-black text-slate-800">Kategorilere Göre Sorunlar</h3>
+                                            <select
+                                                className="border border-slate-200 shadow-sm px-2 py-1.5 rounded-lg text-xs bg-white font-medium text-slate-700 outline-none max-w-[150px] truncate"
+                                                value={overviewInstFilter}
+                                                onChange={e => setOverviewInstFilter(e.target.value)}
+                                            >
+                                                <option value="">Tüm Kurumlar</option>
+                                                {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                            </select>
+                                        </div>
                                         <div className="space-y-5">
-                                            {topicDistribution.slice(0, 5).map((td, index) => {
-                                                const percentage = problems.length > 0 ? Math.round((td.count / problems.length) * 100) : 0;
+                                            {filteredTopicDistribution.slice(0, 5).map((td, index) => {
+                                                const totalCount = overviewInstFilter ? problems.filter(p => p.institutionId?.toString() === overviewInstFilter).length : problems.length;
+                                                const percentage = totalCount > 0 ? Math.round((td.count / totalCount) * 100) : 0;
                                                 const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-orange-500', 'bg-teal-500'];
                                                 return (
                                                     <div key={td.name}>
                                                         <div className="flex justify-between text-sm mb-1.5">
-                                                            <span className="font-bold text-slate-700">{td.name}</span>
-                                                            <span className="text-slate-500 font-medium">{td.count} Sorun <span className="text-xs opacity-70">({percentage}%)</span></span>
+                                                            <span className="font-bold text-slate-700 truncate mr-2">{td.name}</span>
+                                                            <span className="text-slate-500 font-medium shrink-0">{td.count} Sorun <span className="text-xs opacity-70">({percentage}%)</span></span>
                                                         </div>
                                                         <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
                                                             <div className={`${colors[index % colors.length]} h-2.5 rounded-full`} style={{ width: `${percentage}%` }}></div>
@@ -555,6 +856,9 @@ const AdminDashboard = () => {
                                                     </div>
                                                 )
                                             })}
+                                            {filteredTopicDistribution.length === 0 && (
+                                                <p className="text-slate-400 text-sm font-medium text-center py-4">Bu kuruma ait kategori bulunamadı.</p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
@@ -575,64 +879,198 @@ const AdminDashboard = () => {
                                         </ul>
                                     </div>
                                 </div>
+                                {analytics && (
+                                    <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 h-[400px]">
+                                            <h3 className="text-lg font-black text-slate-800 mb-6">Son 30 Gün Yeni Kayıtlar</h3>
+                                            <ResponsiveContainer width="100%" height="85%">
+                                                <LineChart data={analytics.userRegistrationsLast30Days}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                                                    <XAxis dataKey="date" tick={{fontSize: 12, fill: '#64748b'}} tickLine={false} axisLine={false} interval={6} />
+                                                    <YAxis tick={{fontSize: 12, fill: '#64748b'}} tickLine={false} axisLine={false} />
+                                                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                    <Line type="monotone" dataKey="count" name="Kayıt Sayısı" stroke="#4f46e5" strokeWidth={3} dot={{r: 0}} activeDot={{r: 6, fill: '#4f46e5', stroke: '#fff', strokeWidth: 2}} />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 h-[400px]">
+                                            <h3 className="text-lg font-black text-slate-800 mb-6">Kurum Bazlı Sorun Dağılımı</h3>
+                                            <ResponsiveContainer width="100%" height="85%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={analytics.problemsByInstitution}
+                                                        dataKey="count"
+                                                        nameKey="institutionName"
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={60}
+                                                        outerRadius={100}
+                                                        paddingAngle={5}
+                                                    >
+                                                        {analytics.problemsByInstitution.map((_, index) => {
+                                                            const colors = ['#3b82f6', '#10b981', '#a855f7', '#f97316', '#14b8a6', '#f43f5e'];
+                                                            return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
+                                                        })}
+                                                    </Pie>
+                                                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                    <Legend />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
                         {/* 2. KULLANICILAR */}
                         {activeTab === 'users' && (
                             <div className="animate-fade-in flex flex-col h-full">
-                                <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                    <input type="text" placeholder="İsim, Kullanıcı Adı veya E-Posta Ara..." className="flex-1 border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={userSearch} onChange={e => setUserSearch(e.target.value)} />
-                                    <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={userStatus} onChange={e => setUserStatus(e.target.value)}>
-                                        <option value="">Tüm Kullanıcılar</option><option value="banned">Sadece Banlılar</option><option value="admin">Sadece Adminler</option>
+                                {/* FİLTRE BÖLÜMÜ */}
+                                <div className="flex flex-wrap gap-3 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                    <input
+                                        type="text"
+                                        placeholder="İsim, Kullanıcı Adı veya E-Posta Ara..."
+                                        className="flex-1 min-w-[200px] border border-slate-200 shadow-sm p-3.5 rounded-xl
+                                                   text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition bg-white"
+                                        value={userSearch}
+                                        onChange={e => setUserSearch(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') fetchUsers(1); }}
+                                    />
+                                    <select
+                                        className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700"
+                                        value={userRoleFilter}
+                                        onChange={e => { setUserRoleFilter(e.target.value); fetchUsers(1); }}
+                                    >
+                                        <option value="">Tüm Roller</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="expert">Uzman</option>
+                                        <option value="official">Resmi Makam</option>
+                                        <option value="banned">Banlı</option>
                                     </select>
+                                    <select
+                                        className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700"
+                                        value={userEmailFilter}
+                                        onChange={e => { setUserEmailFilter(e.target.value); fetchUsers(1); }}
+                                    >
+                                        <option value="">E-Posta Durumu (Tümü)</option>
+                                        <option value="verified">Doğrulanmış</option>
+                                        <option value="unverified">Doğrulanmamış</option>
+                                    </select>
+                                    <select
+                                        className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700"
+                                        value={userInstitutionFilter}
+                                        onChange={e => { setUserInstitutionFilter(e.target.value); fetchUsers(1); }}
+                                    >
+                                        <option value="">Tüm Kurumlar</option>
+                                        {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                    </select>
+                                    <button
+                                        onClick={() => fetchUsers(1)}
+                                        className="px-5 py-3 bg-slate-800 text-white font-bold rounded-xl text-sm shadow-md hover:bg-black transition"
+                                    >
+                                        Ara
+                                    </button>
+                                    {(userSearch || userRoleFilter || userEmailFilter || userInstitutionFilter) && (
+                                        <button
+                                            onClick={() => {
+                                                setUserSearch('');
+                                                setUserRoleFilter('');
+                                                setUserEmailFilter('');
+                                                setUserInstitutionFilter('');
+                                                setTimeout(() => fetchUsers(1), 50);
+                                            }}
+                                            className="px-4 py-3 bg-white border border-slate-300 text-slate-600 font-bold rounded-xl text-sm shadow-sm hover:bg-slate-50"
+                                        >
+                                            Temizle
+                                        </button>
+                                    )}
+                                    <span className="self-center text-xs font-bold text-slate-500 ml-auto">
+                                        {userTotalCount} kullanıcı bulundu
+                                    </span>
                                 </div>
-                                <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[600px] overflow-y-auto bg-slate-50/50">
-                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                        <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
-                                            <tr>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Kullanıcı Bilgileri</th>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">E-Posta</th>
-                                                <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Roller & Durum</th>
-                                                <th className="px-6 py-4 text-right font-black text-slate-500 uppercase tracking-widest text-[10px]">Yetki Yönetimi</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-slate-100">
-                                            {filteredUsers.map(u => (
-                                                <tr key={u.id} className="hover:bg-indigo-50/30 transition">
-                                                    <td className="px-6 py-4">
-                                                        <Link to={`/user/${u.id}`} target="_blank" className="flex items-center gap-3 group">
-                                                            <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white group-hover:ring-indigo-200 transition">
-                                                                {u.profileImageUrl ? <img src={`/uploads/profiles/${u.profileImageUrl}`} className="w-full h-full object-cover" /> : u.userName[0].toUpperCase()}
-                                                            </div>
-                                                            <div>
-                                                                <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition">@{u.userName}</div>
-                                                                <div className="text-xs text-slate-500 font-medium">{u.name} {u.surname}</div>
-                                                            </div>
-                                                        </Link>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-slate-600 font-medium">{u.email}</td>
-                                                    <td className="px-6 py-4 flex gap-1.5 flex-wrap">
-                                                        {u.isBanned ? <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded text-[10px] font-black border border-red-200 tracking-wider uppercase">Banlı</span> : <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black border border-green-200 tracking-wider uppercase">Aktif</span>}
-                                                        {u.isAdmin && <span className="ml-1 px-2.5 py-1 bg-purple-100 text-purple-700 rounded text-[10px] font-black border border-purple-200 tracking-wider uppercase">Admin</span>}
-                                                        {u.isExpert && <span className="ml-1 px-2.5 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-black border border-blue-200 tracking-wider uppercase">Uzman</span>}
-                                                        {u.isOfficial && <span className="ml-1 px-2.5 py-1 bg-cyan-100 text-cyan-700 rounded text-[10px] font-black border border-cyan-200 tracking-wider uppercase">Makam</span>}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex justify-end gap-2 flex-wrap items-center">
-                                                            <button onClick={() => handleToggleRole(u.id, 'Admin')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isAdmin ? 'bg-purple-500 text-white border-purple-600 hover:bg-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Admin</button>
-                                                            <button onClick={() => handleToggleRole(u.id, 'Expert')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isExpert ? 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Uzman</button>
-                                                            <button onClick={() => handleToggleRole(u.id, 'Official')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isOfficial ? 'bg-cyan-500 text-white border-cyan-600 hover:bg-cyan-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Resmi</button>
-                                                            <div className="w-px h-5 bg-slate-200 mx-1"></div>
-                                                            <button onClick={() => handleBanToggle(u.id, u.isBanned)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 ${u.isBanned ? 'bg-slate-800 text-white border-slate-900 hover:bg-black' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
-                                                                {u.isBanned ? 'Ban Kaldır' : 'Banla'}
-                                                            </button>
-                                                        </div>
-                                                    </td>
+
+                                {/* TABLO */}
+                                {userLoading ? (
+                                    <div className="flex items-center justify-center py-16">
+                                        <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-indigo-500" />
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm flex-1 max-h-[600px] overflow-y-auto bg-slate-50/50">
+                                        <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                            <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
+                                                <tr>
+                                                    <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Kullanıcı Bilgileri</th>
+                                                    <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">E-Posta</th>
+                                                    <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Roller & Durum</th>
+                                                    <th className="px-6 py-4 text-right font-black text-slate-500 uppercase tracking-widest text-[10px]">Yetki Yönetimi</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-slate-100">
+                                                {users.length === 0 ? (
+                                                    <tr><td colSpan={4} className="px-6 py-16 text-center text-slate-500 font-medium">Kullanıcı bulunamadı.</td></tr>
+                                                ) : (
+                                                    users.map(u => (
+                                                        <tr key={u.id} className="hover:bg-indigo-50/30 transition">
+                                                            {/* -- Kullanıcı Bilgileri -- */}
+                                                            <td className="px-6 py-4">
+                                                                <Link to={`/user/${u.id}`} target="_blank" className="flex items-center gap-3 group">
+                                                                    <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white group-hover:ring-indigo-200 transition">
+                                                                        {u.profileImageUrl ? <img src={`/uploads/profiles/${u.profileImageUrl}`} className="w-full h-full object-cover" /> : u.userName[0].toUpperCase()}
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition">@{u.userName}</div>
+                                                                        <div className="text-xs text-slate-500 font-medium">{u.name} {u.surname}</div>
+                                                                    </div>
+                                                                </Link>
+                                                            </td>
+                                                            {/* -- E-Posta -- */}
+                                                            <td className="px-6 py-4 text-slate-600 font-medium">{u.email}</td>
+                                                            {/* -- Roller -- */}
+                                                            <td className="px-6 py-4 flex gap-1.5 flex-wrap">
+                                                                {u.isBanned ? <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded text-[10px] font-black border border-red-200 tracking-wider uppercase">Banlı</span> : <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black border border-green-200 tracking-wider uppercase">Aktif</span>}
+                                                                {u.isAdmin && <span className="ml-1 px-2.5 py-1 bg-purple-100 text-purple-700 rounded text-[10px] font-black border border-purple-200 tracking-wider uppercase">Admin</span>}
+                                                                {u.isExpert && <span className="ml-1 px-2.5 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-black border border-blue-200 tracking-wider uppercase">Uzman</span>}
+                                                                {u.isOfficial && <span className="ml-1 px-2.5 py-1 bg-cyan-100 text-cyan-700 rounded text-[10px] font-black border border-cyan-200 tracking-wider uppercase">Makam</span>}
+                                                            </td>
+                                                            {/* -- Yetki İşlemleri -- */}
+                                                            <td className="px-6 py-4 text-right">
+                                                                <div className="flex justify-end gap-2 flex-wrap items-center">
+                                                                    <button onClick={() => handleToggleRole(u.id, 'Admin')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isAdmin ? 'bg-purple-500 text-white border-purple-600 hover:bg-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Admin</button>
+                                                                    <button onClick={() => handleToggleRole(u.id, 'Expert')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isExpert ? 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Uzman</button>
+                                                                    <button onClick={() => handleToggleRole(u.id, 'Official')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isOfficial ? 'bg-cyan-500 text-white border-cyan-600 hover:bg-cyan-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Resmi</button>
+                                                                    <button onClick={() => handleBanToggle(u.id, u.isBanned)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 ${u.isBanned ? 'bg-slate-800 text-white border-slate-900 hover:bg-black' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
+                                                                        {u.isBanned ? 'Ban Kaldır' : 'Banla'}
+                                                                    </button>
+                                                                    <div className="w-px h-5 bg-slate-200 mx-1" />
+                                                                    <button onClick={() => { setImpersonatingUser(u.id); setImpersonatePassword(''); }} title="Kullanıcı Paneline Sudo Geçişi Yap" className="px-3 py-1.5 bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-200 rounded-lg shadow-sm text-[10px] font-black uppercase tracking-wider transition active:scale-95">
+                                                                        Sudo Geçiş
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+
+                                {/* PAGİNATION */}
+                                <div className="flex justify-between items-center mt-4 px-2">
+                                    <button
+                                        onClick={() => fetchUsers(userPage - 1)}
+                                        disabled={userPage <= 1}
+                                        className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm"
+                                    >Önceki</button>
+                                    <span className="text-sm font-bold text-slate-600">
+                                        Sayfa {userPage} / {userTotalPages}
+                                        <span className="ml-2 text-slate-400 font-normal">({userTotalCount} toplam)</span>
+                                    </span>
+                                    <button
+                                        onClick={() => fetchUsers(userPage + 1)}
+                                        disabled={userPage >= userTotalPages}
+                                        className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm"
+                                    >Sonraki</button>
                                 </div>
                             </div>
                         )}
@@ -1023,23 +1461,54 @@ const AdminDashboard = () => {
                         {activeTab === 'reports' && (
                             <div className="animate-fade-in flex flex-col h-full">
                                 <div className="flex bg-slate-50 p-2 rounded-2xl mb-8 border border-slate-200 shadow-inner">
-                                    <button onClick={() => setReportTab('problems')} className={`flex-1 py-3 px-6 font-bold text-sm rounded-xl transition-all ${reportTab === 'problems' ? 'bg-white shadow-md text-red-600 border border-slate-100' : 'text-slate-500 hover:text-slate-800'}`}>
+                                    <button onClick={() => { setReportTab('problems'); setSelectedReportIds([]); }} className={`flex-1 py-3 px-6 font-bold text-sm rounded-xl transition-all ${reportTab === 'problems' ? 'bg-white shadow-md text-red-600 border border-slate-100' : 'text-slate-500 hover:text-slate-800'}`}>
                                         Sorun Şikayetleri <span className="ml-1 bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">{problemReports.length}</span>
                                     </button>
-                                    <button onClick={() => setReportTab('solutions')} className={`flex-1 py-3 px-6 font-bold text-sm rounded-xl transition-all ${reportTab === 'solutions' ? 'bg-white shadow-md text-red-600 border border-slate-100' : 'text-slate-500 hover:text-slate-800'}`}>
+                                    <button onClick={() => { setReportTab('solutions'); setSelectedReportIds([]); }} className={`flex-1 py-3 px-6 font-bold text-sm rounded-xl transition-all ${reportTab === 'solutions' ? 'bg-white shadow-md text-red-600 border border-slate-100' : 'text-slate-500 hover:text-slate-800'}`}>
                                         Çözüm Şikayetleri <span className="ml-1 bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">{solutionReports.length}</span>
                                     </button>
-                                    <button onClick={() => setReportTab('users')} className={`flex-1 py-3 px-6 font-bold text-sm rounded-xl transition-all ${reportTab === 'users' ? 'bg-white shadow-md text-red-600 border border-slate-100' : 'text-slate-500 hover:text-slate-800'}`}>
+                                    <button onClick={() => { setReportTab('users'); setSelectedReportIds([]); }} className={`flex-1 py-3 px-6 font-bold text-sm rounded-xl transition-all ${reportTab === 'users' ? 'bg-white shadow-md text-red-600 border border-slate-100' : 'text-slate-500 hover:text-slate-800'}`}>
                                         Kullanıcı Şikayetleri <span className="ml-1 bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">{userReports.length}</span>
                                     </button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto pr-2 space-y-5 max-h-[600px]">
+                                    {selectedReportIds.length > 0 && (
+                                        <div className="bg-indigo-600 text-white p-3 rounded-xl mb-4 flex justify-between items-center shadow-md animate-fade-in sticky top-0 z-20">
+                                            <div className="font-bold text-sm">
+                                                {selectedReportIds.length} öğe seçildi
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                   onClick={() => handleBulkResolve(selectedReportIds)}
+                                                   className="px-4 py-1.5 bg-white text-indigo-700 font-bold rounded-lg text-sm hover:bg-slate-100 transition shadow-sm">
+                                                   Toplu Çöz (Kapat)
+                                                </button>
+                                                {reportTab !== 'users' && (
+                                                    <button
+                                                       onClick={() => handleBulkDeleteContent(selectedReportIds)}
+                                                       className="px-4 py-1.5 bg-red-500 text-white font-bold rounded-lg text-sm border border-red-400 hover:bg-red-400 transition shadow-sm">
+                                                       İçerikleri Sil & Kapat
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                     {reportTab === 'problems' && problemReports.map(report => {
                                         const targetProblem = problems.find(p => p.id === report.targetId);
                                         return (
                                             <div key={report.id} className="border border-red-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden">
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-red-400 to-rose-600"></div>
-                                                <div className="mb-6"><p className="text-rose-900 font-medium bg-rose-50 p-4 rounded-xl border border-rose-100 text-sm">{report.reason}</p></div>
+                                                <div className="mb-6 flex items-start gap-4">
+                                                    <div className="pt-2">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedReportIds.includes(report.id)} 
+                                                            onChange={() => toggleReportSelection(report.id)}
+                                                            className="w-5 h-5 rounded border-red-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
+                                                        />
+                                                    </div>
+                                                    <p className="flex-1 text-rose-900 font-medium bg-rose-50 p-4 rounded-xl border border-rose-100 text-sm">{report.reason}</p>
+                                                </div>
                                                 {targetProblem ? (
                                                     <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                                         <div>
@@ -1059,7 +1528,17 @@ const AdminDashboard = () => {
                                         return (
                                             <div key={report.id} className="border border-orange-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden">
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-orange-400 to-amber-500"></div>
-                                                <div className="mb-6"><p className="text-orange-900 font-medium bg-orange-50 p-4 rounded-xl border border-orange-100 text-sm">{report.reason}</p></div>
+                                                <div className="mb-6 flex items-start gap-4">
+                                                    <div className="pt-2">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedReportIds.includes(report.id)} 
+                                                            onChange={() => toggleReportSelection(report.id)}
+                                                            className="w-5 h-5 rounded border-orange-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
+                                                        />
+                                                    </div>
+                                                    <p className="flex-1 text-orange-900 font-medium bg-orange-50 p-4 rounded-xl border border-orange-100 text-sm">{report.reason}</p>
+                                                </div>
                                                 {targetSolution ? (
                                                     <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                                         <div className="font-black text-lg text-slate-800 line-clamp-2">{targetSolution.title}</div>
@@ -1077,7 +1556,17 @@ const AdminDashboard = () => {
                                         return (
                                             <div key={report.id} className="border border-purple-100 bg-white p-6 rounded-3xl shadow-sm hover:shadow-md transition relative overflow-hidden">
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-purple-400 to-indigo-600"></div>
-                                                <div className="mb-6"><p className="text-purple-900 font-medium bg-purple-50 p-4 rounded-xl border border-purple-100 text-sm">{report.reason}</p></div>
+                                                <div className="mb-6 flex items-start gap-4">
+                                                    <div className="pt-2">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedReportIds.includes(report.id)} 
+                                                            onChange={() => toggleReportSelection(report.id)}
+                                                            className="w-5 h-5 rounded border-purple-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
+                                                        />
+                                                    </div>
+                                                    <p className="flex-1 text-purple-900 font-medium bg-purple-50 p-4 rounded-xl border border-purple-100 text-sm">{report.reason}</p>
+                                                </div>
                                                 {targetUser ? (
                                                     <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                                         <Link to={`/user/${targetUser.id}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-purple-600 transition">@{targetUser.userName}</Link>
@@ -1100,50 +1589,100 @@ const AdminDashboard = () => {
                                 <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
                                     <h2 className="text-2xl font-black text-slate-800">İstek ve Öneriler</h2>
                                     <span className="bg-amber-50 text-amber-700 px-4 py-1.5 rounded-lg text-sm font-bold border border-amber-100 shadow-sm">
-                                        {feedbacks.filter(f => !f.isRead).length} Okunmamış Mesaj
+                                        {feedbackTotalCount} Mesaj
                                     </span>
                                 </div>
 
-                                <div className="space-y-4 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
-                                    {feedbacks.length === 0 ? (
-                                        <div className="text-center py-12 text-slate-500 font-medium">Henüz hiçbir istek veya öneri gelmedi.</div>
-                                    ) : (
-                                        feedbacks.sort((a, b) => b.isRead === a.isRead ? 0 : a.isRead ? 1 : -1).map(fb => (
-                                            <div key={fb.id} className={`p-6 rounded-3xl border transition shadow-sm relative overflow-hidden ${fb.isRead ? 'bg-white border-slate-200 opacity-80 hover:opacity-100' : 'bg-amber-50/40 border-amber-200'}`}>
-                                                {!fb.isRead && <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>}
-                                                
-                                                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
-                                                    <div>
-                                                        <h4 className="text-lg font-black text-slate-800">{fb.title}</h4>
-                                                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                                            <Link to={`/user/${fb.userId}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline transition">@{fb.userName}</Link>
-                                                            <span className="text-slate-300">•</span>
-                                                            <span className="text-[10px] font-medium text-slate-500">{fb.userEmail}</span>
-                                                            <span className="text-slate-300">•</span>
-                                                            <span className="text-[10px] font-medium text-slate-500">{new Date(fb.sendDate).toLocaleString('tr-TR')}</span>
+                                {/* FİLTRE */}
+                                <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                                    <input
+                                        type="text"
+                                        placeholder="Konu veya mesaj içinde ara..."
+                                        className="flex-1 border border-slate-200 shadow-sm p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                        value={feedbackSearch}
+                                        onChange={e => setFeedbackSearch(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') fetchFeedbacks(1); }}
+                                    />
+                                    <select
+                                        className="border border-slate-200 shadow-sm p-3 rounded-xl text-sm bg-white font-medium text-slate-700"
+                                        value={feedbackReadFilter}
+                                        onChange={e => { setFeedbackReadFilter(e.target.value); fetchFeedbacks(1); }}
+                                    >
+                                        <option value="">Tüm Mesajlar</option>
+                                        <option value="unread">Sadece Okunmamışlar</option>
+                                        <option value="read">Sadece Okunanlar</option>
+                                    </select>
+                                    <button
+                                        onClick={() => fetchFeedbacks(1)}
+                                        className="px-5 py-3 bg-slate-800 text-white font-bold rounded-xl text-sm hover:bg-black transition shadow-md"
+                                    >Ara</button>
+                                </div>
+
+                                {/* MESAJ LİSTESİ */}
+                                {feedbackLoading ? (
+                                    <div className="flex items-center justify-center py-16">
+                                        <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-amber-500" />
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4 overflow-y-auto max-h-[540px] pr-2 custom-scrollbar">
+                                        {feedbacks.length === 0 ? (
+                                            <div className="text-center py-12 text-slate-500 font-medium">Henüz hiçbir istek veya öneri gelmedi.</div>
+                                        ) : (
+                                            feedbacks.map(fb => (
+                                                <div key={fb.id} className={`p-6 rounded-3xl border transition shadow-sm relative overflow-hidden ${fb.isRead ? 'bg-white border-slate-200 opacity-80 hover:opacity-100' : 'bg-amber-50/40 border-amber-200'}`}>
+                                                    {!fb.isRead && <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>}
+                                                    
+                                                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+                                                        <div>
+                                                            <h4 className="text-lg font-black text-slate-800">{fb.title}</h4>
+                                                            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                                                <Link to={`/user/${fb.userId}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline transition">@{fb.userName}</Link>
+                                                                <span className="text-slate-300">•</span>
+                                                                <span className="text-[10px] font-medium text-slate-500">{fb.userEmail}</span>
+                                                                <span className="text-slate-300">•</span>
+                                                                <span className="text-[10px] font-medium text-slate-500">{new Date(fb.sendDate).toLocaleString('tr-TR')}</span>
+                                                            </div>
                                                         </div>
+                                                        {!fb.isRead && (
+                                                            <button 
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        await feedbackService.markAsRead(fb.id);
+                                                                        setFeedbacks(prev => prev.map(item => item.id === fb.id ? { ...item, isRead: true } : item));
+                                                                    } catch { alert("İşlem başarısız."); }
+                                                                }}
+                                                                className="shrink-0 px-4 py-2 bg-white border border-amber-200 text-amber-600 font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm hover:bg-amber-50 hover:border-amber-300 transition active:scale-95 flex items-center gap-1.5"
+                                                            >
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                                Okundu İşaretle
+                                                            </button>
+                                                        )}
                                                     </div>
-                                                    {!fb.isRead && (
-                                                        <button 
-                                                            onClick={async () => {
-                                                                try {
-                                                                    await feedbackService.markAsRead(fb.id);
-                                                                    setFeedbacks(prev => prev.map(item => item.id === fb.id ? { ...item, isRead: true } : item));
-                                                                } catch { alert("İşlem başarısız."); }
-                                                            }}
-                                                            className="shrink-0 px-4 py-2 bg-white border border-amber-200 text-amber-600 font-black text-[10px] uppercase tracking-wider rounded-xl shadow-sm hover:bg-amber-50 hover:border-amber-300 transition active:scale-95 flex items-center gap-1.5"
-                                                        >
-                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                                            Okundu İşaretle
-                                                        </button>
-                                                    )}
+                                                    <div className="bg-white p-5 rounded-2xl text-sm text-slate-700 leading-relaxed border border-slate-100 shadow-sm whitespace-pre-wrap">
+                                                        {fb.message}
+                                                    </div>
                                                 </div>
-                                                <div className="bg-white p-5 rounded-2xl text-sm text-slate-700 leading-relaxed border border-slate-100 shadow-sm whitespace-pre-wrap">
-                                                    {fb.message}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* PAGİNATION */}
+                                <div className="flex justify-between items-center mt-4 px-2">
+                                    <button
+                                        onClick={() => fetchFeedbacks(feedbackPage - 1)}
+                                        disabled={feedbackPage <= 1}
+                                        className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm"
+                                    >Önceki</button>
+                                    <span className="text-sm font-bold text-slate-600">
+                                        Sayfa {feedbackPage} / {feedbackTotalPages}
+                                        <span className="ml-2 text-slate-400 font-normal">({feedbackTotalCount} mesaj)</span>
+                                    </span>
+                                    <button
+                                        onClick={() => fetchFeedbacks(feedbackPage + 1)}
+                                        disabled={feedbackPage >= feedbackTotalPages}
+                                        className="px-4 py-2 bg-white border rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-sm"
+                                    >Sonraki</button>
                                 </div>
                             </div>
                         )}
@@ -1153,7 +1692,17 @@ const AdminDashboard = () => {
                             <div className="animate-fade-in flex flex-col h-full">
                                 <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
                                     <h2 className="text-2xl font-black text-slate-800">Sistem Logları (SIEM)</h2>
-                                    <span className="bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-lg text-sm font-bold border border-indigo-100 shadow-sm">{logs.length} Kayıt Gösteriliyor</span>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={exportToJSON} className="px-3 py-1.5 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-black transition shadow-sm flex items-center gap-1.5">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                            JSON İndir
+                                        </button>
+                                        <button onClick={exportToCSV} className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition shadow-sm flex items-center gap-1.5">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                            CSV İndir
+                                        </button>
+                                        <span className="bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-lg text-sm font-bold border border-indigo-100 shadow-sm">{logs.length} Kayıt Gösteriliyor</span>
+                                    </div>
                                 </div>
 
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 shadow-inner mb-8">
@@ -1246,10 +1795,10 @@ const AdminDashboard = () => {
                                                         <td className="px-5 py-4 text-xs text-slate-700 font-medium leading-relaxed max-w-lg break-words align-top">
                                                             {log.message}
                                                             {log.details && (
-                                                                <details className="mt-2 text-[10px] font-mono text-slate-400 bg-slate-50 p-2 rounded border border-slate-100 cursor-pointer">
-                                                                    <summary className="font-bold text-slate-500 hover:text-indigo-500">Teknik Detayı Göster (Exception StackTrace)</summary>
-                                                                    <div className="mt-2 whitespace-pre-wrap">{log.details}</div>
-                                                                </details>
+                                                                <button onClick={() => setSelectedLog(log)} className="mt-2 text-[10px] font-bold uppercase tracking-widest text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-100 transition flex items-center gap-1 w-max">
+                                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                                    Detayları İncele
+                                                                </button>
                                                             )}
                                                         </td>
                                                     </tr>
@@ -1338,6 +1887,62 @@ const AdminDashboard = () => {
                             <div className="flex gap-3 pt-4">
                                 <button type="button" onClick={() => setEditingInst(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm">İptal</button>
                                 <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition active:scale-95">Güncelle</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+            {selectedLog && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-4xl max-h-[90vh] flex flex-col animate-fade-in-down border border-slate-100">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-black text-slate-800">Log Detayı</h3>
+                            <button onClick={() => setSelectedLog(null)} className="text-slate-400 hover:text-slate-600 transition">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                            {renderLogDetail(selectedLog.details || '')}
+                        </div>
+                        <div className="mt-6 flex justify-end">
+                            <button onClick={() => setSelectedLog(null)} className="px-6 py-2.5 bg-slate-800 text-white font-bold rounded-xl shadow-md hover:bg-black transition">Kapat</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* IMPERSONATION SUDO MODAL */}
+            {impersonatingUser !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm animate-fade-in-down border-2 border-amber-200">
+                        <div className="flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-amber-100 text-amber-600 flex items-center justify-center rounded-full mb-4 shadow-inner">
+                                <span className="text-3xl">⚠️</span>
+                            </div>
+                            <h3 className="text-xl font-black text-slate-800 mb-2">SUDO Mode Aktif</h3>
+                            <p className="text-sm text-slate-500 font-medium mb-6">
+                                Başka bir kullanıcının oturumuna geçiş yapmak üzeresiniz. Lütfen işlemi onaylamak için <strong className="text-slate-800">kendi Admin parolanızı</strong> girin.
+                            </p>
+                        </div>
+                        <form onSubmit={async (e) => {
+                            e.preventDefault();
+                            if(!impersonatePassword) return;
+                            try {
+                                const response = await adminService.impersonateUser({ targetUserId: impersonatingUser, adminPassword: impersonatePassword });
+                                if (response.data.success) {
+                                    localStorage.setItem('isImpersonating', 'true');
+                                    window.location.href = '/';
+                                }
+                            } catch (err: any) {
+                                alert(err.response?.data || "Geçiş başarısız. Şifreyi kontrol ediniz.");
+                            }
+                        }} className="space-y-4">
+                            <div>
+                                <input type="password" required autoFocus placeholder="Admin Parolanız..." value={impersonatePassword} onChange={e => setImpersonatePassword(e.target.value)} className="w-full border-2 border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:border-amber-400 focus:ring-4 focus:ring-amber-500/20 outline-none text-sm bg-slate-50 font-medium text-slate-800 text-center" />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => setImpersonatingUser(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm">İptal</button>
+                                <button type="submit" className="flex-1 px-4 py-3 bg-amber-500 text-white font-bold rounded-xl shadow-md hover:bg-amber-600 transition active:scale-95">Kimliğe Bürü</button>
                             </div>
                         </form>
                     </div>

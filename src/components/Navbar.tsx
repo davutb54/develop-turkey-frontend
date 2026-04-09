@@ -25,7 +25,7 @@ const Navbar = () => {
     const fetchUserAndTheme = async () => {
       try {
         if (userId) {
-          const response = await userService.getById(userId);
+          const response = await userService.getMe();
           if (response.data.success) {
             const userData = response.data.data;
             setUser(userData);
@@ -58,8 +58,24 @@ const Navbar = () => {
   const handleLogout = async () => {
     try { await userService.logout(); } catch (e) { console.error(e); }
     setUser(null);
+    localStorage.removeItem('isImpersonating');
     document.documentElement.style.removeProperty('--theme-color');
     window.location.href = '/login';
+  };
+
+  const isImpersonating = localStorage.getItem('isImpersonating') === 'true';
+
+  const handleRevertImpersonation = async () => {
+      try {
+          const response = await userService.revertImpersonation();
+          if (response.data.success) {
+              localStorage.removeItem('isImpersonating');
+              window.location.href = '/admin';
+          }
+      } catch {
+          alert('Kimliğinize geri dönerken bir hata oluştu. Güvenlik için çıkış yapılıyor.');
+          handleLogout();
+      }
   };
 
   const handleSendFeedback = async (e: React.FormEvent) => {
@@ -93,6 +109,17 @@ const Navbar = () => {
 
   return (
     <>
+      {isImpersonating && (
+        <div className="bg-amber-400 text-amber-900 border-b border-amber-500 px-4 py-2.5 flex flex-wrap items-center justify-center gap-4 text-sm font-bold z-50 relative shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">⚠️</span>
+            <span>Şu anda <strong className="text-black bg-amber-500/20 px-2 py-0.5 rounded">{user?.userName}</strong> kullanıcısı olarak <span className="font-black uppercase tracking-widest bg-black text-amber-400 px-1 py-0.5 rounded text-[10px] mx-1">Sudo Modu</span>'nda işlem yapıyorsunuz.</span>
+          </div>
+          <button onClick={handleRevertImpersonation} className="bg-amber-900 hover:bg-black text-amber-400 px-4 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs font-black uppercase tracking-widest border border-amber-900/50">
+            Kendi Kimliğime Dön
+          </button>
+        </div>
+      )}
       <nav style={{ backgroundColor: navBgColor, transition: 'background-color 0.3s ease-in' }} className={`shadow-md border-b ${isCustomTheme ? 'border-transparent' : 'border-gray-100'} relative z-[40]`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">

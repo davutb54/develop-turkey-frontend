@@ -3,13 +3,13 @@ import { useParams, Link } from 'react-router-dom';
 import { userService } from '../services/userService';
 import { problemService } from '../services/problemService';
 import { solutionService } from '../services/solutionService';
-import type { UserDetailDto, ProblemDetailDto, SolutionDetailDto } from '../types';
+import type { UserPublicProfileDto, ProblemDetailDto, SolutionDetailDto } from '../types';
 import Navbar from '../components/Navbar';
 import ReportModal from '../components/ReportModal';
 
 const UserProfile = () => {
     const { id } = useParams<{ id: string }>(); // URL'den tıklanan kişinin ID'sini alıyoruz
-    const [user, setUser] = useState<UserDetailDto | null>(null);
+    const [user, setUser] = useState<UserPublicProfileDto | null>(null);
     const [problems, setProblems] = useState<ProblemDetailDto[]>([]);
     const [solutions, setSolutions] = useState<SolutionDetailDto[]>([]);
     const [activeTab, setActiveTab] = useState<'problems' | 'solutions'>('problems');
@@ -26,7 +26,7 @@ const UserProfile = () => {
                 const userId = parseInt(id);
                 // Kullanıcının bilgilerini, sorunlarını ve çözümlerini aynı anda çekiyoruz
                 const [userRes, probRes, solRes] = await Promise.all([
-                    userService.getById(userId),
+                    userService.getPublicProfile(userId),
                     problemService.getBySender(userId),
                     solutionService.getBySender(userId)
                 ]);

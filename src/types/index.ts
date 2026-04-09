@@ -44,6 +44,22 @@ export interface UserDetailDto {
     profileImageUrl?: string | null;
 }
 
+// Herkese Açık Kullanıcı Detayları (Entities/DTOs/User/UserPublicProfileDto.cs)
+export interface UserPublicProfileDto {
+    id: number;
+    userName: string;
+    name: string;
+    surname: string;
+    cityName: string;
+    gender: string;
+    isAdmin: boolean;
+    isExpert: boolean;
+    isOfficial: boolean;
+    registerDate: string;
+    profileImageUrl?: string | null;
+    institutionId: number;
+}
+
 // Konu Başlıkları (Entities/Concrete/Topic.cs)
 export interface Topic {
     institutionId: any;
@@ -213,6 +229,24 @@ export interface AdminDashboardDto {
     bannedUsers: number;
 }
 
+export interface DashboardAnalyticsDto {
+    totalUsers: number;
+    activeUsers: number;
+    bannedUsers: number;
+    problemsByInstitution: InstitutionProblemCountDto[];
+    userRegistrationsLast30Days: DailyUserRegistrationDto[];
+}
+
+export interface InstitutionProblemCountDto {
+    institutionName: string;
+    count: number;
+}
+
+export interface DailyUserRegistrationDto {
+    date: string;
+    count: number;
+}
+
 export interface Log {
     id: number;
     userId?: number | null;
@@ -263,6 +297,11 @@ export interface UserForPasswordUpdateDto {
     newPassword: string;
 }
 
+export interface ImpersonateDto {
+    targetUserId: number;
+    adminPassword: string;
+}
+
 // --- KURUM (INSTITUTION) TİPLERİ ---
 export interface Institution {
     id?: number;
@@ -271,4 +310,27 @@ export interface Institution {
     logoUrl?: string | null;
     primaryColor?: string | null;
     status: boolean;
+}
+
+// --- SYSTEM HEALTH TİPLERİ ---
+export interface TrafficDataPoint {
+    timestamp: string;
+    responseTime: number;
+    totalRequests: number;
+}
+
+export interface CityProblemDensityDto {
+    cityCode: number;
+    problemCount: number;
+    userCount: number;
+}
+
+export interface SystemHealthDto {
+    totalRequests: number;
+    totalErrors: number;
+    averageResponseTimeMs: number;
+    activeUsers: number;
+    ramUsageMb: number;
+    trafficHistory: TrafficDataPoint[];
+    turkeyMapData: CityProblemDensityDto[];
 }

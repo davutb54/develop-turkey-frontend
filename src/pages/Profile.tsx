@@ -57,7 +57,7 @@ const Profile = () => {
 
         try {
             const [userRes, citiesRes, gendersRes, topicsRes] = await Promise.all([
-                userService.getById(userId),
+                userService.getMe(),
                 constantService.getCities(),
                 constantService.getGenders(),
                 topicService.getAll()
@@ -111,7 +111,7 @@ const Profile = () => {
 
                 if (response.data.success || response.status === 200) {
                     // Sayfayı yenilemek yerine, kullanıcının güncel verisini arka planda tekrar çek!
-                    const userRes = await userService.getById(userId);
+                    const userRes = await userService.getMe();
                     if (userRes.data.success) {
                         setUser(userRes.data.data); // Profil resmi otomatik değişecek!
                     }

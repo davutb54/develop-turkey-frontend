@@ -6,6 +6,7 @@ import type {
     UserForLoginDto, 
     UserForRegisterDto, 
     UserDetailDto,
+    UserPublicProfileDto,
     UserImageUpdateDto,
     UserForPasswordUpdateDto,
     UserForUpdateDto
@@ -26,12 +27,20 @@ export const userService = {
         return api.get<IDataResult<UserDetailDto>>(`/user/getbyid?id=${id}`);
     },
 
+    getPublicProfile: async (id: number) => {
+        return api.get<IDataResult<UserPublicProfileDto>>(`/user/getpublicprofile?id=${id}`);
+    },
+
     getMe: async () => {
         return api.get<IDataResult<UserDetailDto>>('/user/me');
     },
 
     logout: async () => {
         return api.post<IResult>('/user/logout');
+    },
+
+    revertImpersonation: async () => {
+        return api.post<IResult>('/user/revertimpersonation');
     },
 
     uploadProfileImage: async (data: UserImageUpdateDto) => {
@@ -50,6 +59,24 @@ export const userService = {
 
     getAll: async () => {
         return api.get<IDataResult<UserDetailDto[]>>('/user/getall');
+    },
+
+    getAllPaged: async (params: {
+        page?: number;
+        pageSize?: number;
+        searchText?: string;
+        roleFilter?: string;
+        emailStatus?: string;
+        institutionId?: number;
+    }) => {
+        const query = new URLSearchParams();
+        if (params.page) query.append('page', params.page.toString());
+        if (params.pageSize) query.append('pageSize', params.pageSize.toString());
+        if (params.searchText) query.append('searchText', params.searchText);
+        if (params.roleFilter) query.append('roleFilter', params.roleFilter);
+        if (params.emailStatus) query.append('emailStatus', params.emailStatus);
+        if (params.institutionId) query.append('institutionId', params.institutionId.toString());
+        return api.get(`/user/getallpaged?${query.toString()}`);
     },
 
     updateDetails: async (data: UserForUpdateDto) => {

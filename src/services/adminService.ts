@@ -1,9 +1,18 @@
 import api from './api';
-import type { IDataResult, IResult, AdminDashboardDto, Log, LogFilterDto, ProblemDetailDto } from '../types';
+import type { IDataResult, IResult, AdminDashboardDto, DashboardAnalyticsDto, SystemHealthDto, Log, LogFilterDto, ProblemDetailDto, ImpersonateDto } from '../types';
 
 export const adminService = {
     getDashboardStats: async () => {
         return api.get<IDataResult<AdminDashboardDto>>('/admin/dashboard');
+    },
+    getDashboardAnalytics: async () => {
+        return api.get<IDataResult<DashboardAnalyticsDto>>('/admin/analytics');
+    },
+    getSystemHealthStatus: async () => {
+        return api.get<IDataResult<SystemHealthDto>>('/admin/health');
+    },
+    impersonateUser: async (data: ImpersonateDto) => {
+        return api.post<IResult>('/admin/impersonate', data);
     },
     getReportedProblems: async () => {
         return api.get<IDataResult<ProblemDetailDto[]>>('/admin/getreportedproblems');
