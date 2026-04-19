@@ -96,10 +96,16 @@ const AdminDashboard = () => {
     const [logPage, setLogPage] = useState(1);
     const [selectedLog, setSelectedLog] = useState<Log | null>(null);
 
+    // --- ACTIVITY LOGS (AKSIYON GEÇMİŞİ) STATE'LERİ ---
+    const [activityLogs, setActivityLogs] = useState<Log[]>([]);
+    const [activityLogPage, setActivityLogPage] = useState(1);
+    const [hasMoreActivityLogs, setHasMoreActivityLogs] = useState(true);
+    const [activityLogLoading, setActivityLogLoading] = useState(false);
+
     const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
 
     // --- SEKME STATE'LERİ ---
-    const [activeTab, setActiveTab] = useState<'command-center' | 'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals' | 'feedbacks' | 'settings'>('command-center');
+    const [activeTab, setActiveTab] = useState<'command-center' | 'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'activity-logs' | 'expert-approvals' | 'feedbacks' | 'settings'>('command-center');
     const [reportTab, setReportTab] = useState<'problems' | 'solutions' | 'users'>('problems');
     const [loading, setLoading] = useState(true);
 
@@ -117,6 +123,17 @@ const AdminDashboard = () => {
     const [editingInst, setEditingInst] = useState<Institution | null>(null);
     const [editInstData, setEditInstData] = useState({ name: '', domain: '', primaryColor: '', status: true });
     const [editInstLogo, setEditInstLogo] = useState<File | null>(null);
+
+    // --- KULLANICI UYARI MODAL STATE'LERİ ---
+    const [warningTargetUserId, setWarningTargetUserId] = useState<number | null>(null);
+    const [warningTitle, setWarningTitle] = useState('');
+    const [warningMessage, setWarningMessage] = useState('');
+    const [warningSeverity, setWarningSeverity] = useState('Warning');
+    const [warningLoading, setWarningLoading] = useState(false);
+    // Uyarı geçmişi modal
+    const [warningHistoryUserId, setWarningHistoryUserId] = useState<number | null>(null);
+    const [warningHistory, setWarningHistory] = useState<any[]>([]);
+    const [warningHistoryLoading, setWarningHistoryLoading] = useState(false);
 
     const navigate = useNavigate();
 
@@ -196,34 +213,102 @@ const AdminDashboard = () => {
         }
     };
 
-    const loadAllData = async () => {
-        setLoading(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const loadOverviewData = async () => {
         try {
-            const [statsRes, analyticsRes, topicsRes, problemsRes, solutionsRes, reportsRes, instRes, settingsRes] = await Promise.all([
+            const [statsRes, analyticsRes, instRes, settingsRes] = await Promise.all([
                 adminService.getDashboardStats(),
                 adminService.getDashboardAnalytics(),
-                adminService.getAllTopics(),
-                adminService.getAllProblems(),
-                adminService.getAllSolutions(),
-                reportService.getPending(),
                 institutionService.getAll(),
                 adminService.getSystemSettings()
             ]);
 
             if (statsRes.data.success) setStats(statsRes.data.data);
             if (analyticsRes.data.success) setAnalytics(analyticsRes.data.data);
-            if (topicsRes.data.success) setTopics(topicsRes.data.data);
-            if (problemsRes.data.success) setProblems(problemsRes.data.data);
-            if (solutionsRes.data.success) setSolutions(solutionsRes.data.data);
-            if (reportsRes.data.success) setPendingReports(reportsRes.data.success ? reportsRes.data.data : []);
             if (instRes.data.success) setInstitutions(instRes.data.data);
             if (settingsRes.data.success) setSystemSettings(settingsRes.data.data);
+        } catch (err) { console.error("Genel veriler yüklenemedi", err); }
+    };
 
-            fetchLogs();
-            fetchUsers(1);
-            fetchFeedbacks(1);
+    const fetchTopics = async () => {
+        try {
+            const res = await adminService.getAllTopics();
+            if (res.data.success) setTopics(res.data.data);
+        } catch (err) { console.error("Kategoriler yüklenemedi", err); }
+    };
+
+    const fetchProblems = async () => {
+        try {
+            const res = await adminService.getAllProblems();
+            if (res.data.success) setProblems(res.data.data);
+        } catch (err) { console.error("Problemler yüklenemedi", err); }
+    };
+
+    const fetchSolutions = async () => {
+        try {
+            const res = await adminService.getAllSolutions();
+            if (res.data.success) setSolutions(res.data.data);
+        } catch (err) { console.error("Çözümler yüklenemedi", err); }
+    };
+
+    const fetchReports = async () => {
+        try {
+            const res = await reportService.getPending();
+            if (res.data.success) setPendingReports(res.data.data || []);
+        } catch (err) { console.error("Raporlar yüklenemedi", err); }
+    };
+
+    const loadAllData = async () => {
+        setLoading(true);
+        try {
+            await loadOverviewData();
+            // Sayfa ilk defa açıldığında boş kalmaması için tab verilerini de bir kere çekebiliriz, 
+            // ancak görev gereği optimize şekilde loadAllData sadece sabit verileri getirecek.
+            // Alt sekmelerin dolması için temel verileri de çağırıyoruz:
+            await Promise.all([
+                fetchTopics(),
+                fetchProblems(),
+                fetchSolutions(),
+                fetchReports(),
+                fetchUsers(1),
+                fetchFeedbacks(1),
+                fetchLogs()
+            ]);
         } catch (err) { console.error("Veriler yüklenemedi", err); }
         finally { setLoading(false); }
+    };
+
+    const handleSmartRefresh = async () => {
+        setIsRefreshing(true);
+        try {
+            await loadOverviewData(); // Her durumda genel istatistikleri yenile
+
+            // Sadece aktif sekmeye ait data yenile
+            if (activeTab === 'users') {
+                await fetchUsers(userPage);
+            } else if (activeTab === 'feedbacks') {
+                await fetchFeedbacks(feedbackPage);
+            } else if (activeTab === 'reports') {
+                await fetchReports();
+            } else if (activeTab === 'topics') {
+                await fetchTopics();
+            } else if (activeTab === 'problems') {
+                await fetchProblems();
+            } else if (activeTab === 'solutions') {
+                await fetchSolutions();
+            } else if (activeTab === 'logs') {
+                await fetchLogs();
+            } else if (activeTab === 'activity-logs') {
+                await fetchActivityLogs(activityLogPage, false);
+            } else if (activeTab === 'expert-approvals') {
+                await loadPendingSolutions();
+            }
+        } catch (err) {
+            console.error("Yenileme sırasında hata oluştu", err);
+        } finally {
+            setIsRefreshing(false);
+        }
     };
 
     const fetchLogs = async () => {
@@ -244,7 +329,30 @@ const AdminDashboard = () => {
         } catch (err) { console.error("Loglar çekilemedi", err); }
     };
 
+    const fetchActivityLogs = async (page: number, append: boolean = false) => {
+        setActivityLogLoading(true);
+        try {
+            const res = await adminService.getLogs({ isActivityLog: true, page, pageSize: 20 });
+            if (res.data.success) {
+                const newData = res.data.data;
+                if (newData.length < 20) setHasMoreActivityLogs(false);
+                else setHasMoreActivityLogs(true);
+                
+                if (append) setActivityLogs(prev => [...prev, ...newData]);
+                else setActivityLogs(newData);
+            }
+        } catch (err) { console.error("Aksiyon geçmişi çekilemedi", err); }
+        setActivityLogLoading(false);
+    };
+
     useEffect(() => { fetchLogs(); }, [logPage]);
+
+    useEffect(() => {
+        if (activeTab === 'activity-logs') {
+            setActivityLogPage(1);
+            fetchActivityLogs(1, false);
+        }
+    }, [activeTab]);
 
     useEffect(() => {
         if (activeTab === 'users') {
@@ -593,6 +701,44 @@ const AdminDashboard = () => {
         } catch (err) { alert("Yetki işlemi başarısız oldu."); }
     };
 
+    const handleIssueWarning = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!warningTargetUserId) return;
+        setWarningLoading(true);
+        try {
+            await adminService.issueWarning({
+                userId: warningTargetUserId,
+                title: warningTitle,
+                message: warningMessage,
+                severity: warningSeverity,
+            });
+            setWarningTargetUserId(null);
+            setWarningTitle('');
+            setWarningMessage('');
+            setWarningSeverity('Warning');
+            alert('Uyard gönderildi.');
+        } catch { alert('Uyarı gönderilemedi.'); }
+        finally { setWarningLoading(false); }
+    };
+
+    const handleOpenWarningHistory = async (userId: number) => {
+        setWarningHistoryUserId(userId);
+        setWarningHistoryLoading(true);
+        setWarningHistory([]);
+        try {
+            const res = await adminService.getUserWarnings(userId);
+            if (res.data.success) setWarningHistory(res.data.data ?? []);
+        } catch { /* sessizce geç */ }
+        finally { setWarningHistoryLoading(false); }
+    };
+
+    const handleRevokeWarning = async (warningId: number) => {
+        try {
+            await adminService.revokeWarning(warningId);
+            setWarningHistory(prev => prev.map(w => w.id === warningId ? { ...w, isActive: false } : w));
+        } catch { alert('Uyarı geri alınamadı.'); }
+    };
+
     const toggleReportSelection = (reportId: number) => {
         setSelectedReportIds(prev => prev.includes(reportId) ? prev.filter(id => id !== reportId) : [...prev, reportId]);
     };
@@ -706,7 +852,8 @@ const AdminDashboard = () => {
                             { id: 'reports', label: 'Şikayet Merkezi', icon: 'M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9', count: pendingReports.length, isAlert: true },
                             { id: 'feedbacks', label: 'Gelen Kutusu', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', count: feedbackTotalCount, isAlert: feedbackTotalCount > 0 },
                             { id: 'settings', label: 'Sistem Ayarları', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', count: 0 },
-                            { id: 'logs', label: 'Sistem Logları (SIEM)', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 }
+                            { id: 'logs', label: 'Sistem Logları (SIEM)', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 },
+                            { id: 'activity-logs', label: 'Aksiyon Geçmişi', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', count: 0 }
                         ].map(item => (
                             <button
                                 key={item.id}
@@ -732,9 +879,16 @@ const AdminDashboard = () => {
                             <h1 className="text-3xl font-black text-slate-900 tracking-tight">Komuta Merkezi</h1>
                             <p className="text-slate-500 text-sm mt-1 font-medium">Sistem verilerini ve kullanıcıları buradan yönetin.</p>
                         </div>
-                        <button onClick={loadAllData} className="flex items-center gap-2 bg-white px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition-all duration-200 active:scale-95">
-                            <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                            Verileri Yenile
+                        <button onClick={handleSmartRefresh} disabled={isRefreshing} className="flex items-center gap-2 bg-white px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                            {isRefreshing ? (
+                                <svg className="w-5 h-5 text-indigo-500 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            ) : (
+                                <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                            )}
+                            {isRefreshing ? 'Yenileniyor...' : 'Verileri Yenile'}
                         </button>
                     </div>
 
@@ -1180,6 +1334,19 @@ const AdminDashboard = () => {
                                                                     <button onClick={() => handleBanToggle(u.id, u.isBanned)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 ${u.isBanned ? 'bg-slate-800 text-white border-slate-900 hover:bg-black' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
                                                                         {u.isBanned ? 'Ban Kaldır' : 'Banla'}
                                                                     </button>
+                                                                    <div className="w-px h-5 bg-slate-200 mx-1" />
+                                                                    {/* Uyarı Ver */}
+                                                                    <button
+                                                                        onClick={() => { setWarningTargetUserId(u.id); setWarningTitle(''); setWarningMessage(''); setWarningSeverity('Warning'); }}
+                                                                        title="Uyarı Ver"
+                                                                        className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100"
+                                                                    >⚠️ Uyar</button>
+                                                                    {/* Uyarı Geçmişi */}
+                                                                    <button
+                                                                        onClick={() => handleOpenWarningHistory(u.id)}
+                                                                        title="Uyarı Geçmişi"
+                                                                        className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                                                                    >📋 Geçmiş</button>
                                                                     <div className="w-px h-5 bg-slate-200 mx-1" />
                                                                     <button onClick={() => { setImpersonatingUser(u.id); setImpersonatePassword(''); }} title="Kullanıcı Paneline Sudo Geçişi Yap" className="px-3 py-1.5 bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-200 rounded-lg shadow-sm text-[10px] font-black uppercase tracking-wider transition active:scale-95">
                                                                         Sudo Geçiş
@@ -1955,6 +2122,69 @@ const AdminDashboard = () => {
                             </div>
                         )}
 
+                        {/* =========================================================================
+                            12. AKSİYON GEÇMİŞİ (TIMELINE)
+                            ========================================================================= */}
+                        {activeTab === 'activity-logs' && (
+                            <div className="animate-fade-in relative max-w-4xl mx-auto">
+                                <h2 className="text-2xl font-black text-slate-800 mb-8 border-b pb-4">Yönetici Aksiyon Geçmişi</h2>
+                                
+                                <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
+                                    {activityLogs.length === 0 && !activityLogLoading && (
+                                        <div className="text-center py-10 text-slate-500 font-medium">Henüz hiçbir aksiyon kaydı bulunmuyor.</div>
+                                    )}
+                                    {activityLogs.map((log) => {
+                                        const isRed = log.level === 'Critical' || log.level === 'Error' || log.action === 'Ban' || log.message.toLowerCase().includes('ban');
+                                        const isYellow = log.action === 'Security' || log.level === 'Warning' || log.message.toLowerCase().includes('sildi');
+
+                                        const bgColor = isRed ? 'bg-red-500' : isYellow ? 'bg-amber-500' : 'bg-blue-500';
+                                        const textColor = isRed ? 'text-red-700' : isYellow ? 'text-amber-700' : 'text-blue-700';
+                                        const badgeBg = isRed ? 'bg-red-100' : isYellow ? 'bg-amber-100' : 'bg-blue-100';
+                                        const icon = isRed ? 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' 
+                                                  : isYellow ? 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z'
+                                                  : 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z';
+
+                                        return (
+                                            <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                                <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white ${bgColor} text-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10`}>
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} /></svg>
+                                                </div>
+                                                <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-5 rounded-2xl shadow border border-slate-100 hover:shadow-md transition">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <span className={`text-[10px] uppercase font-black tracking-wider px-2.5 py-1 rounded-full ${badgeBg} ${textColor}`}>{log.category} - {log.action}</span>
+                                                        <time className="text-xs font-bold text-slate-400">{new Date(log.creationDate).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}</time>
+                                                    </div>
+                                                    <p className="text-sm font-medium text-slate-700 leading-snug">{log.message}</p>
+                                                    {(log.userName) && (
+                                                        <div className="mt-3 pt-3 border-t border-slate-50 flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                                            {log.userName}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                
+                                {hasMoreActivityLogs && (
+                                    <div className="text-center mt-8 pb-4">
+                                        <button 
+                                            onClick={() => {
+                                                const nextPage = activityLogPage + 1;
+                                                setActivityLogPage(nextPage);
+                                                fetchActivityLogs(nextPage, true);
+                                            }}
+                                            disabled={activityLogLoading}
+                                            className="px-6 py-2.5 bg-white border border-slate-200 text-indigo-600 font-bold rounded-full shadow-sm hover:bg-slate-50 disabled:opacity-50 transition"
+                                        >
+                                            {activityLogLoading ? 'Yükleniyor...' : 'Daha Eski Aksiyonları Yükle'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                     </div>
                 </main>
             </div>
@@ -2088,6 +2318,105 @@ const AdminDashboard = () => {
                     </div>
                 </div>
             )}
+
+            {/* UYARI VER MODAL */}
+            {warningTargetUserId !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md animate-fade-in-down border-2 border-orange-200">
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="w-12 h-12 bg-orange-100 text-orange-600 flex items-center justify-center rounded-2xl shadow-inner shrink-0">
+                                <span className="text-2xl">⚠️</span>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-800">Kullanıcıya Uyarı Gönder</h3>
+                                <p className="text-xs text-slate-500 font-medium">Bu uyarı kullanıcıya bildirim olarak da iletilecek.</p>
+                            </div>
+                        </div>
+                        <form onSubmit={handleIssueWarning} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Başlık</label>
+                                <input
+                                    type="text" required value={warningTitle}
+                                    onChange={e => setWarningTitle(e.target.value)}
+                                    placeholder="Örn: Kural İhlali, Spam..."
+                                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 outline-none bg-slate-50 font-medium text-slate-800"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Mesaj</label>
+                                <textarea
+                                    required rows={3} value={warningMessage}
+                                    onChange={e => setWarningMessage(e.target.value)}
+                                    placeholder="Detaylı açıklama..."
+                                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 outline-none bg-slate-50 font-medium text-slate-800 resize-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Seviye</label>
+                                <select
+                                    value={warningSeverity} onChange={e => setWarningSeverity(e.target.value)}
+                                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-orange-400 outline-none bg-slate-50 font-medium text-slate-800"
+                                >
+                                    <option value="Info">ℹ️ Bilgi</option>
+                                    <option value="Warning">⚠️ Uyarı</option>
+                                    <option value="Severe">🚨 Ciddi</option>
+                                </select>
+                            </div>
+                            <div className="flex gap-3 pt-1">
+                                <button type="button" onClick={() => setWarningTargetUserId(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm">İptal</button>
+                                <button type="submit" disabled={warningLoading} className="flex-1 px-4 py-3 bg-orange-500 text-white font-black rounded-xl shadow-md hover:bg-orange-600 transition active:scale-95 disabled:opacity-50">
+                                    {warningLoading ? 'Gönderiliyor...' : 'Uyarı Gönder'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* UYARI GEÇMİŞİ MODAL */}
+            {warningHistoryUserId !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-lg animate-fade-in-down border border-slate-200">
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className="text-lg font-black text-slate-800">📋 Uyarı Geçmişi</h3>
+                            <button onClick={() => setWarningHistoryUserId(null)} className="text-slate-400 hover:text-slate-700 transition text-xl leading-none">✕</button>
+                        </div>
+                        {warningHistoryLoading ? (
+                            <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500" /></div>
+                        ) : warningHistory.length === 0 ? (
+                            <p className="text-center text-slate-400 font-medium py-8">Bu kullanıcıya ait uyarı kaydı yok.</p>
+                        ) : (
+                            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                                {warningHistory.map((w: any) => (
+                                    <div key={w.id} className={`flex items-start gap-3 p-4 rounded-2xl border ${w.isActive ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                                        <span className="text-xl mt-0.5 shrink-0">
+                                            {w.severity === 'Severe' ? '🚨' : w.severity === 'Warning' ? '⚠️' : 'ℹ️'}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-black text-slate-800 text-sm">{w.title}</span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${w.severity === 'Severe' ? 'bg-red-100 text-red-700' : w.severity === 'Warning' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    {w.severity}
+                                                </span>
+                                                {!w.isActive && <span className="text-[10px] text-slate-400 font-bold uppercase">Geri Alındı</span>}
+                                            </div>
+                                            <p className="text-xs text-slate-500 mt-1">{w.message}</p>
+                                            <p className="text-[10px] text-slate-400 mt-1">{new Date(w.issuedAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                        </div>
+                                        {w.isActive && (
+                                            <button
+                                                onClick={() => handleRevokeWarning(w.id)}
+                                                className="shrink-0 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-slate-100 text-slate-600 border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition"
+                                            >Geri Al</button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

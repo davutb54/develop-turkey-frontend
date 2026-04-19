@@ -12,6 +12,7 @@ import ResetPassword from './pages/ResetPassword';
 import AdminDashboard from './pages/AdminDashboard';
 import Maintenance from './pages/Maintenance';
 import NotFound from './pages/NotFound';
+import NotificationsPage from './pages/NotificationsPage';
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -52,6 +53,7 @@ function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/admin" element={<AdminDashboard />} />
+      <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/maintenance" element={<Maintenance />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

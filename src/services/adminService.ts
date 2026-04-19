@@ -86,4 +86,14 @@ export const adminService = {
     updateSystemSettings: async (settings: SystemSettings) => {
         return api.post<IResult>('/admin/systemsettings/update', settings);
     },
-};
+    // KULLANICI UYARI YÖNETİMİ
+    issueWarning: async (data: { userId: number; title: string; message: string; severity: string }) => {
+        return api.post<IResult>('/admin/issue-warning', data);
+    },
+    revokeWarning: async (warningId: number) => {
+        return api.post<IResult>(`/admin/revoke-warning?warningId=${warningId}`);
+    },
+    getUserWarnings: async (userId: number) => {
+        return api.get<IDataResult<any[]>>(`/admin/user-warnings?userId=${userId}`);
+    },
+};

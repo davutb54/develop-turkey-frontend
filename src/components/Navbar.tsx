@@ -5,6 +5,7 @@ import { institutionService } from '../services/institutionService';
 import { feedbackService } from '../services/feedbackService';
 import type { UserDetailDto, Institution } from '../types';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 const Navbar = () => {
   const { userId } = useAuth();
@@ -186,6 +187,11 @@ const Navbar = () => {
                             </Link>
                           )}
 
+                          {/* Bildirim Zili */}
+                          <div className={`${isCustomTheme ? 'text-white' : 'text-gray-600'}`}>
+                            <NotificationBell />
+                          </div>
+
                           <div className={`flex items-center gap-3 border-l pl-4 ml-2 h-8 ${isCustomTheme ? 'border-white/30' : 'border-gray-200'}`}>
                             <Link to="/profile" className="flex items-center gap-2 hover:opacity-80 transition">
                               <div className="h-8 w-8 rounded-full bg-gray-200 border border-gray-300 overflow-hidden flex-shrink-0 shadow-sm">
@@ -312,6 +318,9 @@ const Navbar = () => {
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
                 Yönetime İstek / Öneri
               </button>
+
+              {/* Bildirimler (mobil) */}
+              <NotificationBell mobile onClose={() => setIsMobileMenuOpen(false)} />
 
               {user.isAdmin && (
                 <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-red-600 flex items-center gap-3">

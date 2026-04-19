@@ -270,6 +270,7 @@ export interface LogFilterDto {
     endDate?: string;
     page?: number;
     pageSize?: number;
+    isActivityLog?: boolean;
 }
 
 export interface ReportDto {
@@ -343,4 +344,16 @@ export interface SystemSettings {
     maintenanceMessage?: string | null;
     lastUpdatedAt?: string;
     updatedByUserId?: number | null;
+}
+
+// --- BİLDİRİM TİPLERİ ---
+export interface Notification {
+    id: number;
+    userId: number;
+    title: string;
+    message: string;
+    type: string;
+    referenceLink?: string | null;
+    isRead: boolean;
+    createdAt: string;
 }
