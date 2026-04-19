@@ -334,3 +334,13 @@ export interface SystemHealthDto {
     trafficHistory: TrafficDataPoint[];
     turkeyMapData: CityProblemDensityDto[];
 }
+
+// --- SYSTEM SETTINGS TİPLERİ ---
+export interface SystemSettings {
+    id: number;
+    isMaintenanceMode: boolean;
+    disableNewRegistrations: boolean;
+    maintenanceMessage?: string | null;
+    lastUpdatedAt?: string;
+    updatedByUserId?: number | null;
+}

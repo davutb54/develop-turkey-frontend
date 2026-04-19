@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = 'https://localhost:7216/api';
+const BASE_URL = '/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -27,10 +27,21 @@ api.interceptors.response.use(
 
     if (error.response && error.response.status === 401) {
       const requestUrl = error.config?.url || '';
-      // Eğer hata alınan uç nokta '/user/me' ise yönlendirme yapma, AuthContext bunu yakalayacak.
-      // Aksi halde sonsuz logine yönlendirme döngüsüne girer.
       if (!requestUrl.toLowerCase().includes('/user/me')) {
-          window.location.href = '/login';
+        window.location.href = '/login';
+      }
+    }
+
+    if (error.response && error.response.status === 503) {
+      const maintenanceMessage = error.response.data.message || "Sistem bakımdadır.";
+      sessionStorage.setItem('maintenance_message', maintenanceMessage);
+
+      const currentPath = window.location.pathname.toLowerCase();
+      const isProtectedPage = !currentPath.includes('/login') &&
+        !currentPath.includes('/maintenance');
+
+      if (isProtectedPage) {
+        window.location.href = '/maintenance';
       }
     }
 

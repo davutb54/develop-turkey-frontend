@@ -1,5 +1,5 @@
 import api from './api';
-import type { IDataResult, IResult, AdminDashboardDto, DashboardAnalyticsDto, SystemHealthDto, Log, LogFilterDto, ProblemDetailDto, ImpersonateDto } from '../types';
+import type { IDataResult, IResult, AdminDashboardDto, DashboardAnalyticsDto, SystemHealthDto, Log, LogFilterDto, ProblemDetailDto, ImpersonateDto, SystemSettings } from '../types';
 
 export const adminService = {
     getDashboardStats: async () => {
@@ -78,5 +78,12 @@ export const adminService = {
     },
     getAllTopics: async () => {
         return api.get('/admin/getalltopics');
+    },
+    // SİSTEM AYARLARI
+    getSystemSettings: async () => {
+        return api.get<IDataResult<SystemSettings>>('/admin/systemsettings/get');
+    },
+    updateSystemSettings: async (settings: SystemSettings) => {
+        return api.post<IResult>('/admin/systemsettings/update', settings);
     },
 };

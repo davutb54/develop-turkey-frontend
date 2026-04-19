@@ -29,15 +29,31 @@ const Login = () => {
         setError("Giriş başarısız.");
       }
     } catch (err: any) {
-      // Backend'den gelen hata mesajını yakalama kısmı
+      // Backend'den gelen hata mesajını daha detaylı yakalıyoruz
       console.error("Login hatası:", err);
+      
       if (err.response && err.response.data) {
-        // Backend bazen string mesaj, bazen obje dönebilir
-        setError(typeof err.response.data === 'string'
-          ? err.response.data
-          : err.response.data.message || "Kullanıcı adı veya şifre hatalı");
+        const data = err.response.data;
+        const contentType = err.response.headers?.['content-type'] || '';
+        
+        if (typeof data === 'string') {
+          // HTML içeriği gelirse (502, 504 vb.) temiz mesaj göster
+          if (data.includes('<!DOCTYPE') || data.includes('<html') || contentType.includes('text/html')) {
+            setError("Sunucu şu anda yoğun veya ulaşılamıyor. Lütfen birazdan tekrar deneyin.");
+          } else {
+            setError(data);
+          }
+        } else if (Array.isArray(data)) {
+          // Validation errors
+          setError(data.map((e: any) => e.errorMessage || e.message).join(", "));
+        } else {
+          // Message (PascalCase - standard) or message (lowercase - custom)
+          setError(data.Message || data.message || "Giriş başarısız. Lütfen bilgilerinizi kontrol edin.");
+        }
+      } else if (err.request) {
+        setError("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.");
       } else {
-        setError("Sunucuya bağlanılamadı.");
+        setError("Giriş yapılırken teknik bir hata oluştu.");
       }
     }
   };

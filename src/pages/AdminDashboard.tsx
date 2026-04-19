@@ -6,8 +6,8 @@ import { problemService } from '../services/problemService';
 import { solutionService } from '../services/solutionService';
 import { reportService } from '../services/reportService';
 import { institutionService } from '../services/institutionService';
-import { feedbackService } from '../services/feedbackService'; 
-import type { AdminDashboardDto, DashboardAnalyticsDto, SystemHealthDto, ProblemDetailDto, SolutionDetailDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution, Log } from '../types';
+import { feedbackService } from '../services/feedbackService';
+import type { AdminDashboardDto, DashboardAnalyticsDto, SystemHealthDto, ProblemDetailDto, SolutionDetailDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution, Log, SystemSettings } from '../types';
 import Navbar from '../components/Navbar';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -28,7 +28,15 @@ const AdminDashboard = () => {
     const [pendingReports, setPendingReports] = useState<ReportDto[]>([]);
     const [pendingSolutions, setPendingSolutions] = useState<any[]>([]);
     const [institutions, setInstitutions] = useState<Institution[]>([]);
-    
+    const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+        id: 0,
+        isMaintenanceMode: false,
+        disableNewRegistrations: false,
+        maintenanceMessage: '',
+    });
+    const [settingsLoading, setSettingsLoading] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
     // YENİ: FEEDBACK (GERİ BİLDİRİM) STATE'İ
     const [feedbacks, setFeedbacks] = useState<any[]>([]);
     const [feedbackSearch, setFeedbackSearch] = useState('');
@@ -49,18 +57,18 @@ const AdminDashboard = () => {
     const [userTotalCount, setUserTotalCount] = useState(0);
     const [userLoading, setUserLoading] = useState(false);
     const USER_PAGE_SIZE = 10;
-    
+
     // Problem Filtreleri
     const [problemSearch, setProblemSearch] = useState('');
     const [problemStatus, setProblemStatus] = useState('');
     const [problemInst, setProblemInst] = useState('');
     const [problemTopicFilter, setProblemTopicFilter] = useState('');
-    
+
     // Solution Filtreleri
     const [solutionSearch, setSolutionSearch] = useState('');
     const [solutionStatus, setSolutionStatus] = useState('');
     const [solutionInst, setSolutionInst] = useState('');
-    
+
     // Topic (Kategori) Filtresi
     const [topicInstFilter, setTopicInstFilter] = useState('');
     const [overviewInstFilter, setOverviewInstFilter] = useState(''); // Overview sekmesi için kurum bazlı kategori filtresi
@@ -72,9 +80,9 @@ const AdminDashboard = () => {
 
     // --- EKLEME STATE'LERİ ---
     const [newTopicName, setNewTopicName] = useState('');
-    const [newTopicInstId, setNewTopicInstId] = useState(''); 
+    const [newTopicInstId, setNewTopicInstId] = useState('');
     const [newTopicImage, setNewTopicImage] = useState<File | null>(null);
-    
+
     const [instFormData, setInstFormData] = useState<Institution>({
         name: '', domain: '', logoUrl: '', primaryColor: '#2563eb', status: true
     });
@@ -91,7 +99,7 @@ const AdminDashboard = () => {
     const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
 
     // --- SEKME STATE'LERİ ---
-    const [activeTab, setActiveTab] = useState<'command-center' | 'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals' | 'feedbacks'>('command-center');
+    const [activeTab, setActiveTab] = useState<'command-center' | 'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'expert-approvals' | 'feedbacks' | 'settings'>('command-center');
     const [reportTab, setReportTab] = useState<'problems' | 'solutions' | 'users'>('problems');
     const [loading, setLoading] = useState(true);
 
@@ -167,7 +175,7 @@ const AdminDashboard = () => {
         try {
             const isReadParam = feedbackReadFilter === 'read' ? true
                 : feedbackReadFilter === 'unread' ? false
-                : undefined;
+                    : undefined;
 
             const res = await feedbackService.getAllPaged({
                 page,
@@ -191,14 +199,15 @@ const AdminDashboard = () => {
     const loadAllData = async () => {
         setLoading(true);
         try {
-            const [statsRes, analyticsRes, topicsRes, problemsRes, solutionsRes, reportsRes, instRes] = await Promise.all([
+            const [statsRes, analyticsRes, topicsRes, problemsRes, solutionsRes, reportsRes, instRes, settingsRes] = await Promise.all([
                 adminService.getDashboardStats(),
                 adminService.getDashboardAnalytics(),
                 adminService.getAllTopics(),
                 adminService.getAllProblems(),
                 adminService.getAllSolutions(),
                 reportService.getPending(),
-                institutionService.getAll()
+                institutionService.getAll(),
+                adminService.getSystemSettings()
             ]);
 
             if (statsRes.data.success) setStats(statsRes.data.data);
@@ -206,8 +215,9 @@ const AdminDashboard = () => {
             if (topicsRes.data.success) setTopics(topicsRes.data.data);
             if (problemsRes.data.success) setProblems(problemsRes.data.data);
             if (solutionsRes.data.success) setSolutions(solutionsRes.data.data);
-            if (reportsRes.data.success) setPendingReports(reportsRes.data.data);
+            if (reportsRes.data.success) setPendingReports(reportsRes.data.success ? reportsRes.data.data : []);
             if (instRes.data.success) setInstitutions(instRes.data.data);
+            if (settingsRes.data.success) setSystemSettings(settingsRes.data.data);
 
             fetchLogs();
             fetchUsers(1);
@@ -254,7 +264,7 @@ const AdminDashboard = () => {
                 try {
                     const res = await adminService.getSystemHealthStatus();
                     if (res.data.success) setSystemHealth(res.data.data);
-                } catch(err) { console.error("Sağlık verileri okunamadı", err); }
+                } catch (err) { console.error("Sağlık verileri okunamadı", err); }
             };
             fetchHealth();
             interval = setInterval(fetchHealth, 3000); // 3 sn'de bir yenile
@@ -280,7 +290,7 @@ const AdminDashboard = () => {
         const headers = Object.keys(logs[0]).join(',');
         const rows = logs.map(log => Object.values(log).map(val => `"${String(val).replace(/"/g, '""')}"`).join(','));
         const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
-        
+
         const downloadAnchorNode = document.createElement('a');
         downloadAnchorNode.setAttribute("href", encodeURI(csvContent));
         downloadAnchorNode.setAttribute("download", `logs_export_${new Date().getTime()}.csv`);
@@ -297,16 +307,16 @@ const AdminDashboard = () => {
                 return (
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border">
-                            <div><span className="text-xs font-bold text-slate-500 uppercase">Tip</span><br/><span className="text-red-600 font-bold">{obj.ExceptionType}</span></div>
-                            <div><span className="text-xs font-bold text-slate-500 uppercase">IP & User</span><br/>{obj.ClientIp} - ID: {obj.UserId || 'Anonim'}</div>
-                            <div className="col-span-2"><span className="text-xs font-bold text-slate-500 uppercase">Endpoint</span><br/><span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-mono text-sm">{obj.Endpoint}</span></div>
+                            <div><span className="text-xs font-bold text-slate-500 uppercase">Tip</span><br /><span className="text-red-600 font-bold">{obj.ExceptionType}</span></div>
+                            <div><span className="text-xs font-bold text-slate-500 uppercase">IP & User</span><br />{obj.ClientIp} - ID: {obj.UserId || 'Anonim'}</div>
+                            <div className="col-span-2"><span className="text-xs font-bold text-slate-500 uppercase">Endpoint</span><br /><span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-mono text-sm">{obj.Endpoint}</span></div>
                         </div>
 
                         {obj.SuggestedSolutions && obj.SuggestedSolutions.length > 0 && (
                             <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
                                 <h4 className="font-bold text-amber-800 flex items-center gap-2 mb-2"><i className="fas fa-lightbulb"></i> Olası Çözümler</h4>
                                 <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
-                                    {obj.SuggestedSolutions.map((sol:string, i:number) => <li key={i}>{sol}</li>)}
+                                    {obj.SuggestedSolutions.map((sol: string, i: number) => <li key={i}>{sol}</li>)}
                                 </ul>
                             </div>
                         )}
@@ -344,9 +354,9 @@ const AdminDashboard = () => {
         let matchStatus = true;
         if (problemStatus === 'highlighted') matchStatus = p.isHighlighted;
         if (problemStatus === 'resolved') matchStatus = p.isResolved || p.isResolvedByExpert;
-        
+
         let matchInst = problemInst === '' || p.institutionId?.toString() === problemInst;
-        
+
         let matchTopic = true;
         if (problemTopicFilter !== '') {
             matchTopic = p.topics && p.topics.some(t => t.id.toString() === problemTopicFilter);
@@ -386,7 +396,7 @@ const AdminDashboard = () => {
         return { name: t.name, count, institutionId: t.institutionId };
     }).sort((a, b) => b.count - a.count);
 
-    const filteredTopicDistribution = overviewInstFilter 
+    const filteredTopicDistribution = overviewInstFilter
         ? topicDistribution.filter(t => t.institutionId?.toString() === overviewInstFilter)
         : topicDistribution;
 
@@ -404,7 +414,7 @@ const AdminDashboard = () => {
         try {
             await adminService.removeTopicFromProblem(problemId, topicId);
             setProblems(prev => prev.map(p => {
-                if(p.id === problemId && p.topics) {
+                if (p.id === problemId && p.topics) {
                     return { ...p, topics: p.topics.filter(t => t.id !== topicId) };
                 }
                 return p;
@@ -602,10 +612,10 @@ const AdminDashboard = () => {
             const promises = reportIds.map(async (reportId) => {
                 const report = pendingReports.find(r => r.id === reportId);
                 if (!report) return;
-                
+
                 if (report.targetType === 'Problem') await adminService.deleteProblem(report.targetId);
                 if (report.targetType === 'Solution') await solutionService.delete(report.targetId);
-                
+
                 await reportService.resolve(reportId);
             });
             await Promise.all(promises);
@@ -648,6 +658,24 @@ const AdminDashboard = () => {
         catch (err) { alert("Hata"); }
     };
 
+    const handleUpdateSystemSettings = async () => {
+        setSettingsLoading(true);
+        setSaveStatus(null);
+        try {
+            const res = await adminService.updateSystemSettings(systemSettings);
+            if (res.data.success) {
+                setSaveStatus({ type: 'success', message: 'Sistem ayarları başarıyla güncellendi!' });
+                setTimeout(() => setSaveStatus(null), 3000);
+            } else {
+                setSaveStatus({ type: 'error', message: res.data.message || 'Bir hata oluştu.' });
+            }
+        } catch (err: any) {
+            setSaveStatus({ type: 'error', message: err.response?.data?.message || 'İşlem başarısız oldu.' });
+        } finally {
+            setSettingsLoading(false);
+        }
+    };
+
     if (loading) return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
@@ -676,8 +704,8 @@ const AdminDashboard = () => {
                             { id: 'solutions', label: 'Çözümler', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', count: filteredSolutions.length },
                             { id: 'expert-approvals', label: 'Uzman Onayları', icon: 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z', count: pendingSolutions.length, isAlert: true },
                             { id: 'reports', label: 'Şikayet Merkezi', icon: 'M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9', count: pendingReports.length, isAlert: true },
-                            // YENİ EKLENEN GELEN KUTUSU SEKME MENÜSÜ
                             { id: 'feedbacks', label: 'Gelen Kutusu', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', count: feedbackTotalCount, isAlert: feedbackTotalCount > 0 },
+                            { id: 'settings', label: 'Sistem Ayarları', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', count: 0 },
                             { id: 'logs', label: 'Sistem Logları (SIEM)', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 }
                         ].map(item => (
                             <button
@@ -718,7 +746,7 @@ const AdminDashboard = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
                                         <div className="absolute top-0 right-0 p-4 opacity-10">
-                                            <svg className="w-24 h-24 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+                                            <svg className="w-24 h-24 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" /></svg>
                                         </div>
                                         <span className="text-sm font-bold text-slate-400 block mb-2">Canlı Aktif Kullanıcı (5dk)</span>
                                         <div className="flex items-center gap-3">
@@ -726,12 +754,12 @@ const AdminDashboard = () => {
                                             <span className="text-5xl font-black">{systemHealth.activeUsers}</span>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
                                         <span className="text-sm font-bold text-slate-400 block mb-2">Toplam İstek & Hata Oranı</span>
                                         <span className="text-5xl font-black">{systemHealth.totalRequests}</span>
                                         <div className="mt-2 text-sm text-red-400 font-bold">
-                                            {systemHealth.totalErrors} Hata ({systemHealth.totalRequests > 0 ? ((systemHealth.totalErrors / systemHealth.totalRequests)*100).toFixed(2) : 0}%)
+                                            {systemHealth.totalErrors} Hata ({systemHealth.totalRequests > 0 ? ((systemHealth.totalErrors / systemHealth.totalRequests) * 100).toFixed(2) : 0}%)
                                         </div>
                                     </div>
 
@@ -766,8 +794,8 @@ const AdminDashboard = () => {
                                             </div>
                                         )}
                                         <div className="w-full h-full flex items-center justify-center mt-6 relative" onMouseLeave={() => setMapHoveredCity(null)}>
-                                            <TurkeyMap 
-                                                hoverable={true} 
+                                            <TurkeyMap
+                                                hoverable={true}
                                                 customStyle={{ idleColor: '#1e293b', hoverColor: '#4f46e5' }}
                                                 onClick={(city: any) => setMapSelectedCity(mapSelectedCity?.plateNumber === city.plateNumber ? null : city)}
                                                 onHover={(city: any) => setMapHoveredCity(city)}
@@ -775,7 +803,7 @@ const AdminDashboard = () => {
                                                     const density = systemHealth.turkeyMapData.find(c => c.cityCode == cityData.plateNumber);
                                                     const hasProblems = density ? density.problemCount > 0 : false;
                                                     const isSelected = mapSelectedCity?.plateNumber === cityData.plateNumber;
-                                                    const color = isSelected ? '#4f46e5' : (hasProblems ? '#ef4444' : '#1e293b'); 
+                                                    const color = isSelected ? '#4f46e5' : (hasProblems ? '#ef4444' : '#1e293b');
                                                     return React.cloneElement(cityComponent, { style: { fill: color, stroke: '#334155', outline: 'none', cursor: 'pointer', transition: 'fill 0.3s' } });
                                                 }}
                                             />
@@ -789,18 +817,129 @@ const AdminDashboard = () => {
                                                 <AreaChart data={systemHealth.trafficHistory}>
                                                     <defs>
                                                         <linearGradient id="colorTraffic" x1="0" y1="0" x2="0" y2="1">
-                                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
+                                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                                                         </linearGradient>
                                                     </defs>
                                                     <XAxis dataKey="timestamp" tick={false} axisLine={false} />
-                                                    <YAxis tick={{fill: '#475569'}} axisLine={false} tickLine={false} />
-                                                    <Tooltip contentStyle={{backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', color: '#fff'}} />
+                                                    <YAxis tick={{ fill: '#475569' }} axisLine={false} tickLine={false} />
+                                                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', color: '#fff' }} />
                                                     <Area type="monotone" dataKey="totalRequests" stroke="#6366f1" fillOpacity={1} fill="url(#colorTraffic)" />
                                                 </AreaChart>
                                             </ResponsiveContainer>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* YENİ: SİSTEM AYARLARI SEKMESİ */}
+                        {activeTab === 'settings' && (
+                            <div className="animate-fade-in space-y-8 max-w-4xl">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-1">
+                                        <h3 className="text-2xl font-black text-slate-900 tracking-tight">Sistem Parametreleri</h3>
+                                        <p className="text-slate-500 font-medium">Platformun çalışma modlarını ve üyelik politikalarını buradan yönetin.</p>
+                                    </div>
+                                    <div className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-2xl text-xs font-bold border border-indigo-100 flex items-center gap-2">
+                                        <i className="fas fa-shield-alt"></i> Güvenli Alan
+                                    </div>
+                                </div>
+
+                                {saveStatus && (
+                                    <div className={`p-4 rounded-2xl flex items-center gap-3 animate-bounce ${saveStatus.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-red-50 text-red-800 border border-red-100'}`}>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${saveStatus.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white`}>
+                                            {saveStatus.type === 'success' ? '✓' : '!'}
+                                        </div>
+                                        <span className="font-bold">{saveStatus.message}</span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {/* BAKIM MODU KARTI */}
+                                    <div className="bg-white border-2 border-slate-50 p-8 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all duration-500 group">
+                                        <div className="flex items-start justify-between mb-6">
+                                            <div className="p-4 bg-amber-50 rounded-3xl text-amber-600 group-hover:scale-110 transition-transform">
+                                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={systemSettings.isMaintenanceMode}
+                                                    onChange={(e) => setSystemSettings({ ...systemSettings, isMaintenanceMode: e.target.checked })}
+                                                    className="sr-only peer" 
+                                                />
+                                                <div className="relative w-14 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-500"></div>
+                                            </label>
+                                        </div>
+                                        <h4 className="text-xl font-black text-slate-900 mb-2">Bakım Modu (Under Construction)</h4>
+                                        <p className="text-slate-500 text-sm font-medium leading-relaxed">Aktif edildiğinde sadece yöneticiler işlem yapabilir, kullanıcılar bilgilendirme sayfasına yönlendirilir.</p>
+                                    </div>
+
+                                    {/* KAYIT KONTROL KARTI */}
+                                    <div className="bg-white border-2 border-slate-50 p-8 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all duration-500 group">
+                                        <div className="flex items-start justify-between mb-6">
+                                            <div className="p-4 bg-indigo-50 rounded-3xl text-indigo-600 group-hover:scale-110 transition-transform">
+                                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={systemSettings.disableNewRegistrations}
+                                                    onChange={(e) => setSystemSettings({ ...systemSettings, disableNewRegistrations: e.target.checked })}
+                                                    className="sr-only peer" 
+                                                />
+                                                <div className="relative w-14 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
+                                            </label>
+                                        </div>
+                                        <h4 className="text-xl font-black text-slate-900 mb-2">Yeni Üye Alımını Durdur</h4>
+                                        <p className="text-slate-500 text-sm font-medium leading-relaxed">Aktif olduğunda kayıt formu devre dışı kalır ve kimse yeni hesap oluşturamaz.</p>
+                                    </div>
+                                </div>
+
+                                {/* MESAJ ALANI (Conditional) */}
+                                {systemSettings.isMaintenanceMode && (
+                                    <div className="bg-slate-900 p-10 rounded-[3rem] text-white shadow-2xl relative overflow-hidden transition-all duration-500 animate-slide-up">
+                                        <div className="absolute top-0 right-0 p-8 opacity-10">
+                                            <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" /></svg>
+                                        </div>
+                                        <div className="relative z-10 space-y-4">
+                                            <h4 className="text-lg font-bold text-amber-400">Bakım Modu Mesajı</h4>
+                                            <p className="text-slate-400 text-sm">Kullanıcıların yönlendirildikleri sayfada görecekleri mesaj:</p>
+                                            <textarea 
+                                                value={systemSettings.maintenanceMessage || ''}
+                                                onChange={(e) => setSystemSettings({ ...systemSettings, maintenanceMessage: e.target.value })}
+                                                placeholder="Sistem şu anda bakım aşamasındadır..."
+                                                className="w-full bg-slate-800 border border-slate-700 rounded-2xl p-5 text-lg font-medium outline-none focus:ring-2 focus:ring-amber-500 transition-all min-h-[120px]"
+                                            ></textarea>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex items-center justify-end gap-4">
+                                    <button 
+                                        onClick={loadAllData}
+                                        className="px-8 py-4 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-all active:scale-95"
+                                    >
+                                        Değişiklikleri İptal Et
+                                    </button>
+                                    <button 
+                                        onClick={handleUpdateSystemSettings}
+                                        disabled={settingsLoading}
+                                        className={`px-12 py-4 rounded-2xl font-black text-white shadow-2xl transition-all active:scale-95 flex items-center gap-3 ${settingsLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'}`}
+                                    >
+                                        {settingsLoading ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                                                Güncelleniyor...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                Parametreleri Kaydet
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -886,10 +1025,10 @@ const AdminDashboard = () => {
                                             <ResponsiveContainer width="100%" height="85%">
                                                 <LineChart data={analytics.userRegistrationsLast30Days}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                                                    <XAxis dataKey="date" tick={{fontSize: 12, fill: '#64748b'}} tickLine={false} axisLine={false} interval={6} />
-                                                    <YAxis tick={{fontSize: 12, fill: '#64748b'}} tickLine={false} axisLine={false} />
+                                                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} axisLine={false} interval={6} />
+                                                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} axisLine={false} />
                                                     <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                                    <Line type="monotone" dataKey="count" name="Kayıt Sayısı" stroke="#4f46e5" strokeWidth={3} dot={{r: 0}} activeDot={{r: 6, fill: '#4f46e5', stroke: '#fff', strokeWidth: 2}} />
+                                                    <Line type="monotone" dataKey="count" name="Kayıt Sayısı" stroke="#4f46e5" strokeWidth={3} dot={{ r: 0 }} activeDot={{ r: 6, fill: '#4f46e5', stroke: '#fff', strokeWidth: 2 }} />
                                                 </LineChart>
                                             </ResponsiveContainer>
                                         </div>
@@ -1108,45 +1247,46 @@ const AdminDashboard = () => {
                                     {filteredTopics.map(topic => {
                                         const topicInst = institutions.find(i => i.id === topic.institutionId);
                                         return (
-                                        <div key={topic.id} className="bg-white border border-slate-200 shadow-sm rounded-2xl hover:shadow-md hover:border-indigo-100 transition overflow-hidden flex flex-col relative">
-                                            <div className="p-5 flex items-center gap-4 flex-1 mt-2">
-                                                <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: topicInst?.primaryColor || '#4f46e5' }}></div>
-                                                <span className="absolute top-2 right-2 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{topicInst?.name || 'Genel Ağ'}</span>
-                                                
-                                                {topic.imageName && topic.imageName !== 'default.png' ? (
-                                                    <img src={`/uploads/topics/${topic.imageName}`} alt={topic.name} className="w-14 h-14 rounded-xl object-cover border border-slate-200 shadow-sm shrink-0 bg-slate-50" />
-                                                ) : (
-                                                    <div className="w-14 h-14 rounded-xl bg-indigo-50 text-indigo-300 flex items-center justify-center font-black text-xl border border-indigo-100 shrink-0">
-                                                        {topic.name.charAt(0)}
+                                            <div key={topic.id} className="bg-white border border-slate-200 shadow-sm rounded-2xl hover:shadow-md hover:border-indigo-100 transition overflow-hidden flex flex-col relative">
+                                                <div className="p-5 flex items-center gap-4 flex-1 mt-2">
+                                                    <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: topicInst?.primaryColor || '#4f46e5' }}></div>
+                                                    <span className="absolute top-2 right-2 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{topicInst?.name || 'Genel Ağ'}</span>
+
+                                                    {topic.imageName && topic.imageName !== 'default.png' ? (
+                                                        <img src={`/uploads/topics/${topic.imageName}`} alt={topic.name} className="w-14 h-14 rounded-xl object-cover border border-slate-200 shadow-sm shrink-0 bg-slate-50" />
+                                                    ) : (
+                                                        <div className="w-14 h-14 rounded-xl bg-indigo-50 text-indigo-300 flex items-center justify-center font-black text-xl border border-indigo-100 shrink-0">
+                                                            {topic.name.charAt(0)}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex flex-col items-start gap-1.5">
+                                                        <span className="font-bold text-slate-800 text-base leading-tight">{topic.name}</span>
+                                                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded border ${topic.status ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                                                            {topic.status ? 'Aktif' : 'Pasif'}
+                                                        </span>
                                                     </div>
-                                                )}
-                                                <div className="flex flex-col items-start gap-1.5">
-                                                    <span className="font-bold text-slate-800 text-base leading-tight">{topic.name}</span>
-                                                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded border ${topic.status ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                                                        {topic.status ? 'Aktif' : 'Pasif'}
-                                                    </span>
+                                                </div>
+
+                                                <div className="bg-slate-50 border-t border-slate-100 p-3 flex flex-wrap justify-between gap-2">
+                                                    <button onClick={() => handleToggleTopicStatus(topic)} className={`flex-1 min-w-[70px] px-2 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition border shadow-sm ${topic.status ? 'bg-white text-rose-500 border-rose-200 hover:bg-rose-50' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
+                                                        {topic.status ? 'Gizle' : 'Aç'}
+                                                    </button>
+                                                    <button onClick={() => {
+                                                        setEditingTopic(topic);
+                                                        setEditTopicName(topic.name);
+                                                        setEditTopicInstId(topic.institutionId?.toString() || '1');
+                                                        setEditTopicImage(null);
+                                                        setEditTopicStatus(topic.status);
+                                                    }} className="flex-1 min-w-[70px] px-2 py-2 bg-white text-blue-600 border border-blue-200 font-bold hover:bg-blue-50 text-[10px] uppercase tracking-wider rounded-lg transition shadow-sm">
+                                                        Düzenle
+                                                    </button>
+                                                    <button onClick={() => handleDeleteTopic(topic)} className="flex-1 min-w-[70px] px-2 py-2 bg-white text-red-500 border border-red-200 font-bold hover:bg-red-50 text-[10px] uppercase tracking-wider rounded-lg transition shadow-sm">
+                                                        Sil
+                                                    </button>
                                                 </div>
                                             </div>
-
-                                            <div className="bg-slate-50 border-t border-slate-100 p-3 flex flex-wrap justify-between gap-2">
-                                                <button onClick={() => handleToggleTopicStatus(topic)} className={`flex-1 min-w-[70px] px-2 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition border shadow-sm ${topic.status ? 'bg-white text-rose-500 border-rose-200 hover:bg-rose-50' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
-                                                    {topic.status ? 'Gizle' : 'Aç'}
-                                                </button>
-                                                <button onClick={() => {
-                                                    setEditingTopic(topic);
-                                                    setEditTopicName(topic.name);
-                                                    setEditTopicInstId(topic.institutionId?.toString() || '1');
-                                                    setEditTopicImage(null);
-                                                    setEditTopicStatus(topic.status);
-                                                }} className="flex-1 min-w-[70px] px-2 py-2 bg-white text-blue-600 border border-blue-200 font-bold hover:bg-blue-50 text-[10px] uppercase tracking-wider rounded-lg transition shadow-sm">
-                                                    Düzenle
-                                                </button>
-                                                <button onClick={() => handleDeleteTopic(topic)} className="flex-1 min-w-[70px] px-2 py-2 bg-white text-red-500 border border-red-200 font-bold hover:bg-red-50 text-[10px] uppercase tracking-wider rounded-lg transition shadow-sm">
-                                                    Sil
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )})}
+                                        )
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -1253,7 +1393,7 @@ const AdminDashboard = () => {
                             <div className="animate-fade-in flex flex-col h-full">
                                 <div className="flex flex-wrap gap-4 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                     <input type="text" placeholder="Sorun başlığı veya yazar ara..." className="flex-1 min-w-[200px] border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition" value={problemSearch} onChange={e => { setProblemSearch(e.target.value); setProblemPage(1); }} />
-                                    
+
                                     <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={problemInst} onChange={e => { setProblemInst(e.target.value); setProblemPage(1); }}>
                                         <option value="">Tüm Kurumlar</option>
                                         {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
@@ -1298,7 +1438,7 @@ const AdminDashboard = () => {
                                                                 prob.topics.map(t => (
                                                                     <div key={t.id} className="flex items-center bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md shadow-sm overflow-hidden group">
                                                                         <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">{t.name}</span>
-                                                                        <button 
+                                                                        <button
                                                                             onClick={() => handleRemoveTopicFromProblem(prob.id, t.id, t.name)}
                                                                             title="Bu etiketi sorundan kaldır"
                                                                             className="px-1.5 bg-indigo-100 hover:bg-red-500 hover:text-white text-indigo-400 transition-colors h-full flex items-center justify-center opacity-0 group-hover:opacity-100"
@@ -1479,15 +1619,15 @@ const AdminDashboard = () => {
                                             </div>
                                             <div className="flex gap-2">
                                                 <button
-                                                   onClick={() => handleBulkResolve(selectedReportIds)}
-                                                   className="px-4 py-1.5 bg-white text-indigo-700 font-bold rounded-lg text-sm hover:bg-slate-100 transition shadow-sm">
-                                                   Toplu Çöz (Kapat)
+                                                    onClick={() => handleBulkResolve(selectedReportIds)}
+                                                    className="px-4 py-1.5 bg-white text-indigo-700 font-bold rounded-lg text-sm hover:bg-slate-100 transition shadow-sm">
+                                                    Toplu Çöz (Kapat)
                                                 </button>
                                                 {reportTab !== 'users' && (
                                                     <button
-                                                       onClick={() => handleBulkDeleteContent(selectedReportIds)}
-                                                       className="px-4 py-1.5 bg-red-500 text-white font-bold rounded-lg text-sm border border-red-400 hover:bg-red-400 transition shadow-sm">
-                                                       İçerikleri Sil & Kapat
+                                                        onClick={() => handleBulkDeleteContent(selectedReportIds)}
+                                                        className="px-4 py-1.5 bg-red-500 text-white font-bold rounded-lg text-sm border border-red-400 hover:bg-red-400 transition shadow-sm">
+                                                        İçerikleri Sil & Kapat
                                                     </button>
                                                 )}
                                             </div>
@@ -1500,9 +1640,9 @@ const AdminDashboard = () => {
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-red-400 to-rose-600"></div>
                                                 <div className="mb-6 flex items-start gap-4">
                                                     <div className="pt-2">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedReportIds.includes(report.id)} 
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedReportIds.includes(report.id)}
                                                             onChange={() => toggleReportSelection(report.id)}
                                                             className="w-5 h-5 rounded border-red-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
                                                         />
@@ -1530,9 +1670,9 @@ const AdminDashboard = () => {
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-orange-400 to-amber-500"></div>
                                                 <div className="mb-6 flex items-start gap-4">
                                                     <div className="pt-2">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedReportIds.includes(report.id)} 
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedReportIds.includes(report.id)}
                                                             onChange={() => toggleReportSelection(report.id)}
                                                             className="w-5 h-5 rounded border-orange-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
                                                         />
@@ -1558,9 +1698,9 @@ const AdminDashboard = () => {
                                                 <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-purple-400 to-indigo-600"></div>
                                                 <div className="mb-6 flex items-start gap-4">
                                                     <div className="pt-2">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedReportIds.includes(report.id)} 
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedReportIds.includes(report.id)}
                                                             onChange={() => toggleReportSelection(report.id)}
                                                             className="w-5 h-5 rounded border-purple-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
                                                         />
@@ -1631,7 +1771,7 @@ const AdminDashboard = () => {
                                             feedbacks.map(fb => (
                                                 <div key={fb.id} className={`p-6 rounded-3xl border transition shadow-sm relative overflow-hidden ${fb.isRead ? 'bg-white border-slate-200 opacity-80 hover:opacity-100' : 'bg-amber-50/40 border-amber-200'}`}>
                                                     {!fb.isRead && <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>}
-                                                    
+
                                                     <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
                                                         <div>
                                                             <h4 className="text-lg font-black text-slate-800">{fb.title}</h4>
@@ -1644,7 +1784,7 @@ const AdminDashboard = () => {
                                                             </div>
                                                         </div>
                                                         {!fb.isRead && (
-                                                            <button 
+                                                            <button
                                                                 onClick={async () => {
                                                                     try {
                                                                         await feedbackService.markAsRead(fb.id);
@@ -1926,7 +2066,7 @@ const AdminDashboard = () => {
                         </div>
                         <form onSubmit={async (e) => {
                             e.preventDefault();
-                            if(!impersonatePassword) return;
+                            if (!impersonatePassword) return;
                             try {
                                 const response = await adminService.impersonateUser({ targetUserId: impersonatingUser, adminPassword: impersonatePassword });
                                 if (response.data.success) {

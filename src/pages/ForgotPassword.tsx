@@ -14,8 +14,22 @@ const ForgotPassword = () => {
             await authService.forgotPassword(email);
             // Kod gönderildiyse Reset sayfasına yönlendir
             navigate('/reset-password', { state: { email } });
-        } catch (err) {
-            alert("Mail gönderilemedi, e-posta adresinizi kontrol edin.");
+        } catch (err: any) {
+            console.error("Mail gönderme hatası:", err);
+            const data = err.response?.data;
+            const contentType = err.response?.headers?.['content-type'] || '';
+            
+            let errorMessage = "Mail gönderilemedi. Lütfen e-posta adresinizi kontrol edin.";
+            
+            if (data) {
+                if (typeof data === 'string' && (data.includes('<!DOCTYPE') || data.includes('<html') || contentType.includes('text/html'))) {
+                    errorMessage = "Sunucu şu anda yanıt vermiyor. Lütfen daha sonra tekrar deneyin.";
+                } else {
+                    errorMessage = data.Message || data.message || (typeof data === 'string' ? data : errorMessage);
+                }
+            }
+            
+            alert(errorMessage);
         } finally {
             setLoading(false);
         }

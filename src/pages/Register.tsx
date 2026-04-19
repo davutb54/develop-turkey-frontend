@@ -94,17 +94,30 @@ const Register = () => {
         setError("Kayıt işlemi başarısız oldu.");
       }
     } catch (err: any) {
-      let errorMessage = "Sunucu hatası.";
+      console.error("Kayıt hatası:", err);
+      
       if (err.response && err.response.data) {
-        if (Array.isArray(err.response.data)) {
-          errorMessage = err.response.data.map((e: any) => e.errorMessage).join(", ");
+        const data = err.response.data;
+        const contentType = err.response.headers?.['content-type'] || '';
+        
+        if (typeof data === 'string') {
+          if (data.includes('<!DOCTYPE') || data.includes('<html') || contentType.includes('text/html')) {
+            setError("Sunucuya şu anda ulaşılamıyor. Lütfen daha sonra tekrar deneyin.");
+          } else {
+            setError(data);
+          }
+        } else if (Array.isArray(data)) {
+          // Validation errors from FluentValidation
+          setError(data.map((e: any) => e.errorMessage || e.message).join(", "));
         } else {
-          errorMessage = typeof err.response.data === 'string'
-            ? err.response.data
-            : err.response.data.message || "Bir hata oluştu";
+          // Message (PascalCase) or message (lowercase)
+          setError(data.Message || data.message || "Kayıt işlemi sırasında bir hata oluştu.");
         }
+      } else if (err.request) {
+        setError("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.");
+      } else {
+        setError("Kayıt yapılırken bir teknik hata oluştu.");
       }
-      setError(errorMessage);
     } finally {
       setLoading(false);
     }

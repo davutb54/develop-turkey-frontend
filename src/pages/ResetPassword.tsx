@@ -18,7 +18,21 @@ const ResetPassword = () => {
             alert("Şifreniz başarıyla sıfırlandı! Lütfen yeni şifrenizle giriş yapın.");
             navigate('/login');
         } catch (err: any) {
-            alert(err.response?.data?.message || "Şifre sıfırlanamadı.");
+            console.error("Şifre sıfırlama hatası:", err);
+            const data = err.response?.data;
+            const contentType = err.response?.headers?.['content-type'] || '';
+            
+            let errorMessage = "Şifre sıfırlanamadı.";
+            
+            if (data) {
+                if (typeof data === 'string' && (data.includes('<!DOCTYPE') || data.includes('<html') || contentType.includes('text/html'))) {
+                    errorMessage = "Sunucu şu anda yanıt vermiyor. Lütfen daha sonra tekrar deneyin.";
+                } else {
+                    errorMessage = data.Message || data.message || (typeof data === 'string' ? data : errorMessage);
+                }
+            }
+            
+            alert(errorMessage);
         } finally {
             setLoading(false);
         }
