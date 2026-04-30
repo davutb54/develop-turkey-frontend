@@ -86,6 +86,10 @@ export const adminService = {
     updateSystemSettings: async (settings: SystemSettings) => {
         return api.post<IResult>('/admin/systemsettings/update', settings);
     },
+    // PUBLIC FOOTER BİLGİLERİ (token gerekmez)
+    getPublicSiteInfo: async () => {
+        return api.get('/admin/systemsettings/public');
+    },
     // KULLANICI UYARI YÖNETİMİ
     issueWarning: async (data: { userId: number; title: string; message: string; severity: string }) => {
         return api.post<IResult>('/admin/issue-warning', data);

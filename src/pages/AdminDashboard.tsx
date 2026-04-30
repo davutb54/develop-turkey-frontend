@@ -33,6 +33,16 @@ const AdminDashboard = () => {
         isMaintenanceMode: false,
         disableNewRegistrations: false,
         maintenanceMessage: '',
+        siteName: '',
+        siteDescription: '',
+        organizationName: '',
+        contactFullName: '',
+        contactAddress: '',
+        contactEmail: '',
+        contactPhone: '',
+        socialTwitter: '',
+        socialInstagram: '',
+        socialLinkedIn: '',
     });
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -1069,6 +1079,150 @@ const AdminDashboard = () => {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* İLETİŞİM VE SİTE BİLGİLERİ BÖLÜMÜ */}
+                                <div className="bg-slate-900 p-10 rounded-[3rem] text-white shadow-2xl relative overflow-hidden transition-all duration-500">
+                                    <div className="absolute top-0 right-0 p-8 opacity-5">
+                                        <svg className="w-40 h-40" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" /></svg>
+                                    </div>
+                                    <div className="relative z-10 space-y-8">
+                                        <div>
+                                            <h4 className="text-lg font-bold text-indigo-400 mb-1">İletişim ve Site Bilgileri</h4>
+                                            <p className="text-slate-400 text-sm">Footer ve iletişim sayfasında görüntülenecek bilgiler.</p>
+                                        </div>
+
+                                        {/* Site Kimliği */}
+                                        <div className="space-y-4">
+                                            <h5 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">🌐 Site Kimliği</h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-medium text-slate-400">Site Adı</label>
+                                                    <input
+                                                        id="settings-site-name"
+                                                        type="text"
+                                                        value={systemSettings.siteName || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, siteName: e.target.value })}
+                                                        placeholder="Develop Turkey"
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-medium text-slate-400">Kurum Adı (Footer Yazısı)</label>
+                                                    <input
+                                                        id="settings-organization-name"
+                                                        type="text"
+                                                        value={systemSettings.organizationName || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, organizationName: e.target.value })}
+                                                        placeholder="Vatandaşlarımızın sorunlarını..."
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2 md:col-span-2">
+                                                    <label className="block text-sm font-medium text-slate-400">Site Açıklaması (Slogan)</label>
+                                                    <textarea
+                                                        id="settings-site-description"
+                                                        value={systemSettings.siteDescription || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, siteDescription: e.target.value })}
+                                                        placeholder="Kısa site açıklaması"
+                                                        rows={2}
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500 resize-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* İletişim Bilgileri */}
+                                        <div className="space-y-4">
+                                            <h5 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">📬 İletişim Bilgileri</h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-medium text-slate-400">Ad Soyad</label>
+                                                    <input
+                                                        id="settings-contact-fullname"
+                                                        type="text"
+                                                        value={systemSettings.contactFullName || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, contactFullName: e.target.value })}
+                                                        placeholder="Ad Soyad"
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-medium text-slate-400">E-posta</label>
+                                                    <input
+                                                        id="settings-contact-email"
+                                                        type="email"
+                                                        value={systemSettings.contactEmail || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, contactEmail: e.target.value })}
+                                                        placeholder="iletisim@site.com"
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-medium text-slate-400">Telefon</label>
+                                                    <input
+                                                        id="settings-contact-phone"
+                                                        type="tel"
+                                                        value={systemSettings.contactPhone || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, contactPhone: e.target.value })}
+                                                        placeholder="+90 5XX XXX XX XX"
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2 md:col-span-2">
+                                                    <label className="block text-sm font-medium text-slate-400">Açık Adres</label>
+                                                    <textarea
+                                                        id="settings-contact-address"
+                                                        value={systemSettings.contactAddress || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, contactAddress: e.target.value })}
+                                                        placeholder="Açık adres"
+                                                        rows={2}
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500 resize-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Sosyal Medya */}
+                                        <div className="space-y-4">
+                                            <h5 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">📲 Sosyal Medya</h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-medium text-slate-400">Twitter / X</label>
+                                                    <input
+                                                        id="settings-social-twitter"
+                                                        type="url"
+                                                        value={systemSettings.socialTwitter || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, socialTwitter: e.target.value })}
+                                                        placeholder="https://twitter.com/..."
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-medium text-slate-400">Instagram</label>
+                                                    <input
+                                                        id="settings-social-instagram"
+                                                        type="url"
+                                                        value={systemSettings.socialInstagram || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, socialInstagram: e.target.value })}
+                                                        placeholder="https://instagram.com/..."
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-medium text-slate-400">LinkedIn</label>
+                                                    <input
+                                                        id="settings-social-linkedin"
+                                                        type="url"
+                                                        value={systemSettings.socialLinkedIn || ''}
+                                                        onChange={(e) => setSystemSettings({ ...systemSettings, socialLinkedIn: e.target.value })}
+                                                        placeholder="https://linkedin.com/..."
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-white placeholder-slate-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
 
                                 <div className="flex items-center justify-end gap-4">
                                     <button 

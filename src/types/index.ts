@@ -344,6 +344,22 @@ export interface SystemSettings {
     maintenanceMessage?: string | null;
     lastUpdatedAt?: string;
     updatedByUserId?: number | null;
+
+    // Site / Kurum Kimliği
+    siteName?: string | null;
+    siteDescription?: string | null;
+    organizationName?: string | null;
+
+    // İletişim Bilgileri
+    contactFullName?: string | null;
+    contactAddress?: string | null;
+    contactEmail?: string | null;
+    contactPhone?: string | null;
+
+    // Sosyal Medya
+    socialTwitter?: string | null;
+    socialInstagram?: string | null;
+    socialLinkedIn?: string | null;
 }
 
 // --- BİLDİRİM TİPLERİ ---
