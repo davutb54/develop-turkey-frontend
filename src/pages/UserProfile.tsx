@@ -6,6 +6,7 @@ import { solutionService } from '../services/solutionService';
 import type { UserPublicProfileDto, ProblemDetailDto, SolutionDetailDto } from '../types';
 import Navbar from '../components/Navbar';
 import ReportModal from '../components/ReportModal';
+import { getProfileImageUrl } from '../utils/imageUtils';
 
 const UserProfile = () => {
     const { id } = useParams<{ id: string }>(); // URL'den tıklanan kişinin ID'sini alıyoruz
@@ -68,7 +69,7 @@ const UserProfile = () => {
                             <div className="h-32 w-32 rounded-full border-4 border-white overflow-hidden bg-gray-200 shadow-lg">
                                 {user.profileImageUrl ? (
                                     <img
-                                        src={`/uploads/profiles/${user.profileImageUrl}`}
+                                        src={getProfileImageUrl(user.profileImageUrl)}
                                         alt="Profil"
                                         className="h-full w-full object-cover"
                                     />

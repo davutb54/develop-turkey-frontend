@@ -10,6 +10,7 @@ import UserProfile from './pages/UserProfile';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import CompleteProfile from './pages/CompleteProfile';
 import AdminDashboard from './pages/AdminDashboard';
 import Maintenance from './pages/Maintenance';
 import NotFound from './pages/NotFound';
@@ -18,7 +19,7 @@ import Footer from './components/Footer';
 import { useAuth } from './context/AuthContext';
 
 function App() {
-  const { userId, isAdmin, isMaintenance } = useAuth();
+  const { userId, isAdmin, isMaintenance, isProfileIncomplete } = useAuth();
   const location = useLocation();
 
   // Sayfa her değiştiğinde en tepeye kaydır (Scroll to top)
@@ -43,6 +44,14 @@ function App() {
     return <Navigate to="/maintenance" replace />;
   }
 
+  // PROFİL TAMAMLAMA KONTROLÜ
+  if (userId !== null && userId !== false && isProfileIncomplete && currentPath !== '/complete-profile') {
+    return <Navigate to="/complete-profile" replace />;
+  }
+  if (userId !== null && userId !== false && !isProfileIncomplete && currentPath === '/complete-profile') {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <Routes>
@@ -56,6 +65,7 @@ function App() {
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/complete-profile" element={userId ? <CompleteProfile /> : <Navigate to="/login" replace />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/maintenance" element={<Maintenance />} />

@@ -6,6 +6,7 @@ import { feedbackService } from '../services/feedbackService';
 import type { UserDetailDto, Institution } from '../types';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
+import { getProfileImageUrl } from '../utils/imageUtils';
 
 const Navbar = () => {
   const { userId } = useAuth();
@@ -196,7 +197,7 @@ const Navbar = () => {
                             <Link to="/profile" className="flex items-center gap-2 hover:opacity-80 transition">
                               <div className="h-8 w-8 rounded-full bg-gray-200 border border-gray-300 overflow-hidden flex-shrink-0 shadow-sm">
                                 {user.profileImageUrl ? (
-                                  <img src={`/uploads/profiles/${user.profileImageUrl}`} alt="Profil" className="h-full w-full object-cover" />
+                                  <img src={getProfileImageUrl(user.profileImageUrl)} alt="Profil" className="h-full w-full object-cover" />
                                 ) : (
                                   <div className="h-full w-full flex items-center justify-center text-xs font-bold text-gray-500 bg-gray-100">
                                     {user.name[0]}{user.surname[0]}
@@ -289,7 +290,7 @@ const Navbar = () => {
             <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-gray-200 border border-gray-300 overflow-hidden flex-shrink-0">
                 {user.profileImageUrl ? (
-                  <img src={`/uploads/profiles/${user.profileImageUrl}`} alt="Profil" className="h-full w-full object-cover" />
+                  <img src={getProfileImageUrl(user.profileImageUrl)} alt="Profil" className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-sm font-bold text-gray-500 bg-gray-100">
                     {user.name[0]}{user.surname[0]}

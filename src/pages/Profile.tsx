@@ -10,6 +10,7 @@ import { constantService } from '../services/constantService';
 import SearchableSelect from '../components/SearchableSelect';
 import { topicService } from '../services/topicService';
 import { useAuth } from '../context/AuthContext';
+import { getProfileImageUrl } from '../utils/imageUtils';
 
 const Profile = () => {
     const { userId } = useAuth();
@@ -265,7 +266,7 @@ const Profile = () => {
                             <div className="h-32 w-32 rounded-full border-4 border-white overflow-hidden bg-gray-200 shadow-lg relative">
                                 {user?.profileImageUrl ? (
                                     <img
-                                        src={`/uploads/profiles/${user.profileImageUrl}`}
+                                        src={getProfileImageUrl(user.profileImageUrl)}
                                         alt="Profil"
                                         className="h-full w-full object-cover"
                                     />

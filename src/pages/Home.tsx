@@ -9,6 +9,7 @@ import { constantService } from '../services/constantService';
 import type { ProblemDetailDto, Topic, City } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
+import { getProfileImageUrl } from '../utils/imageUtils';
 
 const Home = () => {
     // --- VERİ STATE'LERİ (SAYFALAMA İÇİN) ---
@@ -326,7 +327,7 @@ const Home = () => {
                                             <Link to={`/user/${prob.senderId}`} className="h-14 w-14 rounded-full overflow-hidden bg-gradient-to-tr from-indigo-100 to-blue-50 flex items-center justify-center font-black text-indigo-700 text-xl shadow-inner border border-indigo-200/50 shrink-0 ring-2 ring-white hover:ring-indigo-300 transition">
                                                 {prob.senderImageUrl ? (
                                                     <img
-                                                        src={`/uploads/profiles/${prob.senderImageUrl}`}
+                                                        src={getProfileImageUrl(prob.senderImageUrl)}
                                                         alt={prob.senderUsername}
                                                         className="w-full h-full object-cover"
                                                         onError={(e) => { e.currentTarget.src = 'https://ui-avatars.com/api/?name=' + prob.senderUsername + '&background=random' }}

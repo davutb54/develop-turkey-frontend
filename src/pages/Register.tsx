@@ -6,6 +6,8 @@ import type { City, Gender } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { Turnstile } from '@marsidev/react-turnstile';
+import { GoogleLogin } from '@react-oauth/google';
+import toast from 'react-hot-toast';
 
 const Register = () => {
   const navigate = useNavigate();
@@ -123,6 +125,19 @@ const Register = () => {
     }
   };
 
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    try {
+      const res = await userService.googleLogin(credentialResponse.credential);
+      if (res.data.success) {
+        await checkAuth();
+        toast.success('Giriş başarılı!');
+        navigate('/');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data || "Google ile giriş yapılırken hata oluştu.");
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
@@ -133,7 +148,26 @@ const Register = () => {
           <p className="mt-2 text-center text-sm text-gray-500 italic font-medium">Türkiye'yi Geliştirme Platformu</p>
         </div>
 
-        <form className="mt-8 space-y-4" onSubmit={handleRegister}>
+        <div className="mt-8">
+          <div className="w-full flex justify-center mb-6">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => { toast.error("Google penceresi kapandı veya hata oluştu."); }}
+              useOneTap={false}
+              theme="outline"
+              shape="pill"
+              text="continue_with"
+            />
+          </div>
+          
+          <div className="relative flex items-center mb-6">
+            <div className="flex-grow border-t border-gray-300"></div>
+            <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">veya</span>
+            <div className="flex-grow border-t border-gray-300"></div>
+          </div>
+        </div>
+
+        <form className="space-y-4" onSubmit={handleRegister}>
 
           <div className="grid grid-cols-2 gap-4">
             <input name="name" type="text" required placeholder="Ad"

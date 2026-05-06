@@ -9,6 +9,7 @@ import CommentSection from '../components/CommentSection';
 import ReportModal from '../components/ReportModal';
 import { topicService } from '../services/topicService';
 import { useAuth } from '../context/AuthContext';
+import { getProfileImageUrl } from '../utils/imageUtils';
 
 const ProblemDetail = () => {
     const { id } = useParams<{ id: string }>();
@@ -307,7 +308,7 @@ const ProblemDetail = () => {
                             <div className="flex items-center gap-3">
                                 <Link to={`/user/${problem.senderId}`} className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-tr from-blue-100 to-indigo-100 flex items-center justify-center shadow-inner shrink-0 border border-gray-100">
                                     {problem.senderImageUrl ? (
-                                        <img src={`/uploads/profiles/${problem.senderImageUrl}`} alt={problem.senderUsername} className="w-full h-full object-cover" />
+                                        <img src={getProfileImageUrl(problem.senderImageUrl)} alt={problem.senderUsername} className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-lg font-black text-blue-800">{problem.senderUsername[0].toUpperCase()}</span>
                                     )}
@@ -460,7 +461,7 @@ const ProblemDetail = () => {
                                                             <div className="mt-5 flex items-center gap-3">
                                                                 <Link to={`/user/${sol.senderId}`} className="h-10 w-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center shrink-0 border border-gray-100 shadow-sm">
                                                                     {sol.senderImageUrl ? (
-                                                                        <img src={`/uploads/profiles/${sol.senderImageUrl}`} alt={sol.senderUsername} className="w-full h-full object-cover" />
+                                                                        <img src={getProfileImageUrl(sol.senderImageUrl)} alt={sol.senderUsername} className="w-full h-full object-cover" />
                                                                     ) : (
                                                                         <span className="text-sm font-black text-blue-800">{sol.senderUsername[0].toUpperCase()}</span>
                                                                     )}

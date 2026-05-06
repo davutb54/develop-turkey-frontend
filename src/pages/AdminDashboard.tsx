@@ -13,6 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, AreaChart, Area, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import TurkeyMap from 'turkey-map-react';
+import { getProfileImageUrl } from '../utils/imageUtils';
 
 const AdminDashboard = () => {
     const { userId } = useAuth();
@@ -1462,7 +1463,7 @@ const AdminDashboard = () => {
                                                             <td className="px-6 py-4">
                                                                 <Link to={`/user/${u.id}`} target="_blank" className="flex items-center gap-3 group">
                                                                     <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white group-hover:ring-indigo-200 transition">
-                                                                        {u.profileImageUrl ? <img src={`/uploads/profiles/${u.profileImageUrl}`} className="w-full h-full object-cover" /> : u.userName[0].toUpperCase()}
+                                                                        {u.profileImageUrl ? <img src={getProfileImageUrl(u.profileImageUrl)} className="w-full h-full object-cover" /> : u.userName[0].toUpperCase()}
                                                                     </div>
                                                                     <div>
                                                                         <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition">@{u.userName}</div>
@@ -1888,7 +1889,7 @@ const AdminDashboard = () => {
                                                         <div className="flex justify-between items-start mb-3">
                                                             <div className="flex items-center gap-3">
                                                                 <Link to={`/user/${sol.senderId}`} target="_blank" className="h-10 w-10 rounded-full bg-indigo-200 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white hover:ring-indigo-300 transition">
-                                                                    {sol.senderImageUrl ? <img src={`/uploads/profiles/${sol.senderImageUrl}`} className="w-full h-full object-cover" /> : sol.senderUsername[0].toUpperCase()}
+                                                                    {sol.senderImageUrl ? <img src={getProfileImageUrl(sol.senderImageUrl)} className="w-full h-full object-cover" /> : sol.senderUsername[0].toUpperCase()}
                                                                 </Link>
                                                                 <div>
                                                                     <div className="flex items-center gap-2">

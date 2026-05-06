@@ -4,6 +4,8 @@ import { userService } from '../services/userService';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Turnstile } from '@marsidev/react-turnstile';
+import { GoogleLogin } from '@react-oauth/google';
+import toast from 'react-hot-toast';
 
 const Login = () => {
   const [userName, setUserName] = useState('');
@@ -58,6 +60,19 @@ const Login = () => {
     }
   };
 
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    try {
+      const res = await userService.googleLogin(credentialResponse.credential);
+      if (res.data.success) {
+        await checkAuth();
+        toast.success('Giriş başarılı!');
+        navigate('/');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data || "Google ile giriş yapılırken hata oluştu.");
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg">
@@ -70,7 +85,26 @@ const Login = () => {
           </p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+        <div className="mt-8">
+          <div className="w-full flex justify-center mb-6">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => { toast.error("Google penceresi kapandı veya hata oluştu."); }}
+              useOneTap={false}
+              theme="outline"
+              shape="pill"
+              text="continue_with"
+            />
+          </div>
+          
+          <div className="relative flex items-center mb-6">
+            <div className="flex-grow border-t border-gray-300"></div>
+            <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">veya</span>
+            <div className="flex-grow border-t border-gray-300"></div>
+          </div>
+        </div>
+
+        <form className="space-y-6" onSubmit={handleLogin}>
           <div className="rounded-md shadow-sm -space-y-px">
             <div className="mb-4">
               <label htmlFor="username" className="sr-only">Kullanıcı Adı</label>

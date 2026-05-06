@@ -18,6 +18,8 @@ export const userService = {
         return api.post<AccessToken>('/user/login', data);
     },
 
+    googleLogin: (credential: string) => api.post('/user/google-login', { credential }),
+
     // Register da başarılı olursa AccessToken döndürüyor
     register: async (data: UserForRegisterDto) => {
         return api.post<AccessToken>('/user/register', data);
