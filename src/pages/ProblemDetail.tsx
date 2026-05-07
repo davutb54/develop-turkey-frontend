@@ -4,12 +4,15 @@ import { problemService } from '../services/problemService';
 import { solutionService, type SolutionAddDto } from '../services/solutionService';
 import { solutionVoteService } from '../services/solutionVoteService';
 import type { ProblemDetailDto, SolutionDetailDto } from '../types';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import type { LatLngExpression } from 'leaflet';
 import Navbar from '../components/Navbar';
 import CommentSection from '../components/CommentSection';
 import ReportModal from '../components/ReportModal';
 import { topicService } from '../services/topicService';
 import { useAuth } from '../context/AuthContext';
 import { getProfileImageUrl } from '../utils/imageUtils';
+import { actionService } from '../services/actionService';
 
 const ProblemDetail = () => {
     const { id } = useParams<{ id: string }>();
@@ -22,6 +25,9 @@ const ProblemDetail = () => {
     const [problem, setProblem] = useState<ProblemDetailDto | null>(null);
     const [solutions, setSolutions] = useState<SolutionDetailDto[]>([]);
     const [loading, setLoading] = useState(true);
+
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [savedSolutionIds, setSavedSolutionIds] = useState<number[]>([]);
 
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [reportTarget, setReportTarget] = useState<{ type: 'Problem' | 'Solution', id: number } | null>(null);
@@ -81,11 +87,69 @@ const ProblemDetail = () => {
             if (solutionRes.data.success) {
                 const activeSolutions = solutionRes.data.data.filter((s: any) => !s.isDeleted);
                 setSolutions(activeSolutions);
+                
+                // Fetch saved statuses for active solutions
+                if (currentUserId !== 0) {
+                    Promise.all(activeSolutions.map((s: any) => actionService.checkSolutionSave(s.id)))
+                        .then(results => {
+                            const savedIds = activeSolutions
+                                .filter((_: any, idx: number) => results[idx].data.isSaved)
+                                .map((s: any) => s.id);
+                            setSavedSolutionIds(savedIds);
+                        })
+                        .catch(() => {});
+                }
             }
+
+            if (currentUserId !== 0) {
+                actionService.checkProblemFollow(problemId)
+                    .then(res => setIsFollowing(res.data.isFollowing))
+                    .catch(() => {});
+            }
+
         } catch (err) {
             console.error("Veri yükleme hatası", err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleToggleFollow = async () => {
+        if (!currentUserId || currentUserId === 0) {
+            alert("Takip etmek için giriş yapmalısınız.");
+            return;
+        }
+        setIsFollowing(!isFollowing); // Optimistic
+        try {
+            await actionService.toggleProblemFollow(problem!.id);
+        } catch {
+            setIsFollowing(isFollowing); // Revert
+        }
+    };
+
+    const handleToggleSave = async (solutionId: number) => {
+        if (!currentUserId || currentUserId === 0) {
+            alert("Kaydetmek için giriş yapmalısınız.");
+            return;
+        }
+        const isCurrentlySaved = savedSolutionIds.includes(solutionId);
+        
+        // Optimistic UI update
+        if (isCurrentlySaved) {
+            setSavedSolutionIds(prev => prev.filter(id => id !== solutionId));
+        } else {
+            setSavedSolutionIds(prev => [...prev, solutionId]);
+        }
+
+        try {
+            await actionService.toggleSolutionSave(solutionId);
+        } catch {
+            // Revert on failure
+            if (isCurrentlySaved) {
+                setSavedSolutionIds(prev => [...prev, solutionId]);
+            } else {
+                setSavedSolutionIds(prev => prev.filter(id => id !== solutionId));
+            }
         }
     };
 
@@ -203,6 +267,19 @@ const ProblemDetail = () => {
     // YENİ EKLENEN AKILLI KONTROL: Çözümler içinde statüsü 1 (Onaylı) olan var mı?
     const isProblemResolved = solutions.some((sol: any) => sol.expertApprovalStatus === 1);
 
+    const hasCoords = problem.latitude !== undefined && problem.latitude !== null && problem.longitude !== undefined && problem.longitude !== null;
+    const googleMapsUrl = hasCoords
+        ? `https://www.google.com/maps?q=${problem.latitude},${problem.longitude}`
+        : (problem.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(problem.address)}` : '');
+
+    const MapViewController = ({ center, zoom }: { center: LatLngExpression; zoom: number }) => {
+        const map = useMap();
+        useEffect(() => {
+            map.setView(center, zoom);
+        }, [map, center, zoom]);
+        return null;
+    };
+
     return (
         <div className="min-h-screen bg-gray-50 pb-12">
             <Navbar />
@@ -244,6 +321,52 @@ const ProblemDetail = () => {
                                 </span>
                             ))}
                         </div>
+
+                        {(problem.address || hasCoords) && (
+                            <div className="mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                                <div className="flex items-start justify-between gap-4 flex-wrap">
+                                    <div>
+                                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Konum</div>
+                                        {problem.address && (
+                                            <div className="mt-1 text-sm font-bold text-slate-800">{problem.address}</div>
+                                        )}
+                                        {hasCoords && (
+                                            <div className="mt-1 text-xs text-slate-600">
+                                                <span className="font-bold">Enlem:</span> {Number(problem.latitude).toFixed(6)}{' '}
+                                                <span className="font-bold ml-2">Boylam:</span> {Number(problem.longitude).toFixed(6)}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {googleMapsUrl && (
+                                        <a
+                                            href={googleMapsUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+                                        >
+                                            🗺️ Google Maps’te Aç
+                                        </a>
+                                    )}
+                                </div>
+
+                                {hasCoords && (
+                                    <div className="mt-4 h-56 w-full rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                                        <MapContainer
+                                            scrollWheelZoom={false}
+                                            className="h-full w-full"
+                                        >
+                                            <MapViewController center={[Number(problem.latitude), Number(problem.longitude)] as LatLngExpression} zoom={15} />
+                                            <TileLayer
+                                                attribution='&copy; OpenStreetMap katkıda bulunanlar'
+                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            />
+                                            <Marker position={[Number(problem.latitude), Number(problem.longitude)] as LatLngExpression} />
+                                        </MapContainer>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* DÜZENLEME FORMU AÇIKSA */}
                         {isEditingProblem ? (
@@ -297,8 +420,15 @@ const ProblemDetail = () => {
                         ) : (
                             // NORMAL GÖSTERİM (Form kapalıyken eski başlık vs çıkacak)
                             <div>
-                                {/* Senin mevcut problem.title ve problem.description gösterdiğin HTML'ler burada kalsın */}
-                                <h1 className="text-3xl font-black text-gray-900 mb-4">{problem.title}</h1>
+                                <div className="flex flex-wrap items-center gap-4 mb-4">
+                                    <h1 className="text-3xl font-black text-gray-900">{problem.title}</h1>
+                                    <button 
+                                        onClick={handleToggleFollow}
+                                        className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border shadow-sm ${isFollowing ? 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
+                                    >
+                                        {isFollowing ? '🔕 Takipten Çık' : '🔔 Takip Et'}
+                                    </button>
+                                </div>
                                 <p className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap mb-8">{problem.description}</p>
                             </div>
                         )}
@@ -428,6 +558,14 @@ const ProblemDetail = () => {
                                                         <span className="text-lg font-black text-gray-800 py-1">{sol.voteCount || 0}</span>
                                                         <button onClick={() => handleVote(sol.id, false)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition p-1.5">
                                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                                        </button>
+
+                                                        <button 
+                                                            onClick={() => handleToggleSave(sol.id)}
+                                                            className={`mt-2 p-1.5 rounded-xl transition flex flex-col items-center ${savedSolutionIds.includes(sol.id) ? 'text-blue-500 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                                                            title={savedSolutionIds.includes(sol.id) ? "Kaydedilenlerden Çıkar" : "Çözümü Kaydet"}
+                                                        >
+                                                            <span className="text-lg">💾</span>
                                                         </button>
                                                     </div>
                                                     {/* EĞER DÜZENLE BUTONUNA BASILDIYSA FORM AÇILIR */}

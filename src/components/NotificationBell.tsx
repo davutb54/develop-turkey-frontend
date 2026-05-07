@@ -40,17 +40,20 @@ const NotificationBell = ({ mobile = false, onClose }: Props) => {
   // Bildirim tipine göre renk çizgisi ve ikon
   const getNotificationStyle = (type: string) => {
     switch (type) {
-      case 'AdminWarning': return { border: 'border-l-4 border-red-500', icon: '⚠️' };
-      case 'SolutionApproved': return { border: 'border-l-4 border-green-500', icon: '✅' };
-      case 'SolutionRejected': return { border: 'border-l-4 border-orange-500', icon: '❌' };
-      case 'ContentRemoved': return { border: 'border-l-4 border-red-400', icon: '🗑️' };
-      case 'ContentModified': return { border: 'border-l-4 border-yellow-500', icon: '✏️' };
-      case 'SolutionAdded': return { border: 'border-l-4 border-blue-500', icon: '💡' };
-      case 'CommentAdded': return { border: 'border-l-4 border-purple-500', icon: '💬' };
-      case 'SolutionHighlighted': return { border: 'border-l-4 border-yellow-400', icon: '⭐' };
-      case 'RoleChanged': return { border: 'border-l-4 border-indigo-500', icon: '🎖️' };
-      case 'AdminInfo': return { border: 'border-l-4 border-green-400', icon: 'ℹ️' };
-      default: return { border: 'border-l-4 border-slate-300', icon: '🔔' };
+      case 'AdminWarning': return { border: 'border-l-4 border-red-500', icon: '⚠️', label: 'Sistem Uyarısı' };
+      case 'SolutionApproved': return { border: 'border-l-4 border-green-500', icon: '✅', label: 'Çözüm Onaylandı' };
+      case 'SolutionRejected': return { border: 'border-l-4 border-orange-500', icon: '❌', label: 'Çözüm Reddedildi' };
+      case 'ContentRemoved': return { border: 'border-l-4 border-red-400', icon: '🗑️', label: 'İçerik Kaldırıldı' };
+      case 'ContentModified': return { border: 'border-l-4 border-yellow-500', icon: '✏️', label: 'İçerik Düzenlendi' };
+      case 'SolutionAdded': return { border: 'border-l-4 border-blue-500', icon: '💡', label: 'Yeni Çözüm' };
+      case 'CommentAdded': return { border: 'border-l-4 border-purple-500', icon: '💬', label: 'Yeni Yorum' };
+      case 'SolutionHighlighted': return { border: 'border-l-4 border-yellow-400', icon: '⭐', label: 'Öne Çıkarıldı' };
+      case 'FollowedProblemNewSolution': return { border: 'border-l-4 border-fuchsia-500', icon: '🔔', label: 'Takip Edilen Sorun' };
+      case 'FollowedProblemHighlighted': return { border: 'border-l-4 border-fuchsia-400', icon: '✨', label: 'Takip Edilen Sorun' };
+      case 'FollowedProblemSolutionApproved': return { border: 'border-l-4 border-fuchsia-600', icon: '🎓', label: 'Takip Edilen Sorun' };
+      case 'RoleChanged': return { border: 'border-l-4 border-indigo-500', icon: '🎖️', label: 'Yetki Güncellendi' };
+      case 'AdminInfo': return { border: 'border-l-4 border-green-400', icon: 'ℹ️', label: 'Sistem Bilgisi' };
+      default: return { border: 'border-l-4 border-slate-300', icon: '🔔', label: 'Bildirim' };
     }
   };
 
@@ -86,7 +89,7 @@ const NotificationBell = ({ mobile = false, onClose }: Props) => {
         ) : (
           <div className="space-y-1">
             {recent.map((n) => {
-              const { border, icon } = getNotificationStyle(n.type);
+              const { border, icon, label } = getNotificationStyle(n.type);
               return (
                 <button
                   key={n.id}
@@ -96,6 +99,7 @@ const NotificationBell = ({ mobile = false, onClose }: Props) => {
                 >
                   <span className="mt-0.5 text-base leading-none flex-shrink-0">{icon}</span>
                   <span className="flex-1 min-w-0">
+                    <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-500/70 mb-0.5">{label}</span>
                     <span className="block font-semibold truncate">{n.title}</span>
                     <span className="block text-xs text-gray-500 truncate">{n.message}</span>
                   </span>
@@ -190,7 +194,7 @@ const NotificationBell = ({ mobile = false, onClose }: Props) => {
               </div>
             ) : (
               recent.map((n) => {
-                const { border, icon } = getNotificationStyle(n.type);
+                const { border, icon, label } = getNotificationStyle(n.type);
                 return (
                   <button
                     key={n.id}
@@ -200,6 +204,7 @@ const NotificationBell = ({ mobile = false, onClose }: Props) => {
                   >
                     <span className="mt-0.5 text-base leading-none flex-shrink-0">{icon}</span>
                     <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-0.5">{label}</p>
                       <p className={`text-sm truncate ${!n.isRead ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
                         {n.title}
                       </p>

@@ -131,7 +131,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
     // Önceki bağlantı zaten kuruluysa tekrar kurma
     if (connectionRef.current) return;
 
-    const HUB_URL = '/hubs/notification';
+    const HUB_URL = '/api/hubs/notification';
 
     const connection = new HubConnectionBuilder()
       .withUrl(HUB_URL, {

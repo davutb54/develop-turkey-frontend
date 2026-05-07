@@ -56,7 +56,7 @@ const CompleteProfile = () => {
       toast.error("Lütfen bir şehir seçiniz.");
       return;
     }
-    if (formData.genderCode === -1 || formData.genderCode === 0) {
+    if (formData.genderCode === -1) {
       toast.error("Lütfen cinsiyet seçiniz.");
       return;
     }

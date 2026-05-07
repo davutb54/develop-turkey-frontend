@@ -953,6 +953,10 @@ const AdminDashboard = () => {
                                                                 <span className="text-slate-400">Aktif Sorun:</span>
                                                                 <span className="font-medium text-red-400">{density?.problemCount || 0}</span>
                                                             </div>
+                                                            <div className="flex justify-between">
+                                                                <span className="text-slate-400">Konumlu Sorun:</span>
+                                                                <span className="font-medium text-indigo-300">{density?.problemWithLocationCount || 0}</span>
+                                                            </div>
                                                         </div>
                                                     )
                                                 })()}

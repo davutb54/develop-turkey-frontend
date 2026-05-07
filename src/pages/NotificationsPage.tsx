@@ -77,15 +77,6 @@ const NotificationsPage = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   };
 
-  const typeColor = (type: string) => {
-    const map: Record<string, string> = {
-      Problem: 'bg-blue-100 text-blue-700',
-      Solution: 'bg-green-100 text-green-700',
-      AdminAlert: 'bg-red-100 text-red-700',
-    };
-    return map[type] ?? 'bg-gray-100 text-gray-600';
-  };
-
   return (
     <div className="min-h-screen bg-gray-50/70">
       <div className="max-w-3xl mx-auto px-4 py-10">
@@ -168,9 +159,6 @@ const NotificationsPage = () => {
                       ${n.isRead ? 'text-gray-700' : 'text-gray-900'}`}>
                       {n.title}
                     </p>
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${typeColor(n.type)}`}>
-                      {n.type}
-                    </span>
                   </div>
                   <p className="text-xs text-gray-500 mt-1 line-clamp-2">{n.message}</p>
                   <p className="text-[11px] text-gray-400 mt-2">

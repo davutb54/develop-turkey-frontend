@@ -4,6 +4,8 @@ import { constantService } from '../services/constantService';
 import { topicService } from '../services/topicService';
 import { problemService } from '../services/problemService';
 import type { City, Topic, ProblemAddDto } from '../types';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
 import Navbar from '../components/Navbar';
 import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +15,8 @@ const CreateProblem = () => {
     const { userId } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    const DEFAULT_CENTER: [number, number] = [39.0, 35.0];
 
     // Dropdown Verileri
     const [cities, setCities] = useState<City[]>([]);
@@ -27,6 +31,15 @@ const CreateProblem = () => {
     const [hasSolution, setHasSolution] = useState(false);
     const [solutionTitle, setSolutionTitle] = useState(''); // YENİ
     const [solutionDescription, setSolutionDescription] = useState('');
+
+    // Konum (opsiyonel)
+    const [address, setAddress] = useState('');
+    const [latitude, setLatitude] = useState<number | null>(null);
+    const [longitude, setLongitude] = useState<number | null>(null);
+    const [isLocating, setIsLocating] = useState(false);
+    const [locationError, setLocationError] = useState('');
+    const [isResolvingCity, setIsResolvingCity] = useState(false);
+    const [autoCityName, setAutoCityName] = useState<string | null>(null);
 
     // Sayfa açılışında verileri çek
     useEffect(() => {
@@ -57,6 +70,39 @@ const CreateProblem = () => {
         loadData();
     }, [userId, navigate]);
 
+    // Koordinat seçildiyse şehri otomatik belirle ve kilitle
+    useEffect(() => {
+        const resolve = async () => {
+            if (latitude === null || longitude === null) {
+                setAutoCityName(null);
+                setIsResolvingCity(false);
+                return;
+            }
+
+            setIsResolvingCity(true);
+            try {
+                const res = await constantService.reverseGeocodeCity(latitude, longitude);
+                if (res.data.success) {
+                    setCityCode(res.data.data.cityCode);
+                    setAutoCityName(res.data.data.cityName);
+                    const resolvedAddress = (res.data.data.resolvedAddress || '').trim();
+                    if (!address.trim() && resolvedAddress) {
+                        setAddress(resolvedAddress.slice(0, 500));
+                    }
+                    setLocationError('');
+                }
+            } catch (err: any) {
+                setAutoCityName(null);
+                setLocationError(err?.response?.data?.message || 'Konumdan şehir tespit edilemedi. Lütfen pini şehir içinde olacak şekilde düzeltin.');
+            } finally {
+                setIsResolvingCity(false);
+            }
+        };
+
+        resolve();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [latitude, longitude]);
+
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -78,6 +124,8 @@ const CreateProblem = () => {
         setError('');
 
         // Basit Validasyon
+        if (isResolvingCity) { setError("Şehir konuma göre belirleniyor, lütfen bekleyin."); setLoading(false); return; }
+        if (latitude !== null && longitude !== null && !autoCityName) { setError("Konumdan şehir tespit edilemedi. Lütfen pini şehir içinde olacak şekilde düzeltin."); setLoading(false); return; }
         if (cityCode === -1) { setError("Lütfen şehir seçin."); setLoading(false); return; }
         if (selectedTopics.length === 0) { setError("Lütfen en az 1 kategori (konu) seçin."); setLoading(false); return; }
 
@@ -85,6 +133,9 @@ const CreateProblem = () => {
             title,
             description,
             cityCode,
+            address: address.trim() ? address.trim() : undefined,
+            latitude: latitude ?? undefined,
+            longitude: longitude ?? undefined,
             topicIds: selectedTopics, // YENİ
             image,
             solutionTitle: hasSolution ? solutionTitle : undefined, // YENİ
@@ -114,6 +165,58 @@ const CreateProblem = () => {
             setLoading(false);
         }
     };
+
+    const handleGetMyLocation = () => {
+        setLocationError('');
+
+        if (!('geolocation' in navigator)) {
+            setLocationError('Tarayıcınız konum özelliğini desteklemiyor.');
+            return;
+        }
+
+        setIsLocating(true);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setLatitude(pos.coords.latitude);
+                setLongitude(pos.coords.longitude);
+                setIsLocating(false);
+            },
+            (err) => {
+                if (err.code === err.PERMISSION_DENIED) {
+                    setLocationError('Konum izni verilmedi. İsterseniz haritadan pin bırakabilirsiniz.');
+                } else {
+                    setLocationError('Konum alınamadı. İsterseniz haritadan pin bırakabilirsiniz.');
+                }
+                setIsLocating(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    };
+
+    const MapViewController = ({ center, zoom }: { center: LatLngExpression; zoom: number }) => {
+        const map = useMap();
+        useEffect(() => {
+            map.setView(center, zoom);
+        }, [map, center, zoom]);
+        return null;
+    };
+
+    const LocationClickHandler = () => {
+        useMapEvents({
+            click(e: LeafletMouseEvent) {
+                setLatitude(e.latlng.lat);
+                setLongitude(e.latlng.lng);
+                setLocationError('');
+            }
+        });
+        return null;
+    };
+
+    const mapCenter: LatLngExpression = latitude !== null && longitude !== null
+        ? [latitude, longitude]
+        : DEFAULT_CENTER;
+
+    const mapZoom = latitude !== null && longitude !== null ? 15 : 6;
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -147,6 +250,89 @@ const CreateProblem = () => {
                                 />
                             </div>
 
+                            {/* Konum (Opsiyonel) */}
+                            <div className="pt-2">
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Konum <span className="text-gray-400">(İsteğe Bağlı)</span></label>
+                                        <p className="text-xs text-gray-500 mt-1">Konum eklemek, sorunun daha hızlı anlaşılmasına yardımcı olabilir. Dilerseniz konumunuzu alabilir veya haritadan pin bırakabilirsiniz.</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleGetMyLocation}
+                                            disabled={loading || isLocating}
+                                            className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-100 font-bold text-xs rounded-xl hover:bg-blue-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                        >
+                                            {isLocating ? 'Konum Alınıyor...' : '📍 Konumumu Al'}
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => { setLatitude(null); setLongitude(null); setLocationError(''); setAutoCityName(null); }}
+                                            disabled={loading}
+                                            className="px-4 py-2 bg-white text-gray-700 border border-gray-200 font-bold text-xs rounded-xl hover:bg-gray-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                        >
+                                            Temizle
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {locationError && (
+                                    <div className="mt-2 text-xs font-bold text-red-600">{locationError}</div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">Adres / Tarif <span className="text-gray-400 font-medium">(İsteğe Bağlı)</span></label>
+                                        <input
+                                            type="text"
+                                            maxLength={500}
+                                            className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                            placeholder="Örn: X Mahallesi, Y Sokak, No: 12"
+                                            value={address}
+                                            onChange={(e) => setAddress(e.target.value)}
+                                            disabled={loading}
+                                        />
+                                    </div>
+                                    <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+                                        <div className="text-xs font-bold text-gray-700 mb-1">Koordinatlar</div>
+                                        {latitude !== null && longitude !== null ? (
+                                            <div className="text-xs text-gray-700">
+                                                <div><span className="font-bold">Enlem:</span> {latitude.toFixed(6)}</div>
+                                                <div><span className="font-bold">Boylam:</span> {longitude.toFixed(6)}</div>
+                                                <div className="text-[11px] text-gray-500 mt-1">Haritaya tıklayarak pini düzeltebilirsiniz.</div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs text-gray-500">Konum seçilmedi.</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="mt-4">
+                                    <div className="h-64 w-full rounded-xl overflow-hidden border border-gray-200 bg-gray-100">
+                                        <MapContainer
+                                            key={`${latitude ?? 'd'}-${longitude ?? 'd'}`}
+                                            scrollWheelZoom={false}
+                                            className="h-full w-full"
+                                        >
+                                            <MapViewController center={mapCenter} zoom={mapZoom} />
+                                            <TileLayer
+                                                attribution='&copy; OpenStreetMap katkıda bulunanlar'
+                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            />
+
+                                            <LocationClickHandler />
+
+                                            {latitude !== null && longitude !== null && (
+                                                <Marker position={[latitude, longitude] as LatLngExpression} />
+                                            )}
+                                        </MapContainer>
+                                    </div>
+                                    <p className="mt-2 text-[11px] text-gray-500">İpucu: Haritaya tıklayarak konum pini bırakabilir veya değiştirebilirsiniz.</p>
+                                </div>
+                            </div>
+
                             {/* Dropdownlar */}
                             <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
                                 <div>
@@ -157,8 +343,13 @@ const CreateProblem = () => {
                                             value={cityCode}
                                             onChange={(val) => setCityCode(Number(val))}
                                             placeholder="Şehir Seçiniz"
-                                            disabled={loading}
+                                            disabled={loading || (latitude !== null && longitude !== null) || isResolvingCity}
                                         />
+                                        {(latitude !== null && longitude !== null) && (
+                                            <div className="mt-2 text-[11px] font-bold text-indigo-700">
+                                                Şehir konuma göre otomatik seçildi{autoCityName ? `: ${autoCityName}` : ''}. (Değiştirilemez)
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -189,7 +380,7 @@ const CreateProblem = () => {
                                                     )}
                                                     {topic.name}
                                                 </button>
-                                            )
+                                            );
                                         })}
                                     </div>
                                     <p className="text-[10px] text-slate-400 font-medium mt-2">Sorununuzla ilgili birden fazla kategori seçebilirsiniz.</p>

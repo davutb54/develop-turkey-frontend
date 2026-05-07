@@ -83,6 +83,9 @@ export interface ProblemDetailDto {
     description: string;
     topics: TopicDto[];
     cityCode: number;
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     topicId: number;
     cityName: string;
     isHighlighted: boolean;
@@ -176,6 +179,9 @@ export interface ProblemAddDto {
     cityCode: number;
     topicIds: number[];
     image?: File | null;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
     solutionTitle?: string;       // YENİ EKLENDİ
     solutionDescription?: string;
 }
@@ -323,6 +329,7 @@ export interface TrafficDataPoint {
 export interface CityProblemDensityDto {
     cityCode: number;
     problemCount: number;
+    problemWithLocationCount: number;
     userCount: number;
 }
 

@@ -42,6 +42,16 @@ export const problemService = {
         formData.append('description', data.description);
         formData.append('cityCode', data.cityCode.toString());
 
+        if (data.address) {
+            formData.append('Address', data.address);
+        }
+        if (data.latitude !== undefined && data.latitude !== null) {
+            formData.append('Latitude', data.latitude.toString());
+        }
+        if (data.longitude !== undefined && data.longitude !== null) {
+            formData.append('Longitude', data.longitude.toString());
+        }
+
         // YENİ: Seçilen her bir kategori ID'sini FormData'ya ekliyoruz
         if (data.topicIds && data.topicIds.length > 0) {
             data.topicIds.forEach(id => {
