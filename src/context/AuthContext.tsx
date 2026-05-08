@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { userService } from '../services/userService';
+import { legalAgreementService } from '../services/legalAgreementService';
 
 // null = yükleniyor, false = giriş yok, number = kullanıcı id'si
 interface AuthContextType {
@@ -7,9 +8,11 @@ interface AuthContextType {
   isAdmin: boolean;
   isMaintenance: boolean;
   isProfileIncomplete: boolean;
+  hasPendingAgreement: boolean;
   setUserId: (id: number | false) => void;
   setIsAdmin: (isAdmin: boolean) => void;
   setIsMaintenance: (isMain: boolean) => void;
+  setHasPendingAgreement: (val: boolean) => void;
   checkAuth: () => Promise<void>;
 }
 
@@ -18,9 +21,11 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   isMaintenance: false,
   isProfileIncomplete: false,
+  hasPendingAgreement: false,
   setUserId: () => { },
   setIsAdmin: () => { },
   setIsMaintenance: () => { },
+  setHasPendingAgreement: () => { },
   checkAuth: async () => { },
 });
 
@@ -29,6 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isMaintenance, setIsMaintenance] = useState<boolean>(false);
   const [isProfileIncomplete, setIsProfileIncomplete] = useState<boolean>(false);
+  const [hasPendingAgreement, setHasPendingAgreement] = useState<boolean>(false);
 
   const checkAuth = async () => {
     try {
@@ -45,10 +51,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
           setIsProfileIncomplete(false);
         }
+
+        // Kullanıcı giriş yapmışsa major sözleşme onayı kontrolü
+        try {
+          const pendingRes = await legalAgreementService.hasPending();
+          if (pendingRes.data.success) {
+            setHasPendingAgreement(pendingRes.data.data === true);
+          }
+        } catch {
+          // hasPending hatası auth akışını kesmemeli
+          setHasPendingAgreement(false);
+        }
       } else {
         setUserId(false);
         setIsAdmin(false);
         setIsProfileIncomplete(false);
+        setHasPendingAgreement(false);
       }
     } catch (err: any) {
       if (err.response && err.response.status === 503) {
@@ -56,6 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setUserId(false);
       setIsAdmin(false);
+      setHasPendingAgreement(false);
     }
   };
 
@@ -64,10 +83,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <AuthContext.Provider value={{ userId, isAdmin, isMaintenance, isProfileIncomplete, setUserId, setIsAdmin, setIsMaintenance, checkAuth }}>
+    <AuthContext.Provider value={{ userId, isAdmin, isMaintenance, isProfileIncomplete, hasPendingAgreement, setUserId, setIsAdmin, setIsMaintenance, setHasPendingAgreement, checkAuth }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
 export const useAuth = () => useContext(AuthContext);
+

@@ -133,9 +133,9 @@ const CompleteProfile = () => {
 
           <button
             type="submit"
-            disabled={loading || formData.cityCode === 0 || formData.genderCode === -1 || formData.genderCode === 0}
+            disabled={loading || formData.cityCode === 0 || formData.genderCode === -1}
             className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-transparent text-sm font-black rounded-xl text-white shadow-lg transition-all active:scale-95 
-                ${(loading || formData.cityCode === 0 || formData.genderCode === -1 || formData.genderCode === 0) ? 'bg-slate-300 cursor-not-allowed opacity-70' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}
+                ${(loading || formData.cityCode === 0 || formData.genderCode === -1) ? 'bg-slate-300 cursor-not-allowed opacity-70' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}
           >
             {loading ? (
               <>

@@ -11,6 +11,8 @@ import SearchableSelect from '../components/SearchableSelect';
 import { topicService } from '../services/topicService';
 import { useAuth } from '../context/AuthContext';
 import { getProfileImageUrl } from '../utils/imageUtils';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
 
 const Profile = () => {
     const { userId } = useAuth();
@@ -45,6 +47,19 @@ const Profile = () => {
 
     const [topics, setTopics] = useState<any[]>([]); // Tüm kategorileri tutacak
     const [editSelectedTopics, setEditSelectedTopics] = useState<number[]>([]); // Düzenlerken seçilen kategoriler
+
+    // Sorun düzenlerken: konum + resim
+    const DEFAULT_CENTER: [number, number] = [39.0, 35.0];
+    const [editAddress, setEditAddress] = useState('');
+    const [editLatitude, setEditLatitude] = useState<number | null>(null);
+    const [editLongitude, setEditLongitude] = useState<number | null>(null);
+    const [editClearLocation, setEditClearLocation] = useState(false);
+    const [editImage, setEditImage] = useState<File | null>(null);
+    const [editIsLocating, setEditIsLocating] = useState(false);
+    const [editLocationError, setEditLocationError] = useState('');
+    const [editIsResolvingCity, setEditIsResolvingCity] = useState(false);
+    const [editAutoCityName, setEditAutoCityName] = useState<string | null>(null);
+    const [editCityCode, setEditCityCode] = useState<number>(-1);
 
     useEffect(() => {
         if (userId !== null) {
@@ -209,21 +224,104 @@ const Profile = () => {
                 ...problem,
                 title: editProblemData.title,
                 description: editProblemData.description,
-                topicIds: editSelectedTopics
+                topicIds: editSelectedTopics,
+                cityCode: editCityCode,
+                address: editAddress.trim() ? editAddress.trim() : null,
+                latitude: editLatitude,
+                longitude: editLongitude,
+                clearLocation: editClearLocation,
+                image: editImage
             };
             await problemService.update(updatedProblem);
 
-            // Listeyi state üzerinden anında güncelle
-            const updatedTopicObjects = topics.filter(t => editSelectedTopics.includes(t.id));
-            setMyProblems(prev => prev.map(p => p.id === problem.id ? {
-                ...p,
-                title: editProblemData.title,
-                description: editProblemData.description,
-                topics: updatedTopicObjects // Arayüzdeki rozetler anında değişsin
-            } : p));
+            // Konum/şehir/resim de değişebileceği için yeniden çek
+            await fetchProfileData();
             setEditingProblemId(null);
         } catch (err) { alert("Güncelleme başarısız oldu."); }
     };
+
+    const handleEditGetMyLocation = () => {
+        setEditLocationError('');
+
+        if (!('geolocation' in navigator)) {
+            setEditLocationError('Tarayıcınız konum özelliğini desteklemiyor.');
+            return;
+        }
+
+        setEditIsLocating(true);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setEditLatitude(pos.coords.latitude);
+                setEditLongitude(pos.coords.longitude);
+                setEditClearLocation(false);
+                setEditIsLocating(false);
+            },
+            (err) => {
+                if (err.code === err.PERMISSION_DENIED) {
+                    setEditLocationError('Konum izni verilmedi. İsterseniz haritadan pin bırakabilirsiniz.');
+                } else {
+                    setEditLocationError('Konum alınamadı. İsterseniz haritadan pin bırakabilirsiniz.');
+                }
+                setEditIsLocating(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    };
+
+    const EditLocationClickHandler = () => {
+        useMapEvents({
+            click(e: LeafletMouseEvent) {
+                setEditLatitude(e.latlng.lat);
+                setEditLongitude(e.latlng.lng);
+                setEditClearLocation(false);
+                setEditLocationError('');
+            }
+        });
+        return null;
+    };
+
+    const editMapCenter: LatLngExpression = editLatitude !== null && editLongitude !== null
+        ? [editLatitude, editLongitude]
+        : DEFAULT_CENTER;
+    const editMapZoom = editLatitude !== null && editLongitude !== null ? 15 : 6;
+
+    useEffect(() => {
+        const resolve = async () => {
+            if (editingProblemId === null) return;
+            if (editClearLocation) {
+                setEditAutoCityName(null);
+                setEditIsResolvingCity(false);
+                return;
+            }
+            if (editLatitude === null || editLongitude === null) {
+                setEditAutoCityName(null);
+                setEditIsResolvingCity(false);
+                return;
+            }
+
+            setEditIsResolvingCity(true);
+            try {
+                const res = await constantService.reverseGeocodeCity(editLatitude, editLongitude);
+                if (res.data.success) {
+                    setEditCityCode(res.data.data.cityCode);
+                    setEditAutoCityName(res.data.data.cityName);
+                    const resolvedAddress = (res.data.data.resolvedAddress || '').trim();
+                    if (!editAddress.trim() && resolvedAddress) {
+                        setEditAddress(resolvedAddress.slice(0, 500));
+                    }
+                    setEditLocationError('');
+                }
+            } catch (err: any) {
+                setEditAutoCityName(null);
+                setEditLocationError(err?.response?.data?.message || 'Konumdan şehir tespit edilemedi. Lütfen pini şehir içinde olacak şekilde düzeltin.');
+            } finally {
+                setEditIsResolvingCity(false);
+            }
+        };
+
+        resolve();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editingProblemId, editLatitude, editLongitude, editClearLocation]);
 
     // --- ÇÖZÜM İŞLEMLERİ ---
     const handleDeleteSolution = async (solution: any) => {
@@ -437,6 +535,123 @@ const Profile = () => {
                                                             })}
                                                         </div>
                                                     </div>
+
+                                                    {/* KONUM */}
+                                                    <div className="pt-2 border-t border-gray-200 mt-2">
+                                                        <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                                                            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-1">Konum</label>
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleEditGetMyLocation}
+                                                                    disabled={editIsLocating}
+                                                                    className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                                                >
+                                                                    {editIsLocating ? 'Konum alınıyor…' : 'Konumumu Al'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setEditClearLocation(true);
+                                                                        setEditLatitude(null);
+                                                                        setEditLongitude(null);
+                                                                        setEditAddress('');
+                                                                        setEditAutoCityName(null);
+                                                                        setEditLocationError('');
+                                                                    }}
+                                                                    className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 hover:bg-gray-50"
+                                                                >
+                                                                    Konumu Temizle
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="text-[11px] font-bold text-gray-600 mb-2 pl-1">
+                                                            {editClearLocation ? (
+                                                                <span>Konum kaldırılacak.</span>
+                                                            ) : editIsResolvingCity ? (
+                                                                <span>Şehir tespit ediliyor…</span>
+                                                            ) : editAutoCityName ? (
+                                                                <span>Şehir (otomatik): <span className="text-gray-900">{editAutoCityName}</span></span>
+                                                            ) : (
+                                                                <span>Pin bırakır veya konum alırsanız şehir otomatik seçilir.</span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* ŞEHİR DROPDOWN (konum seçilirse kilitlenir) */}
+                                                        <select
+                                                            value={editCityCode}
+                                                            onChange={(e) => {
+                                                                setEditCityCode(Number(e.target.value));
+                                                                setEditAutoCityName(null);
+                                                                setEditClearLocation(false);
+                                                            }}
+                                                            disabled={(!editClearLocation && editLatitude !== null && editLongitude !== null) || editIsResolvingCity}
+                                                            className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-2.5 rounded-lg text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                                        >
+                                                            <option value={0}>Şehir seçin</option>
+                                                            {cities.map((c) => (
+                                                                <option key={c.value} value={c.value}>{c.text}</option>
+                                                            ))}
+                                                        </select>
+                                                        <div className="text-[11px] font-bold text-gray-500 mt-1 pl-1">
+                                                            {(!editClearLocation && editLatitude !== null && editLongitude !== null)
+                                                                ? 'Konum seçili olduğu için şehir kilitlidir.'
+                                                                : 'Konum seçmezseniz şehir bilgisini buradan değiştirebilirsiniz.'}
+                                                        </div>
+
+                                                        {editLocationError && (
+                                                            <div className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 mb-2">
+                                                                {editLocationError}
+                                                            </div>
+                                                        )}
+
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Adres (opsiyonel)"
+                                                            className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-2.5 rounded-lg text-sm bg-white"
+                                                            value={editAddress}
+                                                            onChange={e => {
+                                                                setEditAddress(e.target.value);
+                                                                setEditClearLocation(false);
+                                                            }}
+                                                        />
+
+                                                        <div className="mt-3 h-52 w-full rounded-lg overflow-hidden border border-gray-200 bg-white">
+                                                            <MapContainer
+                                                                center={editMapCenter}
+                                                                zoom={editMapZoom}
+                                                                scrollWheelZoom={false}
+                                                                className="h-full w-full"
+                                                            >
+                                                                <TileLayer
+                                                                    attribution='&copy; OpenStreetMap katkıda bulunanlar'
+                                                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                                                />
+                                                                <EditLocationClickHandler />
+                                                                {!editClearLocation && editLatitude !== null && editLongitude !== null && (
+                                                                    <Marker position={[editLatitude, editLongitude] as LatLngExpression} />
+                                                                )}
+                                                            </MapContainer>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* RESİM */}
+                                                    <div className="pt-2 border-t border-gray-200 mt-2">
+                                                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 pl-1">Resim</label>
+                                                        <input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="w-full text-sm"
+                                                            onChange={(e) => {
+                                                                const file = e.target.files?.[0] || null;
+                                                                setEditImage(file);
+                                                            }}
+                                                        />
+                                                        <div className="text-[11px] font-bold text-gray-500 mt-1 pl-1">
+                                                            {editImage ? `Seçilen: ${editImage.name}` : 'Yeni bir resim seçmezseniz mevcut resim korunur.'}
+                                                        </div>
+                                                    </div>
                                                     <div className="flex gap-2 justify-end pt-2">
                                                         <button onClick={() => setEditingProblemId(null)} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-50 transition shadow-sm">İptal</button>
                                                         <button onClick={() => handleUpdateProblem(prob)} className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition shadow-md active:scale-95">Kaydet</button>
@@ -464,6 +679,15 @@ const Profile = () => {
                                                                     setEditingProblemId(prob.id);
                                                                     setEditProblemData({ title: prob.title, description: prob.description });
                                                                     setEditSelectedTopics(prob.topics ? prob.topics.map((t: any) => t.id) : []);
+
+                                                                    setEditAddress(prob.address || '');
+                                                                    setEditLatitude(prob.latitude ?? null);
+                                                                    setEditLongitude(prob.longitude ?? null);
+                                                                    setEditCityCode(prob.cityCode);
+                                                                    setEditAutoCityName(null);
+                                                                    setEditClearLocation(false);
+                                                                    setEditImage(null);
+                                                                    setEditLocationError('');
                                                                 }}
                                                                 className="px-4 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-xs font-bold hover:bg-yellow-100 transition shadow-sm active:scale-95"
                                                             >

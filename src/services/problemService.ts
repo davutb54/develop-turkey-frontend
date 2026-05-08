@@ -78,7 +78,51 @@ export const problemService = {
     },
 
     update: async (problem: any) => {
-        return api.post('/problem/update', problem);
+        const formData = new FormData();
+
+        const sendDateValue = problem.sendDate instanceof Date
+            ? problem.sendDate.toISOString()
+            : String(problem.sendDate ?? '');
+
+        formData.append('Id', String(problem.id));
+        formData.append('SenderId', String(problem.senderId));
+        formData.append('Title', String(problem.title ?? ''));
+        formData.append('Description', String(problem.description ?? ''));
+        formData.append('CityCode', String(problem.cityCode ?? 0));
+
+        formData.append('ClearLocation', String(!!problem.clearLocation));
+
+        if (problem.address !== undefined) {
+            formData.append('Address', String(problem.address ?? ''));
+        }
+        if (problem.latitude !== undefined && problem.latitude !== null) {
+            formData.append('Latitude', String(problem.latitude));
+        }
+        if (problem.longitude !== undefined && problem.longitude !== null) {
+            formData.append('Longitude', String(problem.longitude));
+        }
+
+        if (problem.imageUrl !== undefined) {
+            formData.append('ImageUrl', String(problem.imageUrl ?? ''));
+        }
+        if (problem.image) {
+            formData.append('Image', problem.image);
+        }
+
+        formData.append('SendDate', sendDateValue);
+        formData.append('IsHighlighted', String(!!problem.isHighlighted));
+        formData.append('IsReported', String(!!problem.isReported));
+        formData.append('IsDeleted', String(!!problem.isDeleted));
+        formData.append('IsResolved', String(!!problem.isResolved));
+        formData.append('InstitutionId', String(problem.institutionId ?? 0));
+        formData.append('ViewCount', String(problem.viewCount ?? 0));
+
+        const topicIds: number[] = problem.topicIds || [];
+        topicIds.forEach((id: number) => {
+            formData.append('TopicIds', String(id));
+        });
+
+        return api.post('/problem/update', formData);
     },
     // delete metodunu şu şekilde değiştir:
     // Sorun Silme

@@ -1,6 +1,15 @@
 import api from './api';
 import type { IDataResult, IResult, AdminDashboardDto, DashboardAnalyticsDto, SystemHealthDto, Log, LogFilterDto, ProblemDetailDto, ImpersonateDto, SystemSettings } from '../types';
 
+export type CreateAgreementData = {
+    title: string;
+    type: string;
+    version: string;
+    content: string;
+    isMajorVersion: boolean;
+    publishedByAdminId: number;
+};
+
 export const adminService = {
     getDashboardStats: async () => {
         return api.get<IDataResult<AdminDashboardDto>>('/admin/dashboard');
@@ -100,4 +109,11 @@ export const adminService = {
     getUserWarnings: async (userId: number) => {
         return api.get<IDataResult<any[]>>(`/admin/user-warnings?userId=${userId}`);
     },
+    // YASAL SÖZLEŞME YÖNETİMİ
+    getAgreements: () => api.get('/admin/agreements'),
+    getAgreementById: (id: number) => api.get(`/admin/agreements/${id}`),
+    createAgreement: (data: CreateAgreementData) => api.post('/admin/agreements', data),
+    activateAgreement: (id: number) => api.put(`/admin/agreements/activate/${id}`),
+    deleteAgreement: (id: number) => api.delete(`/admin/agreements/${id}`),
+    getAgreementStats: (id: number) => api.get(`/admin/agreements/${id}/stats`),
 };

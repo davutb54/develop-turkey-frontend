@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -16,16 +16,31 @@ import Maintenance from './pages/Maintenance';
 import NotFound from './pages/NotFound';
 import NotificationsPage from './pages/NotificationsPage';
 import Footer from './components/Footer';
+import AgreementModal from './components/AgreementModal';
 import { useAuth } from './context/AuthContext';
+import { legalAgreementService } from './services/legalAgreementService';
+import type { LegalAgreement } from './types';
 
 function App() {
-  const { userId, isAdmin, isMaintenance, isProfileIncomplete } = useAuth();
+  const { userId, isAdmin, isMaintenance, isProfileIncomplete, hasPendingAgreement, checkAuth } = useAuth();
   const location = useLocation();
+  const [pendingAgreements, setPendingAgreements] = useState<LegalAgreement[]>([]);
 
   // Sayfa her değiştiğinde en tepeye kaydır (Scroll to top)
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
+
+  // hasPendingAgreement=true olduğunda aktif sözleşmeleri çek
+  useEffect(() => {
+    if (hasPendingAgreement && userId) {
+      legalAgreementService.getActive()
+        .then((res) => {
+          if (res.data.success) setPendingAgreements(res.data.data);
+        })
+        .catch(() => { /* Hata durumunda modal boş kalır */ });
+    }
+  }, [hasPendingAgreement, userId]);
 
   const currentPath = location.pathname.toLowerCase();
   const isAuthPage = currentPath === '/login' || currentPath === '/register';
@@ -72,8 +87,20 @@ function App() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       {showFooter && <Footer />}
+
+      {/* ── GLOBAL ZORUNLU SÖZLEŞME ONAY MODALI ── */}
+      {hasPendingAgreement && userId && pendingAgreements.length > 0 && (
+        <AgreementModal
+          agreements={pendingAgreements}
+          onAcceptAll={async () => {
+            await checkAuth(); // hasPendingAgreement state'ini güncelle
+            setPendingAgreements([]);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-export default App;
+export default App;
+

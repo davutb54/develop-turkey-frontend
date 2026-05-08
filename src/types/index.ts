@@ -380,3 +380,15 @@ export interface Notification {
     isRead: boolean;
     createdAt: string;
 }
+
+// --- YASAL SÖZLEŞME TİPLERİ ---
+export interface LegalAgreement {
+    id: number;
+    title: string;
+    type: string;          // "TermsOfService" | "PrivacyPolicy" | "KVKK"
+    version: string;       // "1.0", "2.0"
+    content: string;       // Markdown metni
+    isMajorVersion: boolean;
+    isActive: boolean;
+    publishedAt: string;   // ISO tarih
+}

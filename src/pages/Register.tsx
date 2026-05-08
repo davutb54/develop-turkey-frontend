@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { userService } from '../services/userService';
 import { constantService } from '../services/constantService';
+import { legalAgreementService } from '../services/legalAgreementService';
 import { useNavigate, Link } from 'react-router-dom';
-import type { City, Gender } from '../types';
+import type { City, Gender, LegalAgreement } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
+import AgreementModal from '../components/AgreementModal';
 import { useAuth } from '../context/AuthContext';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { GoogleLogin } from '@react-oauth/google';
@@ -12,6 +14,8 @@ import toast from 'react-hot-toast';
 const Register = () => {
   const navigate = useNavigate();
   const { checkAuth } = useAuth();
+
+  const SESSION_KEY = 'register_form';
 
   // Form Verileri
   const [formData, setFormData] = useState({
@@ -36,16 +40,29 @@ const Register = () => {
   // --- SÖZLEŞME STATE'LERİ ---
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   const [isAccepted, setIsAccepted] = useState(false);
+  const [agreements, setAgreements] = useState<LegalAgreement[]>([]);
 
-  // Sayfa yüklenince Şehir ve Cinsiyetleri Çek
+  // Sayfa yüklenince form verilerini sessionStorage'dan yükle
+  useEffect(() => {
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (saved) {
+      try {
+        setFormData(JSON.parse(saved));
+      } catch { /* Bozuk veri görmezden gel */ }
+    }
+  }, []);
+
+  // Sayfa yüklenince Şehir, Cinsiyet ve Sözleşmeleri Çek
   useEffect(() => {
     const fetchData = async () => {
       try {
         const cityRes = await constantService.getCities();
         const genderRes = await constantService.getGenders();
+        const agreementRes = await legalAgreementService.getActive();
 
         if (cityRes.data.success) setCities(cityRes.data.data);
         if (genderRes.data.success) setGenders(genderRes.data.data);
+        if (agreementRes.data.success) setAgreements(agreementRes.data.data);
       } catch (err) {
         console.error("Veri çekme hatası", err);
       }
@@ -56,13 +73,16 @@ const Register = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
 
+    let updated: typeof formData;
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked;
-      setFormData(prev => ({ ...prev, [name]: checked }));
+      updated = { ...formData, [name]: checked };
     } else {
       const val = (name === 'cityCode' || name === 'genderCode') ? Number(value) : value;
-      setFormData(prev => ({ ...prev, [name]: val }));
+      updated = { ...formData, [name]: val };
     }
+    setFormData(updated);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(updated));
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -89,6 +109,20 @@ const Register = () => {
       const response = await userService.register({ ...formData, captchaToken: captchaToken || undefined });
 
       if (response.data && (response.data as any).success) {
+        sessionStorage.removeItem(SESSION_KEY);
+        
+        // Yeni Eklenen Kod: Kayıt başarılı ve auth cookie'si alındı. Sözleşmeleri onayla.
+        if (agreements.length > 0) {
+          try {
+            for (const agreement of agreements) {
+              await legalAgreementService.accept(agreement.id);
+            }
+          } catch (err) {
+            console.error("Sözleşme onayları kaydedilirken hata oluştu:", err);
+            // Hata olsa da kayıt yapıldı, App.tsx tekrar zorunlu onay isteyecektir.
+          }
+        }
+
         await checkAuth();
         alert("Kayıt Başarılı! Hoşgeldiniz.");
         navigate('/verify-email', { state: { email: formData.email } });
@@ -212,28 +246,28 @@ const Register = () => {
             </label>
           </div>
 
-          {/* --- YENİLENMİŞ SÖZLEŞME ONAYI --- */}
+          {/* --- SÖZLEŞME ONAYI --- */}
           <div className="flex items-start mt-4 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 transition-all hover:bg-indigo-50">
             <div className="flex items-center h-5">
               <input
                 id="terms"
                 type="checkbox"
                 required
+                readOnly
                 checked={isAccepted}
-                onChange={(e) => setIsAccepted(e.target.checked)}
                 className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded cursor-pointer"
                 disabled={loading}
               />
             </div>
             <div className="ml-3 text-[11px] leading-4 text-slate-700">
-              <label htmlFor="terms" className="cursor-pointer select-none">
-                <button 
-                  type="button" 
+              <label className="select-none">
+                <button
+                  type="button"
                   onClick={() => setIsTermsModalOpen(true)}
                   className="text-indigo-600 font-black hover:underline mr-1 focus:outline-none"
                 >
                   Kullanım Koşullarını ve Gizlilik Politikasını
-                </button> 
+                </button>
                 okudum, kabul ediyorum. Yasal mevzuat gereği verilerimin kayıt altına alınmasını onaylıyorum.
               </label>
             </div>
@@ -278,76 +312,29 @@ const Register = () => {
         </form>
       </div>
 
-      {/* --- YENİLENMİŞ SÖZLEŞME MODAL'I --- */}
-      {isTermsModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] animate-scale-up overflow-hidden border border-white">
-            
-            {/* Modal Header */}
-            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <div className="flex flex-col">
-                    <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm">Gizlilik Politikası</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-1">Türkiye'yi Geliştirme Platformu</p>
-                </div>
-                <button onClick={() => setIsTermsModalOpen(false)} className="bg-white p-2 rounded-full shadow-sm text-slate-400 hover:text-rose-500 transition-colors">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-            </div>
+      {/* --- DİNAMİK SÖZLEŞME MODAL'I --- */}
+      {isTermsModalOpen && agreements.length > 0 && (
+        <AgreementModal
+          agreements={agreements}
+          skipApiCall={true}
+          onAcceptAll={() => {
+            setIsAccepted(true);
+            setIsTermsModalOpen(false);
+          }}
+        />
+      )}
 
-            {/* Modal Content - SENİN METİNLERİN */}
-            <div className="p-8 overflow-y-auto text-sm text-slate-600 leading-relaxed space-y-6 custom-scrollbar">
-                
-                <section>
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="h-6 w-1 bg-indigo-600 rounded-full"></span>
-                        <h4 className="font-black text-slate-800 uppercase text-xs tracking-wider">1. İÇERİK PAYLAŞIMI VE SORUMLULUK</h4>
-                    </div>
-                    <p className="pl-3 border-l border-slate-100">
-                        Sitemiz üzerinde paylaşılan mesajlar ve yüklenen fotoğrafların tüm hukuki ve cezai sorumluluğu, <strong>içeriği oluşturan kullanıcıya aittir.</strong> Yer sağlayıcı olarak, paylaşılan içerikleri kontrol etme yükümlülüğümüz bulunmamakla birlikte, hukuka aykırı içeriklerin bildirilmesi durumunda <strong>"Uyar-Kaldır"</strong> prensibi işletilecektir. Amacımız, tüm kullanıcılar için güvenli ve saygılı bir paylaşım ortamı sunmaktır.
-                    </p>
-                </section>
-
-                <section>
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="h-6 w-1 bg-indigo-600 rounded-full"></span>
-                        <h4 className="font-black text-slate-800 uppercase text-xs tracking-wider">2. YASAL BİLGİLENDİRME (5651 Sayılı Kanun)</h4>
-                    </div>
-                    <p className="pl-3 border-l border-slate-100">
-                        Yasal yükümlülüklerimizi yerine getirmek amacıyla; sitemizdeki trafik verileri (<strong>IP adresi, port bilgisi ve zaman damgası</strong>) 5651 Sayılı Kanun gereğince kayıt altına alınmakta ve yasal süreler boyunca saklanmaktadır. Bu bilgiler, sadece resmi makamların usulüne uygun talepleri doğrultusunda paylaşılabilir. Sitemiz henüz ticari bir faaliyet gütmemekte olup, bireysel bir proje olarak işletilmektedir. Platform sahibi, hizmetin içeriğini değiştirme veya tamamen durdurma hakkını saklı tutar.
-                    </p>
-                </section>
-
-                <section>
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="h-6 w-1 bg-indigo-600 rounded-full"></span>
-                        <h4 className="font-black text-slate-800 uppercase text-xs tracking-wider">3. DESTEK VE İLETİŞİM</h4>
-                    </div>
-                    <p className="pl-3 border-l border-slate-100 bg-slate-50 p-3 rounded-xl border border-dashed border-slate-200">
-                        Sizi rahatsız eden, uygunsuz olduğunu düşündüğünüz veya platformun kalitesine zarar veren bir paylaşımla karşılaşırsanız lütfen bize haber verin. Her türlü görüş, destek ve bildirim talebiniz için <a href="mailto:turkiyeyigelistirmeplatformu26@gmail.com" className="text-indigo-600 font-bold underline">turkiyeyigelistirmeplatformu26@gmail.com</a> adresi üzerinden bizimle doğrudan iletişime geçebilirsiniz. Bildiriminiz en kısa sürede titizlikle incelenecek ve gerekli aksiyonlar alınacaktır.
-                    </p>
-                </section>
-
-                <section>
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="h-6 w-1 bg-indigo-600 rounded-full"></span>
-                        <h4 className="font-black text-slate-800 uppercase text-xs tracking-wider">4. GİZLİLİK VE VERİ GÜVENLİĞİ</h4>
-                    </div>
-                    <p className="pl-3 border-l border-slate-100">
-                        Kullanıcılarımızın gizliliği bizim için önemlidir. Paylaştığınız profil bilgileri ve e-posta adresleri, platformun temel işlevlerini yerine getirmek dışında üçüncü taraflarla paylaşılmaz. Sitemiz, kullanım kolaylığı sağlamak adına standart çerezler kullanabilir.
-                    </p>
-                </section>
-
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-8 border-t bg-slate-50 flex justify-center">
-                <button 
-                  onClick={() => { setIsAccepted(true); setIsTermsModalOpen(false); }}
-                  className="w-full sm:w-auto px-12 py-4 bg-indigo-600 text-white font-black text-xs uppercase tracking-[2px] rounded-2xl hover:bg-indigo-700 transition shadow-xl shadow-indigo-100 active:scale-95"
-                >
-                  Okudum ve Kabul Ediyorum
-                </button>
-            </div>
+      {/* Aktif sözleşme yoksa fallback: basit onay */ }
+      {isTermsModalOpen && agreements.length === 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-8 text-center">
+            <p className="text-slate-600 mb-6 text-sm">Sözleşmeler yükleniyor veya henüz tanımlanmamış.</p>
+            <button
+              onClick={() => { setIsAccepted(true); setIsTermsModalOpen(false); }}
+              className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition"
+            >
+              Kabul Ediyorum
+            </button>
           </div>
         </div>
       )}
