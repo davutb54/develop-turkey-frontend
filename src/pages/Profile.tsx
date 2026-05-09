@@ -33,6 +33,7 @@ const Profile = () => {
     const [isPassUpdating, setIsPassUpdating] = useState(false);
 
     const [updateData, setUpdateData] = useState({
+        userName: '',
         name: '', surname: '', email: '', cityCode: 1, genderCode: 1
     });
     const [cities, setCities] = useState<City[]>([]);
@@ -87,6 +88,7 @@ const Profile = () => {
                 const u = userRes.data.data;
                 setUser(u);
                 setUpdateData({
+                    userName: u.userName,
                     name: u.name, surname: u.surname, email: u.email,
                     cityCode: u.cityCode || 1, genderCode: u.genderCode || 1
                 });
@@ -148,6 +150,13 @@ const Profile = () => {
         setUpdateMessage({ type: '', text: '' });
 
         try {
+            const trimmedUsername = (updateData.userName || '').trim();
+            const usernameChanged = trimmedUsername.length > 0 && trimmedUsername !== user.userName;
+
+            if (usernameChanged) {
+                await userService.updateUsername(trimmedUsername);
+            }
+
             await userService.updateDetails({
                 id: user.id,
                 name: updateData.name,
@@ -162,7 +171,8 @@ const Profile = () => {
             // 3 saniye sonra mesajı temizle
             setTimeout(() => setUpdateMessage({ type: '', text: '' }), 3000);
         } catch (err) {
-            setUpdateMessage({ type: 'error', text: 'Bilgiler güncellenemedi. ❌' });
+            const msg = (err as any)?.response?.data?.message || (err as any)?.response?.data || 'Bilgiler güncellenemedi. ❌';
+            setUpdateMessage({ type: 'error', text: typeof msg === 'string' ? msg : 'Bilgiler güncellenemedi. ❌' });
         } finally {
             setIsUpdating(false);
         }
@@ -171,6 +181,8 @@ const Profile = () => {
     const handleUpdatePassword = async (e: React.FormEvent) => {
         e.preventDefault();
         setPassMessage({ type: '', text: '' });
+
+        const isGoogleNoPassword = user?.authType === 'Google' && !user?.hasPassword;
 
         if (passForm.newPassword !== passForm.confirmPassword) {
             setPassMessage({ type: 'error', text: 'Yeni şifreler uyuşmuyor. ❌' });
@@ -188,7 +200,7 @@ const Profile = () => {
         try {
             const result = await userService.updatePassword({
                 id: userId,
-                oldPassword: passForm.oldPassword,
+                oldPassword: isGoogleNoPassword ? '' : passForm.oldPassword,
                 newPassword: passForm.newPassword
             });
 
@@ -768,11 +780,33 @@ const Profile = () => {
                                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                                     <h2 className="text-xl font-bold text-gray-800 border-b border-gray-100 pb-4 mb-6">Bilgileri Güncelle</h2>
                                     <form onSubmit={handleUpdateDetails} className="space-y-4">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Kullanıcı Adı</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition"
+                                                value={updateData.userName}
+                                                onChange={e => setUpdateData({ ...updateData, userName: e.target.value })}
+                                                required
+                                            />
+                                            <div className="text-[11px] text-gray-500 mt-1 pl-1">
+                                                Kullanıcı adınızı 30 günde 1 kez değiştirebilirsiniz.
+                                            </div>
+                                        </div>
+
                                         <div className="grid grid-cols-2 gap-4">
                                             <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Ad</label><input type="text" className="w-full border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={updateData.name} onChange={e => setUpdateData({ ...updateData, name: e.target.value })} required /></div>
                                             <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Soyad</label><input type="text" className="w-full border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={updateData.surname} onChange={e => setUpdateData({ ...updateData, surname: e.target.value })} required /></div>
                                         </div>
-                                        <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">E-Posta</label><input type="email" className="w-full border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={updateData.email} onChange={e => setUpdateData({ ...updateData, email: e.target.value })} required /></div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">E-Posta</label>
+                                            <input type="email" className="w-full border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={updateData.email} onChange={e => setUpdateData({ ...updateData, email: e.target.value })} required />
+                                            {user?.email && updateData.email !== user.email && (
+                                                <div className="text-[11px] text-amber-700 mt-1 pl-1">
+                                                    E-posta adresinizi değiştirirseniz yeniden doğrulama yapana kadar sistemden çıkış yapılırsınız.
+                                                </div>
+                                            )}
+                                        </div>
 
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
@@ -816,9 +850,11 @@ const Profile = () => {
 
                                 {/* Form 2: Şifre Değiştirme */}
                                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit">
-                                    <h2 className="text-xl font-bold text-gray-800 border-b border-gray-100 pb-4 mb-6">Şifre Değiştir</h2>
+                                    <h2 className="text-xl font-bold text-gray-800 border-b border-gray-100 pb-4 mb-6">{user?.authType === 'Google' && !user?.hasPassword ? 'Şifre Belirle' : 'Şifre Değiştir'}</h2>
                                     <form onSubmit={handleUpdatePassword} className="space-y-4">
-                                        <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Eski Şifreniz</label><input type="password" placeholder="Mevcut şifreniz" className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.oldPassword} onChange={e => setPassForm({ ...passForm, oldPassword: e.target.value })} required /></div>
+                                        {!(user?.authType === 'Google' && !user?.hasPassword) && (
+                                            <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Eski Şifreniz</label><input type="password" placeholder="Mevcut şifreniz" className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.oldPassword} onChange={e => setPassForm({ ...passForm, oldPassword: e.target.value })} required /></div>
+                                        )}
                                         <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Yeni Şifre</label><input type="password" placeholder="En az 6 karakter" minLength={6} className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.newPassword} onChange={e => setPassForm({ ...passForm, newPassword: e.target.value })} required /></div>
                                         <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Yeni Şifre (Tekrar)</label><input type="password" placeholder="Yeni şifrenizi doğrulayın" minLength={6} className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.confirmPassword} onChange={e => setPassForm({ ...passForm, confirmPassword: e.target.value })} required /></div>
 
@@ -831,7 +867,7 @@ const Profile = () => {
                                         <button type="submit" disabled={isPassUpdating} className="w-full bg-gray-900 text-white font-bold py-3.5 rounded-xl hover:bg-black transition shadow-md mt-6 disabled:bg-gray-500 active:scale-95 flex justify-center items-center gap-2">
                                             {isPassUpdating ? (
                                                 <><svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Güncelleniyor...</>
-                                            ) : 'Şifreyi Güncelle'}
+                                            ) : (user?.authType === 'Google' && !user?.hasPassword ? 'Şifre Belirle' : 'Şifreyi Güncelle')}
                                         </button>
                                     </form>
                                 </div>

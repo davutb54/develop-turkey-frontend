@@ -145,14 +145,9 @@ const Navbar = () => {
                       <span className={`font-bold ${textColor}`}>
                         {institution?.name || 'Develop Turkey'}
                       </span>
-                      {institution && institution.id !== 1 && (
+                      {institution?.subtitle && (
                         <span className={`text-[9px] font-black uppercase tracking-widest opacity-80 ${textColor}`}>
-                          SO7LE - Özel Kurum Ağı
-                        </span>
-                      )}
-                      {institution && institution.id === 1 && (
-                        <span className={`text-[9px] font-black uppercase tracking-widest opacity-80 ${textColor}`}>
-                          Türkiyeyi Geliştirme Platformu
+                          {institution.subtitle}
                         </span>
                       )}
                     </div>
@@ -180,6 +175,10 @@ const Navbar = () => {
 
                           <Link to="/add-problem" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-white/20 text-white hover:bg-white/30 border border-white/20' : 'text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200'}`}>
                             + Sorun Paylaş
+                          </Link>
+
+                          <Link to="/about" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-white/10 text-white hover:bg-white/20 border border-white/20' : 'text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200'}`}>
+                            Hakkımızda
                           </Link>
 
                           {user.isAdmin && (
@@ -235,6 +234,9 @@ const Navbar = () => {
                       <>
                         {/* --- MASAÜSTÜ GİRİŞ/KAYIT (Sadece lg ekranlarda görünür) --- */}
                         <div className="hidden lg:flex items-center gap-3">
+                          <Link to="/about" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-white/10 text-white hover:bg-white/20 border border-white/20' : 'text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200'}`}>
+                            Hakkımızda
+                          </Link>
                           <Link to="/login" className={`text-sm font-bold transition ${isCustomTheme ? 'text-white hover:text-gray-200' : 'text-gray-600 hover:text-blue-600'}`}>
                             Giriş Yap
                           </Link>
@@ -280,6 +282,10 @@ const Navbar = () => {
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
                 Kayıt Ol
               </Link>
+              <Link to="/about" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Hakkımızda
+              </Link>
             </div>
           </div>
         )}
@@ -311,6 +317,10 @@ const Navbar = () => {
               <Link to="/add-problem" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-3">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                 Sorun Paylaş
+              </Link>
+              <Link to="/about" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Hakkımızda
               </Link>
               <button
                 onClick={() => { setIsFeedbackOpen(true); setIsMobileMenuOpen(false); }}

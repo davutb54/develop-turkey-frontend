@@ -84,4 +84,10 @@ export const userService = {
     updateDetails: async (data: UserForUpdateDto) => {
         return api.post<IResult>('/user/updatedetails', data);
     },
+
+    updateUsername: async (newUsername: string) => {
+        return api.post<IResult>('/user/updateusername', JSON.stringify(newUsername), {
+            headers: { 'Content-Type': 'application/json' }
+        });
+    },
 };

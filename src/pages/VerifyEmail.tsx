@@ -7,14 +7,18 @@ const VerifyEmail = () => {
   const navigate = useNavigate();
   const emailFromState = location.state?.email || '';
 
-  const [email, setEmail] = useState(emailFromState);
+  const emailFromSession = (() => {
+    try { return sessionStorage.getItem('pending_verify_email') || ''; } catch { return ''; }
+  })();
+
+  const [email, setEmail] = useState(emailFromState || emailFromSession);
   const [code, setCode] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
   
   // SAYAÇ İÇİN STATE'LER
-  const [timeLeft, setTimeLeft] = useState(120); 
-  const [canResend, setCanResend] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [canResend, setCanResend] = useState(true);
 
   // Geri Sayım Efekti
   useEffect(() => {
@@ -26,6 +30,7 @@ const VerifyEmail = () => {
     }
   }, [timeLeft]);
 
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setMessage({ type: '', text: '' });
@@ -33,10 +38,15 @@ const VerifyEmail = () => {
       const result = await authService.verifyEmail({ email, code: parseInt(code) });
       if (result.data.success || result.status === 200) {
         setMessage({ type: 'success', text: "Başarıyla doğrulandı! Yönlendiriliyorsunuz..." });
+        try {
+          sessionStorage.removeItem('pending_verify_email');
+        } catch { /* ignore */ }
         setTimeout(() => navigate('/'), 2000);
       }
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.response?.data?.message || "Doğrulama başarısız." });
+      const data = err.response?.data;
+      const msg = typeof data === 'string' ? data : (data?.message || data?.Message);
+      setMessage({ type: 'error', text: msg || "Doğrulama başarısız." });
     } finally {
       setLoading(false);
     }
@@ -54,7 +64,9 @@ const VerifyEmail = () => {
       await authService.resendVerification(email);
       setMessage({ type: 'success', text: "Yeni kod gönderildi. Lütfen e-postanızı kontrol edin." });
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.response?.data?.message || "Kod gönderilemedi." });
+      const data = err.response?.data;
+      const msg = typeof data === 'string' ? data : (data?.message || data?.Message);
+      setMessage({ type: 'error', text: msg || "Kod gönderilemedi." });
       setCanResend(true); // Hata olursa hemen tekrar denemesine izin ver
       setTimeLeft(0);
     }
@@ -67,7 +79,7 @@ const VerifyEmail = () => {
         
         <form className="mt-8 space-y-4" onSubmit={handleVerify}>
           <input
-            type="email" required disabled={!!emailFromState}
+            type="email" required disabled={!!emailFromState || !!emailFromSession}
             className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
             placeholder="E-Posta Adresi"
             value={email} onChange={(e) => setEmail(e.target.value)}

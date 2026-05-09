@@ -78,6 +78,7 @@ const Footer: React.FC = () => {
                         <ul className="space-y-3">
                             {[
                                 { label: 'Ana Sayfa', to: '/' },
+                                { label: 'Hakkımızda', to: '/about' },
                                 { label: 'Sorun Paylaş', to: '/add-problem' },
                                 ...(!userId ? [
                                     { label: 'Giriş Yap', to: '/login' },
@@ -221,9 +222,11 @@ const Footer: React.FC = () => {
                         © {new Date().getFullYear()} <span className="text-gray-400 font-medium">{siteName}</span> — Tüm hakları saklıdır.
                     </span>
                     <div className="flex items-center gap-4">
-                        <a href="#" className="hover:text-gray-300 transition-colors duration-200">Gizlilik Politikası</a>
+                        <Link to="/legal/TermsOfService" className="hover:text-gray-300 transition-colors duration-200">Kullanım Koşulları</Link>
                         <span className="text-gray-700">|</span>
-                        <a href="#" className="hover:text-gray-300 transition-colors duration-200">KVKK</a>
+                        <Link to="/legal/PrivacyPolicy" className="hover:text-gray-300 transition-colors duration-200">Gizlilik Politikası</Link>
+                        <span className="text-gray-700">|</span>
+                        <Link to="/legal/KVKK" className="hover:text-gray-300 transition-colors duration-200">KVKK</Link>
                     </div>
                 </div>
             </div>

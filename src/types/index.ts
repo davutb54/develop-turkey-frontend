@@ -26,6 +26,8 @@ export interface UserDetailDto {
     genderCode: number;
     id: number;
     userName: string;
+    authType?: string | null;
+    hasPassword?: boolean;
     name: string;
     surname: string;
     email: string;
@@ -97,6 +99,8 @@ export interface ProblemDetailDto {
     solutionCount: number;
     viewCount: number;
     senderImageUrl?: string | null;
+    upvoteCount: number;
+    followerCount: number;
 }
 
 export interface TopicDto {
@@ -313,6 +317,7 @@ export interface ImpersonateDto {
 export interface Institution {
     id?: number;
     name: string;
+    subtitle?: string | null;
     domain: string;
     logoUrl?: string | null;
     primaryColor?: string | null;

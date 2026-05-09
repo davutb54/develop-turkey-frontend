@@ -41,6 +41,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await userService.getMe();
       if (response.data && response.data.success) {
         const user = response.data.data;
+
+        // Oturum açıkken e-posta doğrulanmamışsa kullanıcıyı sistemden at ve doğrulama sayfasına yönlendir
+        if (user?.isEmailVerified === false) {
+          try {
+            // VerifyEmail sayfasında otomatik tekrar gönderme için
+            sessionStorage.setItem('pending_verify_email', user.email || '');
+          } catch {
+            // sessionStorage erişimi engellenmiş olabilir
+          }
+
+          setUserId(false);
+          setIsAdmin(false);
+          setIsProfileIncomplete(false);
+          setHasPendingAgreement(false);
+
+          const currentPath = window.location.pathname.toLowerCase();
+          if (!currentPath.includes('/verify-email')) {
+            window.location.href = '/verify-email';
+          }
+          return;
+        }
+
         setUserId(user.id);
         setIsAdmin(user.isAdmin);
         setIsMaintenance(false); // Başarılıysa bakımda değilizdir (veya adminiz)

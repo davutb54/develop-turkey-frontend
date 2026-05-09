@@ -37,6 +37,10 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   // --- SÖZLEŞME STATE'LERİ ---
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   const [isAccepted, setIsAccepted] = useState(false);
@@ -92,6 +96,11 @@ const Register = () => {
     if (!isAccepted) {
         setError("Devam etmek için sözleşmeyi onaylamalısınız.");
         return;
+    }
+
+    if (formData.password !== confirmPassword) {
+      setError('Şifreler uyuşmuyor.');
+      return;
     }
 
     if (formData.cityCode === -1 || formData.cityCode === 0) {
@@ -216,8 +225,48 @@ const Register = () => {
           <input name="email" type="email" required placeholder="E-posta"
             className="input-field w-full" onChange={handleChange} disabled={loading} />
 
-          <input name="password" type="password" required placeholder="Şifre"
-            className="input-field w-full" onChange={handleChange} disabled={loading} />
+          <div className="relative">
+            <input
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              required
+              placeholder="Şifre"
+              className="input-field w-full pr-10"
+              onChange={handleChange}
+              disabled={loading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600"
+              aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+              disabled={loading}
+            >
+              👁️
+            </button>
+          </div>
+
+          <div className="relative">
+            <input
+              name="confirmPassword"
+              type={showConfirmPassword ? 'text' : 'password'}
+              required
+              placeholder="Şifre (Tekrar)"
+              className="input-field w-full pr-10"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(v => !v)}
+              className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600"
+              aria-label={showConfirmPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+              disabled={loading}
+            >
+              👁️
+            </button>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <SearchableSelect

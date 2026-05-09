@@ -15,6 +15,8 @@ import AdminDashboard from './pages/AdminDashboard';
 import Maintenance from './pages/Maintenance';
 import NotFound from './pages/NotFound';
 import NotificationsPage from './pages/NotificationsPage';
+import LegalAgreementDetail from './pages/LegalAgreementDetail';
+import About from './pages/About';
 import Footer from './components/Footer';
 import AgreementModal from './components/AgreementModal';
 import { useAuth } from './context/AuthContext';
@@ -84,6 +86,8 @@ function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/maintenance" element={<Maintenance />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/legal/:type" element={<LegalAgreementDetail />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       {showFooter && <Footer />}
@@ -103,4 +107,4 @@ function App() {
 }
 
 export default App;
-
+

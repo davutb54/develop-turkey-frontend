@@ -29,6 +29,8 @@ const ProblemDetail = () => {
 
     const [isFollowing, setIsFollowing] = useState(false);
     const [savedSolutionIds, setSavedSolutionIds] = useState<number[]>([]);
+    const [isUpvoted, setIsUpvoted] = useState(false);
+    const [followedTopicIds, setFollowedTopicIds] = useState<number[]>([]);
 
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [reportTarget, setReportTarget] = useState<{ type: 'Problem' | 'Solution', id: number } | null>(null);
@@ -214,6 +216,20 @@ const ProblemDetail = () => {
                 actionService.checkProblemFollow(problemId)
                     .then(res => setIsFollowing(res.data.isFollowing))
                     .catch(() => {});
+                
+                actionService.checkProblemUpvote(problemId)
+                    .then(res => setIsUpvoted(res.data.isUpvoted))
+                    .catch(() => {});
+
+                if (problemRes.data.success && problemRes.data.data.topics) {
+                    const topicIds = problemRes.data.data.topics.map((t: any) => t.id);
+                    Promise.all(topicIds.map((tid: number) => actionService.checkTopicFollow(tid)))
+                        .then(results => {
+                            const followedIds = topicIds.filter((_: any, i: number) => results[i].data.isFollowing);
+                            setFollowedTopicIds(followedIds);
+                        })
+                        .catch(() => {});
+                }
             }
 
         } catch (err) {
@@ -233,6 +249,45 @@ const ProblemDetail = () => {
             await actionService.toggleProblemFollow(problem!.id);
         } catch {
             setIsFollowing(isFollowing); // Revert
+        }
+    };
+
+    const handleToggleUpvote = async () => {
+        if (!currentUserId || currentUserId === 0) {
+            alert("Desteklemek için giriş yapmalısınız.");
+            return;
+        }
+        setIsUpvoted(!isUpvoted);
+        setProblem(prev => prev ? { ...prev, upvoteCount: (prev.upvoteCount || 0) + (isUpvoted ? -1 : 1) } : null);
+        try {
+            await actionService.toggleProblemUpvote(problem!.id);
+        } catch {
+            setIsUpvoted(isUpvoted);
+            setProblem(prev => prev ? { ...prev, upvoteCount: (prev.upvoteCount || 0) + (isUpvoted ? 1 : -1) } : null);
+        }
+    };
+
+    const handleToggleTopicFollow = async (topicId: number) => {
+        if (!currentUserId || currentUserId === 0) {
+            alert("Kategori takip etmek için giriş yapmalısınız.");
+            return;
+        }
+        const isTopicFollowed = followedTopicIds.includes(topicId);
+        
+        if (isTopicFollowed) {
+            setFollowedTopicIds(prev => prev.filter(id => id !== topicId));
+        } else {
+            setFollowedTopicIds(prev => [...prev, topicId]);
+        }
+
+        try {
+            await actionService.toggleTopicFollow(topicId);
+        } catch {
+            if (isTopicFollowed) {
+                setFollowedTopicIds(prev => [...prev, topicId]);
+            } else {
+                setFollowedTopicIds(prev => prev.filter(id => id !== topicId));
+            }
         }
     };
 
@@ -424,6 +479,13 @@ const ProblemDetail = () => {
                                 <span key={t.id} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm flex items-center gap-1">
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
                                     {t.name}
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleToggleTopicFollow(t.id); }}
+                                        title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
+                                        className="ml-1 hover:scale-110 transition-transform focus:outline-none"
+                                    >
+                                        {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
+                                    </button>
                                 </span>
                             ))}
                         </div>
@@ -652,6 +714,16 @@ const ProblemDetail = () => {
                                         className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border shadow-sm ${isFollowing ? 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
                                     >
                                         {isFollowing ? '🔕 Takipten Çık' : '🔔 Takip Et'}
+                                    </button>
+                                    <button
+                                        onClick={handleToggleUpvote}
+                                        className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border shadow-sm ${
+                                            isUpvoted 
+                                            ? 'bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200' 
+                                            : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        ✋ Ben de Yaşıyorum ({problem.upvoteCount || 0})
                                     </button>
                                 </div>
                                 <p className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap mb-8">{problem.description}</p>

@@ -10,6 +10,7 @@ import type { ProblemDetailDto, Topic, City } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { getProfileImageUrl } from '../utils/imageUtils';
+import { actionService } from '../services/actionService';
 
 const Home = () => {
     // --- VERİ STATE'LERİ (SAYFALAMA İÇİN) ---
@@ -31,6 +32,7 @@ const Home = () => {
     const [activeCategory, setActiveCategory] = useState<number | null>(null);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [filters, setFilters] = useState({ searchText: '', cityCode: '' });
+    const [followedTopicIds, setFollowedTopicIds] = useState<number[]>([]);
 
     const [openMenuId, setOpenMenuId] = useState<number | null>(null);
     const [reportTarget, setReportTarget] = useState<{ type: 'Problem', id: number } | null>(null);
@@ -86,6 +88,17 @@ const Home = () => {
                 );
             }
 
+            if (currentUserId !== 0 && topicsRes.data.success) {
+                Promise.all(topicsRes.data.data.map((t: any) => actionService.checkTopicFollow(t.id)))
+                    .then(results => {
+                        const followedIds = topicsRes.data.data
+                            .filter((_: any, i: number) => results[i]?.data?.isFollowing)
+                            .map((t: any) => t.id);
+                        setFollowedTopicIds(followedIds);
+                    })
+                    .catch(() => {});
+            }
+
             // İlk sayfa verisini getir
             await fetchFeedProblems(1);
         } catch (err) { console.error("Veriler yüklenirken hata:", err); }
@@ -127,6 +140,29 @@ const Home = () => {
         }
     };
 
+    const handleToggleTopicFollow = async (topicId: number) => {
+        if (!currentUserId || currentUserId === 0) {
+            alert("Kategori takip etmek için giriş yapmalısınız.");
+            return;
+        }
+        const isTopicFollowed = followedTopicIds.includes(topicId);
+        
+        if (isTopicFollowed) {
+            setFollowedTopicIds(prev => prev.filter(id => id !== topicId));
+        } else {
+            setFollowedTopicIds(prev => [...prev, topicId]);
+        }
+
+        try {
+            await actionService.toggleTopicFollow(topicId);
+        } catch {
+            if (isTopicFollowed) {
+                setFollowedTopicIds(prev => [...prev, topicId]);
+            } else {
+                setFollowedTopicIds(prev => prev.filter(id => id !== topicId));
+            }
+        }
+    };
 
     const handleDeleteOwnProblem = async (id: number) => {
         if (!window.confirm("Bu sorunu silmek istediğinize emin misiniz?")) return;
@@ -243,12 +279,21 @@ const Home = () => {
                         Tümü
                     </button>
                     {topics.map(t => (
-                        <button
-                            key={t.id} onClick={() => setActiveCategory(t.id)}
-                            className={`shrink-0 px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-300 ${activeCategory === t.id ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border-transparent' : 'bg-white text-gray-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'}`}
-                        >
-                            {t.name}
-                        </button>
+                        <div key={t.id} className={`flex items-center shrink-0 rounded-full border transition-all duration-300 ${activeCategory === t.id ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50'}`}>
+                            <button
+                                onClick={() => setActiveCategory(t.id)}
+                                className={`pl-6 pr-2 py-2.5 text-sm font-bold outline-none ${activeCategory === t.id ? 'text-white' : 'hover:text-blue-600'}`}
+                            >
+                                {t.name}
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleToggleTopicFollow(t.id); }}
+                                className={`pr-4 pl-2 py-2.5 text-sm outline-none hover:scale-110 transition-transform ${activeCategory === t.id ? 'text-white' : ''}`}
+                                title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
+                            >
+                                {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
+                            </button>
+                        </div>
                     ))}
                 </div>
 
@@ -391,8 +436,15 @@ const Home = () => {
                                         <div className="flex flex-wrap gap-1.5 my-2">
                                             {prob.topics && prob.topics.length > 0 ? (
                                                 prob.topics.map((t: { id: number, name: string }) => (
-                                                    <span key={t.id} className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shadow-sm">
+                                                    <span key={t.id} className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shadow-sm flex items-center gap-1">
                                                         {t.name}
+                                                        <button 
+                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleTopicFollow(t.id); }}
+                                                            className="hover:scale-110 transition-transform focus:outline-none"
+                                                            title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
+                                                        >
+                                                            {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
+                                                        </button>
                                                     </span>
                                                 ))
                                             ) : (
