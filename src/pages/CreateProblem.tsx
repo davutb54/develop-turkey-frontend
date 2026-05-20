@@ -9,10 +9,26 @@ import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
 import Navbar from '../components/Navbar';
 import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
+import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
+import MentionWrapper from '../components/MentionWrapper';
 
 const CreateProblem = () => {
     const navigate = useNavigate();
     const { userId } = useAuth();
+    const terminology = useTerminology();
+    const allowImageUpload = useFeature<boolean>('Content.AllowImageUpload', true);
+    const maxTitleLength = useFeature<number>('Content.MaxTitleLength', 200);
+    const requireCategory = useFeature<boolean>('Content.RequireCategorySelection', false);
+    const enableMapLocation = useFeature<boolean>('Content.EnableMapLocation', true);
+    const requireMapLocation = useFeature<boolean>('Content.RequireMapLocation', false);
+    const enableCustomHierarchy = useFeature<boolean>('Content.EnableCustomHierarchy', false);
+    const requireLocation = useFeature<boolean>('Content.RequireLocationSelection', true);
+    const maxProblemImages = useFeature<number>('Content.MaxProblemImageCount', 5);
+    const enableInstantSolution = useFeature<boolean>('Content.EnableInstantSolution', true);
+    const allowSolutionImageUpload = useFeature<boolean>('Content.AllowSolutionImageUpload', true);
+    const maxSolutionImages = useFeature<number>('Content.MaxSolutionImageCount', 3);
+    const enableMentions = useFeature<boolean>('Social.EnableMentions', true);
+    const institution = useInstitution();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -26,11 +42,13 @@ const CreateProblem = () => {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [cityCode, setCityCode] = useState(0);
+    const [customHierarchyId, setCustomHierarchyId] = useState<number | null>(null);
     const [selectedTopics, setSelectedTopics] = useState<number[]>([]);
-    const [image, setImage] = useState<File | null>(null);
+    const [images, setImages] = useState<File[]>([]);
     const [hasSolution, setHasSolution] = useState(false);
     const [solutionTitle, setSolutionTitle] = useState(''); // YENİ
     const [solutionDescription, setSolutionDescription] = useState('');
+    const [solutionImages, setSolutionImages] = useState<File[]>([]);
 
     // Konum (opsiyonel)
     const [address, setAddress] = useState('');
@@ -104,17 +122,24 @@ const CreateProblem = () => {
     }, [latitude, longitude]);
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-
-            // 5 MB = 5 * 1024 * 1024 byte
-            if (file.size > 5 * 1024 * 1024) {
-                alert("Seçtiğiniz fotoğraf çok büyük! Lütfen 5 MB'dan küçük bir fotoğraf seçin.");
-                e.target.value = ''; // Inputu temizle
+        if (e.target.files) {
+            const files = Array.from(e.target.files);
+            
+            if (files.length + images.length > maxProblemImages) {
+                alert(`En fazla ${maxProblemImages} görsel seçebilirsiniz.`);
+                e.target.value = '';
                 return;
             }
 
-            setImage(file);
+            const validFiles = files.filter(file => {
+                if (file.size > 5 * 1024 * 1024) {
+                    alert(`${file.name} çok büyük! Lütfen 5 MB'dan küçük bir fotoğraf seçin.`);
+                    return false;
+                }
+                return true;
+            });
+
+            setImages(prev => [...prev, ...validFiles]);
         }
     };
 
@@ -123,23 +148,46 @@ const CreateProblem = () => {
         setLoading(true);
         setError('');
 
-        // Basit Validasyon
+        // Basit Validasyonlar
         if (isResolvingCity) { setError("Şehir konuma göre belirleniyor, lütfen bekleyin."); setLoading(false); return; }
         if (latitude !== null && longitude !== null && !autoCityName) { setError("Konumdan şehir tespit edilemedi. Lütfen pini şehir içinde olacak şekilde düzeltin."); setLoading(false); return; }
-        if (cityCode === -1) { setError("Lütfen şehir seçin."); setLoading(false); return; }
-        if (selectedTopics.length === 0) { setError("Lütfen en az 1 kategori (konu) seçin."); setLoading(false); return; }
+
+        // Eğer lokasyon seçimi zorunluysa kontrol et
+        if (requireLocation) {
+            // Eğer özel hiyerarşi YOKSA şehir seçimi zorunlu
+            if (!enableCustomHierarchy && (cityCode === -1 || cityCode === 0)) {
+                setError(`Lütfen ${terminology.cityLabel || 'bir bölge'} seçin.`); setLoading(false); return;
+            }
+
+            // Eğer özel hiyerarşi VARSA hiyerarşi seçimi zorunlu
+            if (enableCustomHierarchy && customHierarchyId === null) {
+                setError(`Lütfen ${terminology.cityLabel} seçin.`); setLoading(false); return;
+            }
+        }
+        if (requireCategory && selectedTopics.length === 0) { setError("Lütfen en az 1 kategori seçin."); setLoading(false); return; }
+
+        // Konum Zorunluluğu Kontrolü (RequireMapLocation)
+        if (enableMapLocation && requireMapLocation) {
+            if (!latitude || !longitude) {
+                setError("Lütfen haritadan bir konum seçin. Bu işlem bu kurum için zorunludur.");
+                setLoading(false);
+                return;
+            }
+        }
 
         const newProblem: ProblemAddDto = {
             title,
             description,
             cityCode,
-            address: address.trim() ? address.trim() : undefined,
-            latitude: latitude ?? undefined,
-            longitude: longitude ?? undefined,
+            address: enableMapLocation ? (address.trim() ? address.trim() : undefined) : undefined,
+            latitude: enableMapLocation ? (latitude ?? undefined) : undefined,
+            longitude: enableMapLocation ? (longitude ?? undefined) : undefined,
+            customHierarchyId: customHierarchyId ?? undefined,
             topicIds: selectedTopics, // YENİ
-            image,
+            images,
             solutionTitle: hasSolution ? solutionTitle : undefined, // YENİ
-            solutionDescription: hasSolution ? solutionDescription : undefined
+            solutionDescription: hasSolution ? solutionDescription : undefined,
+            solutionImages: hasSolution ? solutionImages : undefined
         };
 
         try {
@@ -151,16 +199,26 @@ const CreateProblem = () => {
                 setError(result.data.message);
             }
         } catch (err: any) {
-            // Hata mesajını ayrıştır
-            if (err.response && err.response.data) {
-                if (Array.isArray(err.response.data)) { // FluentValidation dizisi
-                    setError(err.response.data.map((e: any) => e.errorMessage).join(", "));
-                } else {
-                    setError(err.response.data.message || "Bir hata oluştu");
+            console.error("Problem creation error:", err);
+            let errMsg = "Sorun paylaşılırken bir hata oluştu.";
+            
+            if (err.response?.data) {
+                if (Array.isArray(err.response.data)) {
+                    // FluentValidation listesi
+                    errMsg = err.response.data.map((e: any) => e.errorMessage).join(", ");
+                } else if (typeof err.response.data === 'string') {
+                    errMsg = err.response.data;
+                } else if (err.response.data.message) {
+                    errMsg = err.response.data.message;
+                } else if (err.response.data.errors) {
+                    // ASP.NET Core Validation errors
+                    errMsg = Object.values(err.response.data.errors).flat().join('\n');
                 }
-            } else {
-                setError("Sunucuya bağlanılamadı.");
+            } else if (err.message) {
+                errMsg = err.message;
             }
+            
+            setError(errMsg);
         } finally {
             setLoading(false);
         }
@@ -218,6 +276,7 @@ const CreateProblem = () => {
 
     const mapZoom = latitude !== null && longitude !== null ? 15 : 6;
 
+
     return (
         <div className="min-h-screen bg-gray-100">
             <Navbar />
@@ -235,6 +294,22 @@ const CreateProblem = () => {
 
                     <div className="px-4 py-5 sm:p-6">
                         <form onSubmit={handleSubmit} className="space-y-6">
+                            {error && (
+                                <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4 rounded-md shadow-sm">
+                                    <div className="flex">
+                                        <div className="flex-shrink-0">
+                                            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                            </svg>
+                                        </div>
+                                        <div className="ml-3">
+                                            <p className="text-sm font-bold text-red-700 whitespace-pre-line">
+                                                {error}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Başlık */}
                             <div>
@@ -242,7 +317,7 @@ const CreateProblem = () => {
                                 <input
                                     type="text"
                                     required
-                                    maxLength={100}
+                                    maxLength={maxTitleLength}
                                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                                     placeholder="Örn: X Mahallesinde Sokak Lambaları Yanmıyor"
                                     value={title}
@@ -250,13 +325,20 @@ const CreateProblem = () => {
                                 />
                             </div>
 
-                            {/* Konum (Opsiyonel) */}
-                            <div className="pt-2">
-                                <div className="flex items-center justify-between gap-3 flex-wrap">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">Konum <span className="text-gray-400">(İsteğe Bağlı)</span></label>
-                                        <p className="text-xs text-gray-500 mt-1">Konum eklemek, sorunun daha hızlı anlaşılmasına yardımcı olabilir. Dilerseniz konumunuzu alabilir veya haritadan pin bırakabilirsiniz.</p>
-                                    </div>
+                            {/* Konum */}
+                            {enableMapLocation && (
+                                <div className="pt-2">
+                                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">
+                                                Konum {requireMapLocation ? <span className="text-red-500">*</span> : <span className="text-gray-400">(İsteğe Bağlı)</span>}
+                                            </label>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                {requireMapLocation 
+                                                    ? "Lütfen sorunun tam konumunu haritadan işaretleyin." 
+                                                    : "Konum eklemek, sorunun daha hızlı anlaşılmasına yardımcı olabilir. Dilerseniz konumunuzu alabilir veya haritadan pin bırakabilirsiniz."}
+                                            </p>
+                                        </div>
                                     <div className="flex items-center gap-2">
                                         <button
                                             type="button"
@@ -308,7 +390,6 @@ const CreateProblem = () => {
                                         )}
                                     </div>
                                 </div>
-
                                 <div className="mt-4">
                                     <div className="h-64 w-full rounded-xl overflow-hidden border border-gray-200 bg-gray-100">
                                         <MapContainer
@@ -332,29 +413,47 @@ const CreateProblem = () => {
                                     <p className="mt-2 text-[11px] text-gray-500">İpucu: Haritaya tıklayarak konum pini bırakabilir veya değiştirebilirsiniz.</p>
                                 </div>
                             </div>
+                        )}
 
                             {/* Dropdownlar */}
                             <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Şehir</label>
+                                    <label className="block text-sm font-medium text-gray-700">{terminology.cityLabel}</label>
                                     <div>
-                                        <SearchableSelect
-                                            options={cities.map(c => ({ value: c.value, label: c.text }))}
-                                            value={cityCode}
-                                            onChange={(val) => setCityCode(Number(val))}
-                                            placeholder="Şehir Seçiniz"
-                                            disabled={loading || (latitude !== null && longitude !== null) || isResolvingCity}
-                                        />
-                                        {(latitude !== null && longitude !== null) && (
-                                            <div className="mt-2 text-[11px] font-bold text-indigo-700">
-                                                Şehir konuma göre otomatik seçildi{autoCityName ? `: ${autoCityName}` : ''}. (Değiştirilemez)
-                                            </div>
+                                        {enableCustomHierarchy ? (
+                                             <SearchableSelect
+                                                 options={(() => {
+                                                     try {
+                                                         const items = JSON.parse(institution?.customHierarchyJson || '[]') as string[];
+                                                         return items.map((item, idx) => ({ value: idx, label: item }));
+                                                     } catch { return []; }
+                                                 })()}
+                                                 value={customHierarchyId ?? ''}
+                                                 onChange={(val) => setCustomHierarchyId(val === '' ? null : Number(val))}
+                                                 placeholder={`${terminology.cityLabel} Seçiniz`}
+                                                 disabled={loading}
+                                             />
+                                        ) : (
+                                            <>
+                                                <SearchableSelect
+                                                    options={cities.map(c => ({ value: c.value, label: c.text }))}
+                                                    value={cityCode}
+                                                    onChange={(val) => setCityCode(Number(val))}
+                                                    placeholder={`${terminology.cityLabel} Seçiniz`}
+                                                    disabled={loading || (latitude !== null && longitude !== null) || isResolvingCity}
+                                                />
+                                                {(latitude !== null && longitude !== null) && (
+                                                    <div className="mt-2 text-[11px] font-bold text-indigo-700">
+                                                        Şehir konuma göre otomatik seçildi{autoCityName ? `: ${autoCityName}` : ''}. (Değiştirilemez)
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-2">İlgili Kategoriler <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">İlgili Kategoriler {requireCategory && <span className="text-red-500">*</span>}</label>
                                     <div className="flex flex-wrap gap-2">
                                         {topics.map(topic => {
                                             const isSelected = selectedTopics.includes(topic.id);
@@ -371,8 +470,8 @@ const CreateProblem = () => {
                                                         );
                                                     }}
                                                     className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${isSelected
-                                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/30'
-                                                            : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50'
+                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/30'
+                                                        : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50'
                                                         }`}
                                                 >
                                                     {isSelected && (
@@ -391,65 +490,85 @@ const CreateProblem = () => {
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Açıklama</label>
                                 <div className="mt-1">
-                                    <textarea
-                                        rows={5}
-                                        required
-                                        className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border border-gray-300 rounded-md p-2"
-                                        placeholder="Sorunu detaylıca açıklayın..."
-                                        value={description}
-                                        onChange={(e) => setDescription(e.target.value)}
-                                    />
+
+                                    {enableMentions ? (
+                                        <MentionWrapper value={description} onChange={(val) => setDescription(val)} institutionId={institution?.id}>
+                                            <textarea
+                                                rows={5}
+                                                required
+                                                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border border-gray-300 rounded-md p-2"
+                                                placeholder="Sorunu detaylıca açıklayın..."
+                                                value={description}
+                                                onChange={(e) => setDescription(e.target.value)}
+                                            />
+                                        </MentionWrapper>
+                                    ) : (
+                                        <textarea
+                                            rows={5}
+                                            required
+                                            className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border border-gray-300 rounded-md p-2"
+                                            placeholder="Sorunu detaylıca açıklayın..."
+                                            value={description}
+                                            onChange={(e) => setDescription(e.target.value)}
+                                        />
+                                    )}
+
                                 </div>
                                 <p className="mt-2 text-sm text-gray-500">En az 20 karakter yazmalısınız.</p>
                             </div>
 
                             {/* Resim Yükleme */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Görsel (İsteğe Bağlı)</label>
-                                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:bg-gray-50 transition">
-                                    <div className="space-y-1 text-center">
-                                        <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
-                                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                                        </svg>
-                                        <div className="flex text-sm text-gray-600">
-                                            <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
-                                                <span>Dosya Yükle</span>
-                                                <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleImageChange} accept="image/*" />
-                                            </label>
-                                            <p className="pl-1">veya sürükleyip bırakın</p>
-                                        </div>
-                                        <p className="text-xs text-gray-500">PNG, JPG, GIF</p>
-                                        {/* Seçilen Resim Gösterimi ve Kaldırma Butonu */}
-                                        {image && (
-                                            <div className="mt-3 flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-md">
-                                                <div className="flex items-center">
-                                                    {/* Küçük bir önizleme ikonu */}
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                    </svg>
-                                                    <span className="text-sm text-green-700 font-medium truncate max-w-xs">
-                                                        {image.name}
-                                                    </span>
-                                                </div>
-
-                                                <button
-                                                    type="button" // Formun submit olmasını engeller
-                                                    onClick={() => {
-                                                        setImage(null); // State'i temizle
-                                                        // Dosya inputunu da sıfırla ki aynı dosyayı tekrar seçebilsin
-                                                        (document.getElementById('file-upload') as HTMLInputElement).value = "";
-                                                    }}
-                                                    className="text-red-500 hover:text-red-700 text-sm font-semibold transition-colors px-2 py-1 rounded hover:bg-red-100"
-                                                >
-                                                    Kaldır ✕
-                                                </button>
+                            {allowImageUpload && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Görseller (Maks: {maxProblemImages})</label>
+                                    <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:bg-gray-50 transition relative">
+                                        <div className="space-y-1 text-center">
+                                            <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                                            </svg>
+                                            <div className="flex text-sm text-gray-600">
+                                                <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
+                                                    <span>Dosya(lar) Yükle</span>
+                                                    <input id="file-upload" name="file-upload" type="file" multiple className="sr-only" onChange={handleImageChange} accept="image/*" />
+                                                </label>
+                                                <p className="pl-1">veya sürükleyip bırakın</p>
                                             </div>
-                                        )}
+                                            <p className="text-xs text-gray-500">PNG, JPG, GIF (Max 5MB per file)</p>
+                                        </div>
                                     </div>
+
+                                    {/* Seçilen Resimlerin Listesi */}
+                                    {images.length > 0 && (
+                                        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                            {images.map((img, idx) => (
+                                                <div key={idx} className="relative group rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
+                                                    <div className="aspect-w-16 aspect-h-9 h-24">
+                                                        <img 
+                                                            src={URL.createObjectURL(img)} 
+                                                            alt={`Seçilen ${idx + 1}`} 
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    </div>
+                                                    <div className="p-2 bg-white/90 backdrop-blur-sm flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-gray-600 truncate flex-1 mr-2">{img.name}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setImages(prev => prev.filter((_, i) => i !== idx))}
+                                                            className="text-red-500 hover:text-red-700 transition-colors"
+                                                            title="Kaldır"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
+                            )}
 
                             {/* ÇÖZÜM ALANI */}
+                            {enableInstantSolution && (
                             <div className="pt-4 border-t border-gray-100">
                                 <div className="flex items-center mb-4">
                                     <input
@@ -479,18 +598,74 @@ const CreateProblem = () => {
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-indigo-900 mb-1">Çözüm Detayı <span className="text-red-500">*</span></label>
-                                            <textarea
-                                                className="block w-full border border-indigo-200 rounded-lg shadow-sm py-3 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:text-sm transition bg-white"
-                                                rows={3}
-                                                required={hasSolution} // Eğer çözüm eklenecekse açıklaması zorunlu olsun
-                                                placeholder="Sizce bu sorun nasıl çözülmeli? Fikrinizi toplulukla paylaşın..."
-                                                value={solutionDescription}
-                                                onChange={(e) => setSolutionDescription(e.target.value)}
-                                            ></textarea>
+                                            {enableMentions ? (
+                                                <MentionWrapper value={solutionDescription} onChange={(val) => setSolutionDescription(val)} institutionId={institution?.id}>
+                                                    <textarea
+                                                        className="block w-full border border-indigo-200 rounded-lg shadow-sm py-3 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:text-sm transition bg-white"
+                                                        rows={3}
+                                                        required={hasSolution} // Eğer çözüm eklenecekse açıklaması zorunlu olsun
+                                                        placeholder="Sizce bu sorun nasıl çözülmeli? Fikrinizi toplulukla paylaşın..."
+                                                        value={solutionDescription}
+                                                        onChange={(e) => setSolutionDescription(e.target.value)}
+                                                    ></textarea>
+                                                </MentionWrapper>
+                                            ) : (
+                                                <textarea
+                                                    className="block w-full border border-indigo-200 rounded-lg shadow-sm py-3 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:text-sm transition bg-white"
+                                                    rows={3}
+                                                    required={hasSolution} // Eğer çözüm eklenecekse açıklaması zorunlu olsun
+                                                    placeholder="Sizce bu sorun nasıl çözülmeli? Fikrinizi toplulukla paylaşın..."
+                                                    value={solutionDescription}
+                                                    onChange={(e) => setSolutionDescription(e.target.value)}
+                                                ></textarea>
+                                            )}
                                         </div>
+
+                                        {/* Çözüm Resimleri */}
+                                        {allowSolutionImageUpload && (
+                                            <div>
+                                                <label className="block text-xs font-bold text-indigo-900 mb-1">Çözüm Resimleri (Maks: {maxSolutionImages})</label>
+                                                <input 
+                                                    type="file"
+                                                    multiple
+                                                    accept="image/*"
+                                                    onChange={(e) => {
+                                                        const files = Array.from(e.target.files || []);
+                                                        if (files.length > maxSolutionImages) {
+                                                            alert(`En fazla ${maxSolutionImages} görsel seçebilirsiniz.`);
+                                                            e.target.value = '';
+                                                            return;
+                                                        }
+                                                        setSolutionImages(files);
+                                                    }}
+                                                    className="w-full text-xs text-indigo-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200"
+                                                />
+                                                {solutionImages.length > 0 && (
+                                                    <div className="mt-3 grid grid-cols-3 gap-2">
+                                                        {solutionImages.map((img, idx) => (
+                                                            <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-indigo-200 shadow-sm">
+                                                                <img 
+                                                                    src={URL.createObjectURL(img)} 
+                                                                    alt={`Çözüm Görsel ${idx + 1}`} 
+                                                                    className="w-full h-full object-cover" 
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSolutionImages(prev => prev.filter((_, i) => i !== idx))}
+                                                                    className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-md hover:bg-red-600 transition shadow-sm"
+                                                                >
+                                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
+                            )}
 
                             {error && <div className="text-red-600 text-sm font-bold text-center">{error}</div>}
 

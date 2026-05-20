@@ -12,6 +12,8 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import CompleteProfile from './pages/CompleteProfile';
 import AdminDashboard from './pages/AdminDashboard';
+import FeatureManager from './pages/admin/FeatureManager';
+import WorkflowBuilder from './pages/admin/WorkflowBuilder';
 import Maintenance from './pages/Maintenance';
 import NotFound from './pages/NotFound';
 import NotificationsPage from './pages/NotificationsPage';
@@ -21,12 +23,37 @@ import Footer from './components/Footer';
 import AgreementModal from './components/AgreementModal';
 import { useAuth } from './context/AuthContext';
 import { legalAgreementService } from './services/legalAgreementService';
+import { useFeature } from './hooks/useFeature';
 import type { LegalAgreement } from './types';
 
 function App() {
   const { userId, isAdmin, isMaintenance, isProfileIncomplete, hasPendingAgreement, checkAuth } = useAuth();
   const location = useLocation();
   const [pendingAgreements, setPendingAgreements] = useState<LegalAgreement[]>([]);
+
+  // Dark Mode Feature
+  const darkModeEnabled = useFeature<boolean>('UX.DarkModeEnabled', false);
+  const [isDark, setIsDark] = useState(() => {
+    const stored = localStorage.getItem('darkMode');
+    return stored !== null ? stored === 'true' : false;
+  });
+
+  // Dark mode sınıfını html elementine uygula
+  useEffect(() => {
+    if (darkModeEnabled && isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkModeEnabled, isDark]);
+
+  const toggleDarkMode = () => {
+    setIsDark(prev => {
+      const next = !prev;
+      localStorage.setItem('darkMode', String(next));
+      return next;
+    });
+  };
 
   // Sayfa her değiştiğinde en tepeye kaydır (Scroll to top)
   useEffect(() => {
@@ -71,6 +98,16 @@ function App() {
 
   return (
     <div className="flex flex-col min-h-screen">
+      {/* Dark Mode Toggle Butonu */}
+      {darkModeEnabled && (
+        <button
+          onClick={toggleDarkMode}
+          className="fixed bottom-20 right-6 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full p-3 shadow-lg hover:shadow-xl transition-all"
+          title={isDark ? 'Aydınlık Moda Geç' : 'Karanlık Moda Geç'}
+        >
+          {isDark ? '☀️' : '🌙'}
+        </button>
+      )}
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
@@ -84,6 +121,8 @@ function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/complete-profile" element={userId ? <CompleteProfile /> : <Navigate to="/login" replace />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/admin/features" element={<FeatureManager />} />
+        <Route path="/admin/workflow" element={<WorkflowBuilder />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/maintenance" element={<Maintenance />} />
         <Route path="/about" element={<About />} />

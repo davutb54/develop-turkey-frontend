@@ -11,13 +11,25 @@ import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { getProfileImageUrl } from '../utils/imageUtils';
 import { actionService } from '../services/actionService';
+import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature'; // Assuming useFeature hook exports these or I should import from context
+import MentionText from '../components/MentionText';
+import SocialShare from '../components/SocialShare';
 
 const Home = () => {
+    const infiniteScrollEnabled = useFeature<boolean>('UX.InfiniteScrollEnabled', true);
+    const enableFollowSystem = useFeature<boolean>('Social.EnableFollowSystem', true);
+    const enableReports = useFeature<boolean>('Moderation.EnableReportSystem', true);
+    const enableCustomHierarchy = useFeature<boolean>('Content.EnableCustomHierarchy', false);
+    const { cityLabel } = useTerminology();
+    const institution = useInstitution();
+    const enableSharing = useFeature<boolean>('Social.EnableSharing', true);
+
     // --- VERİ STATE'LERİ (SAYFALAMA İÇİN) ---
     const [feedProblems, setFeedProblems] = useState<ProblemDetailDto[]>([]);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [totalPages, setTotalPages] = useState(1);
 
     // VİTRİN STATE'LERİ (Filtrelerden bağımsız, en başta bir kere yüklenir)
     const [highlightedProblems, setHighlightedProblems] = useState<any[]>([]);
@@ -31,7 +43,7 @@ const Home = () => {
     // --- FİLTRE VE UI STATE'LERİ ---
     const [activeCategory, setActiveCategory] = useState<number | null>(null);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
-    const [filters, setFilters] = useState({ searchText: '', cityCode: '' });
+    const [filters, setFilters] = useState({ searchText: '', cityCode: '', customHierarchyId: '' });
     const [followedTopicIds, setFollowedTopicIds] = useState<number[]>([]);
 
     const [openMenuId, setOpenMenuId] = useState<number | null>(null);
@@ -54,7 +66,7 @@ const Home = () => {
             fetchFeedProblems(1); // Zaten 1. sayfadaysak direkt yenile
         }
         setHasMore(true);
-    }, [activeCategory, filters.cityCode]);
+    }, [activeCategory, filters.cityCode, filters.customHierarchyId]);
 
     // SAYFA (PAGE) STATE'İ DEĞİŞTİĞİNDE (Daha Fazla Yükle tıklandığında) VERİ ÇEK
     useEffect(() => {
@@ -96,7 +108,7 @@ const Home = () => {
                             .map((t: any) => t.id);
                         setFollowedTopicIds(followedIds);
                     })
-                    .catch(() => {});
+                    .catch(() => { });
             }
 
             // İlk sayfa verisini getir
@@ -114,6 +126,7 @@ const Home = () => {
             const result = await problemService.getList({
                 topicId: activeCategory || undefined,
                 cityCode: filters.cityCode ? parseInt(filters.cityCode) : undefined,
+                customHierarchyId: filters.customHierarchyId ? parseInt(filters.customHierarchyId) : undefined,
                 searchText: filters.searchText || undefined,
                 page: currentPage,
                 pageSize: 10 // Her sayfada 10 veri gelsin
@@ -131,6 +144,12 @@ const Home = () => {
 
                 // Gelen veri 10'dan azsa demek ki veritabanında başka veri kalmadı.
                 setHasMore(incomingProblems.length === 10);
+                // Klasik sayfalama için toplam sayfa tahmini
+                if (incomingProblems.length < 10) {
+                    setTotalPages(currentPage);
+                } else {
+                    setTotalPages(currentPage + 1);
+                }
             }
         } catch (err) {
             console.error(err);
@@ -146,7 +165,7 @@ const Home = () => {
             return;
         }
         const isTopicFollowed = followedTopicIds.includes(topicId);
-        
+
         if (isTopicFollowed) {
             setFollowedTopicIds(prev => prev.filter(id => id !== topicId));
         } else {
@@ -236,7 +255,7 @@ const Home = () => {
                         <div className="flex gap-5 animate-scroll whitespace-nowrap px-4 py-2">
                             {infiniteSliderItems.map((item: any, idx: number) => (
                                 <Link
-                                to={item._type === 'Problem' ? `/problem/${item.id}` : `/problem/${item.problemId}?solution=${item.id}`}
+                                    to={item._type === 'Problem' ? `/problem/${item.id}` : `/problem/${item.problemId}?solution=${item.id}`}
                                     key={`slide-${item.id}-${idx}`}
                                     onClick={() => item._type === 'Problem' && handleProblemClick(item.id)}
                                     className="w-[300px] shrink-0 bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 hover:border-blue-400/30 rounded-3xl p-5 transition-all duration-300 group flex flex-col h-[170px] shadow-xl hover:shadow-blue-900/20"
@@ -286,13 +305,15 @@ const Home = () => {
                             >
                                 {t.name}
                             </button>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); handleToggleTopicFollow(t.id); }}
-                                className={`pr-4 pl-2 py-2.5 text-sm outline-none hover:scale-110 transition-transform ${activeCategory === t.id ? 'text-white' : ''}`}
-                                title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
-                            >
-                                {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
-                            </button>
+                            {enableFollowSystem && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleToggleTopicFollow(t.id); }}
+                                    className={`pr-4 pl-2 py-2.5 text-sm outline-none hover:scale-110 transition-transform ${activeCategory === t.id ? 'text-white' : ''}`}
+                                    title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
+                                >
+                                    {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
+                                </button>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -320,20 +341,29 @@ const Home = () => {
                                 <label className="block text-xs font-black text-indigo-800 uppercase tracking-wider mb-2">Kelime Ara</label>
                                 <input type="text" placeholder="Hangi sorunu arıyorsun?" className="w-full px-5 py-3.5 bg-white border border-indigo-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition" value={filters.searchText} onChange={e => setFilters({ ...filters, searchText: e.target.value })} />
                             </div>
-                            <div className="flex flex-col md:flex-row gap-4 relative z-20">
-                                <div className="flex-1 min-w-[200px]">
-                                    <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 pl-1">Bölge / Şehir Filtresi</label>
-                                    {/* YENİ ARAMALI ŞEHİR SEÇİCİ */}
-                                    <div className="h-[50px] flex items-center">
-                                        <SearchableSelect
-                                            options={cities.filter(c => c.value !== 0).map(c => ({ value: c.value, label: c.text }))}
-                                            value={filters.cityCode}
-                                            onChange={(val) => setFilters({ ...filters, cityCode: val === 0 ? '' : String(val) })}
-                                            placeholder="Tüm Türkiye (Şehir Ara...)"
-                                        />
-                                    </div>
-                                </div>
-
+                            {/* Şehir / Hiyerarşi Filtresi */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 pl-1">{cityLabel}</label>
+                                {enableCustomHierarchy ? (
+                                    <SearchableSelect
+                                        options={(() => {
+                                            try {
+                                                const items = JSON.parse(institution?.customHierarchyJson || '[]') as string[];
+                                                return items.map((item, idx) => ({ value: idx, label: item }));
+                                            } catch { return []; }
+                                        })()}
+                                        value={filters.customHierarchyId}
+                                        onChange={(val) => setFilters(prev => ({ ...prev, customHierarchyId: String(val) }))}
+                                        placeholder={`${cityLabel} Seçiniz`}
+                                    />
+                                ) : (
+                                    <SearchableSelect
+                                        options={cities.map(c => ({ value: c.value, label: c.text }))}
+                                        value={filters.cityCode}
+                                        onChange={(val) => setFilters(prev => ({ ...prev, cityCode: String(val) }))}
+                                        placeholder={`${cityLabel} Seçiniz`}
+                                    />
+                                )}
                             </div>
                             <button type="submit" className="w-full md:w-auto px-10 py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-600/30">Filtrele</button>
                         </form>
@@ -389,46 +419,66 @@ const Home = () => {
                                                     {new Date(prob.sendDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
                                                     <span className="text-indigo-200 mx-1">•</span>
                                                     <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                                    {prob.cityName}
+                                                    {(() => {
+                                                        if (prob.customHierarchyId !== null && institution?.customHierarchyJson) {
+                                                            try {
+                                                                const items = JSON.parse(institution.customHierarchyJson) as string[];
+                                                                return items[prob.customHierarchyId] || prob.cityName;
+                                                            } catch { return prob.cityName; }
+                                                        }
+                                                        return prob.cityName;
+                                                    })()}
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* ÜÇ NOKTA MENÜSÜ */}
-                                        <div className="relative">
-                                            <button onClick={() => setOpenMenuId(openMenuId === prob.id ? null : prob.id)} className="p-2 text-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition">
-                                                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                                            </button>
-                                            {openMenuId === prob.id && (
-                                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-indigo-50 py-2 z-50">
-                                                    <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)}></div>
-                                                    <div className="relative z-50">
-                                                        {/* BAŞKASININ SORUNUYSA: ŞİKAYET ET */}
-                                                        {prob.senderId !== currentUserId && currentUserId !== 0 && (
-                                                            <button onClick={() => { setReportTarget({ type: 'Problem', id: prob.id }); setOpenMenuId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2">
-                                                                🚩 Şikayet Et
-                                                            </button>
-                                                        )}
-
-                                                        {/* KENDİ SORUNUYSA: SİL */}
-                                                        {prob.senderId === currentUserId && (
-                                                            <div className="absolute right-0 mt-1 w-32 bg-white rounded-lg shadow-lg border border-slate-100 z-50 overflow-hidden animate-fade-in-down">
-                                                                <button onClick={() => handleDeleteOwnProblem(prob.id)} className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2">
-                                                                    🗑️ Sorunu Sil
+                                        {/* ÜÇ NOKTA MENÜSÜ - İşlem yetkisi varsa VEYA paylaşım aktifse göster */}
+                                        {((enableReports && currentUserId !== prob.senderId && currentUserId !== 0) || (prob.senderId === currentUserId) || enableSharing) && (
+                                            <div className="relative">
+                                                <button onClick={() => setOpenMenuId(openMenuId === prob.id ? null : prob.id)} className="p-2 text-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition">
+                                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                                                </button>
+                                                {openMenuId === prob.id && (
+                                                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-indigo-50 py-2 z-50 animate-fade-in-down">
+                                                        <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)}></div>
+                                                        <div className="relative z-50">
+                                                            {/* BAŞKASININ SORUNUYSA: ŞİKAYET ET */}
+                                                            {enableReports && currentUserId !== prob.senderId && currentUserId !== 0 && (
+                                                                <button onClick={() => { setReportTarget({ type: 'Problem', id: prob.id }); setOpenMenuId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors">
+                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                                                    Şikayet Et
                                                                 </button>
-                                                                <Link
-                                                                    to="/profile" // Veya direkt düzenleme ekranı varsa oraya yönlendir
-                                                                    className="block w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                                                                >
-                                                                    Profilde Düzenle
-                                                                </Link>
-                                                            </div>
+                                                            )}
 
-                                                        )}
+                                                            {/* KENDİ SORUNUYSA: DÜZENLE/SİL */}
+                                                            {prob.senderId === currentUserId && (
+                                                                <>
+                                                                    <Link
+                                                                        to="/profile"
+                                                                        className="block w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                                        Düzenle
+                                                                    </Link>
+                                                                    <button onClick={() => handleDeleteOwnProblem(prob.id)} className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors">
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                                        Sorunu Sil
+                                                                    </button>
+                                                                </>
+                                                            )}
+
+                                                            {enableSharing && (
+                                                                <SocialShare
+                                                                    variant="menuItem"
+                                                                    url={`/problem/${prob.id}`}
+                                                                    title={prob.title}
+                                                                />
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
-                                        </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* KART İÇERİĞİ */}
@@ -438,13 +488,15 @@ const Home = () => {
                                                 prob.topics.map((t: { id: number, name: string }) => (
                                                     <span key={t.id} className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shadow-sm flex items-center gap-1">
                                                         {t.name}
-                                                        <button 
-                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleTopicFollow(t.id); }}
-                                                            className="hover:scale-110 transition-transform focus:outline-none"
-                                                            title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
-                                                        >
-                                                            {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
-                                                        </button>
+                                                        {enableFollowSystem && (
+                                                            <button
+                                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleTopicFollow(t.id); }}
+                                                                className="hover:scale-110 transition-transform focus:outline-none"
+                                                                title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
+                                                            >
+                                                                {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
+                                                            </button>
+                                                        )}
                                                     </span>
                                                 ))
                                             ) : (
@@ -453,10 +505,16 @@ const Home = () => {
                                                 </span>
                                             )}
                                         </div>
-                                        <Link to={`/problem/${prob.id}`} onClick={() => handleProblemClick(prob.id)} className="block group">
-                                            <h3 className="text-xl sm:text-2xl font-black text-gray-900 mb-3 group-hover:text-indigo-600 transition duration-300">{prob.title}</h3>
-                                            <p className="text-gray-600 text-sm leading-relaxed mb-6 line-clamp-3">{prob.description}</p>
+                                        <Link to={`/problem/${prob.id}`} onClick={() => handleProblemClick(prob.id)} className="block group mb-3">
+                                            <h3 className="text-xl sm:text-2xl font-black text-gray-900 group-hover:text-indigo-600 transition duration-300 break-words line-clamp-2 sm:line-clamp-none">{prob.title}</h3>
+                                        </Link>
 
+                                        <MentionText
+                                            text={prob.description}
+                                            className="text-gray-600 text-sm leading-relaxed mb-6 line-clamp-3 block"
+                                        />
+
+                                        <Link to={`/problem/${prob.id}`} onClick={() => handleProblemClick(prob.id)} className="block group">
                                             {prob.imageUrl && (
                                                 <div className="w-full h-[250px] sm:h-[320px] bg-indigo-50/50 rounded-2xl overflow-hidden mb-6 border border-indigo-100/50 shadow-inner">
                                                     <img src={`/uploads/problems/${prob.imageUrl}`} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-700" />
@@ -487,27 +545,53 @@ const Home = () => {
                             )
                         })}
 
-                        {/* YENİ EKLENEN "DAHA FAZLA YÜKLE" BUTONU */}
-                        {hasMore && feedProblems.length > 0 && (
-                            <div className="flex justify-center mt-12 pb-4">
-                                <button
-                                    onClick={() => setPage(prev => prev + 1)}
-                                    disabled={isLoadingMore}
-                                    className="group relative px-8 py-3.5 bg-white border-2 border-indigo-100 text-indigo-600 font-black rounded-2xl shadow-sm hover:border-indigo-600 hover:bg-indigo-50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 overflow-hidden"
-                                >
-                                    {isLoadingMore ? (
-                                        <>
-                                            <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                            Yükleniyor...
-                                        </>
-                                    ) : (
-                                        <>
-                                            Daha Fazla Sorun Göster
-                                            <svg className="w-5 h-5 group-hover:translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
+                        {/* SAYFALAMA */}
+                        {feedProblems.length > 0 && (
+                            infiniteScrollEnabled ? (
+                                /* Infinite Scroll: "Daha Fazla Yükle" Butonu */
+                                hasMore && (
+                                    <div className="flex justify-center mt-12 pb-4">
+                                        <button
+                                            onClick={() => setPage(prev => prev + 1)}
+                                            disabled={isLoadingMore}
+                                            className="group relative px-8 py-3.5 bg-white border-2 border-indigo-100 text-indigo-600 font-black rounded-2xl shadow-sm hover:border-indigo-600 hover:bg-indigo-50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 overflow-hidden"
+                                        >
+                                            {isLoadingMore ? (
+                                                <>
+                                                    <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                                    Yükleniyor...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Daha Fazla Sorun Göster
+                                                    <svg className="w-5 h-5 group-hover:translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                )
+                            ) : (
+                                /* Klasik Sayfalama: Sayfa Numaraları */
+                                <div className="flex justify-center items-center gap-4 mt-12 pb-4">
+                                    <button
+                                        onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                                        disabled={page === 1 || isLoadingMore}
+                                        className="px-5 py-2.5 bg-white border-2 border-indigo-100 text-indigo-600 font-bold rounded-xl shadow-sm hover:border-indigo-600 hover:bg-indigo-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        ← Önceki
+                                    </button>
+                                    <span className="text-sm font-bold text-indigo-900 bg-indigo-50 px-4 py-2 rounded-xl">
+                                        Sayfa {page} / {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => { if (hasMore) setPage(prev => prev + 1); }}
+                                        disabled={!hasMore || isLoadingMore}
+                                        className="px-5 py-2.5 bg-white border-2 border-indigo-100 text-indigo-600 font-bold rounded-xl shadow-sm hover:border-indigo-600 hover:bg-indigo-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        Sonraki →
+                                    </button>
+                                </div>
+                            )
                         )}
                     </div>
                 )}
@@ -525,7 +609,7 @@ const Home = () => {
             </main>
 
             {/* ŞİKAYET MODALI */}
-            {reportTarget && (
+            {enableReports && reportTarget && (
                 <ReportModal isOpen={!!reportTarget} onClose={() => setReportTarget(null)} targetType={reportTarget.type} targetId={reportTarget.id} />
             )}
         </div>

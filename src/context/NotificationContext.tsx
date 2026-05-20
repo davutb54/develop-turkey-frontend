@@ -13,6 +13,7 @@ import {
 import toast from 'react-hot-toast';
 import { useAuth } from './AuthContext';
 import { notificationService } from '../services/notificationService';
+import { featureService } from '../services/featureService';
 import type { Notification } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -100,8 +101,25 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const { userId } = useAuth();
   const connectionRef = useRef<HubConnection | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [signalREnabled, setSignalREnabled] = useState(true);
+
+  // — Feature kontrolü: Communication.EnableSignalR —
+  useEffect(() => {
+    featureService.getInstitutionFeatures(1)
+      .then((res) => {
+        if (res.data.success) {
+          const features = res.data.data || {};
+          const rawValue = features['Communication.EnableSignalR'];
+          if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+            setSignalREnabled(rawValue.toLowerCase() === 'true');
+          }
+        }
+      })
+      .catch(() => { /* Varsayılan true kalır */ });
+  }, []);
 
   // — Başlangıçta okunmamışları çek —
   useEffect(() => {
@@ -118,10 +136,45 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
       .catch(() => { });
   }, [userId]);
 
+  // — Polling ile bildirim çekme (SignalR kapalıysa) —
+  useEffect(() => {
+    if (!userId || signalREnabled) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
+    // SignalR kapalıysa 30 saniyede bir polling yap
+    pollingRef.current = setInterval(() => {
+      notificationService.getUnread()
+        .then((res) => {
+          if (res.data.success) {
+            const newNotifications = res.data.data ?? [];
+            setNotifications((prev) => {
+              const existingIds = new Set(prev.map(n => n.id));
+              const trulyNew = newNotifications.filter((n: Notification) => !existingIds.has(n.id));
+              return [...trulyNew, ...prev];
+            });
+            setUnreadCount(newNotifications.length);
+          }
+        })
+        .catch(() => { });
+    }, 30000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [userId, signalREnabled]);
+
   // — SignalR bağlantısı —
   useEffect(() => {
-    // Yalnızca giriş yapılmışsa bağlan
-    if (!userId) {
+    // Yalnızca giriş yapılmışsa ve SignalR etkinse bağlan
+    if (!userId || !signalREnabled) {
       // Bağlantı açıksa kapat
       connectionRef.current?.stop();
       connectionRef.current = null;
@@ -136,6 +189,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
     const connection = new HubConnectionBuilder()
       .withUrl(HUB_URL, {
         withCredentials: true,          // HttpOnly cookie (token) gönder
+        headers: {
+          'X-Site-Token': import.meta.env.VITE_SITE_TOKEN || ''
+        }
       })
       .withAutomaticReconnect()
       .configureLogging(LogLevel.Warning)
@@ -194,7 +250,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
       connection.stop();
       connectionRef.current = null;
     };
-  }, [userId]);
+  }, [userId, signalREnabled]);
 
   // — İşlevler —
   const markAsRead = async (id: number) => {

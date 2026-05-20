@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { problemService } from '../services/problemService';
-import { solutionService, type SolutionAddDto } from '../services/solutionService';
+import { solutionService } from '../services/solutionService';
 import { solutionVoteService } from '../services/solutionVoteService';
-import type { ProblemDetailDto, SolutionDetailDto } from '../types';
+import type { ProblemDetailDto, SolutionDetailDto, SolutionAddDto } from '../types';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
 import Navbar from '../components/Navbar';
@@ -14,6 +14,10 @@ import { useAuth } from '../context/AuthContext';
 import { getProfileImageUrl } from '../utils/imageUtils';
 import { actionService } from '../services/actionService';
 import { constantService } from '../services/constantService';
+import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
+import MentionWrapper from '../components/MentionWrapper';
+import MentionText from '../components/MentionText';
+import SocialShare from '../components/SocialShare';
 
 const ProblemDetail = () => {
     const { id } = useParams<{ id: string }>();
@@ -22,6 +26,17 @@ const ProblemDetail = () => {
     const highlightSolutionId = parseInt(searchParams.get('solution') || '0');
     const solutionRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
     const [focusedSolutionId, setFocusedSolutionId] = useState<number | null>(null);
+    const enableUpvote = useFeature<boolean>('Social.EnableUpvote', true);
+    const enableComments = useFeature<boolean>('Social.EnableNestedComments', true);
+    const enableReports = useFeature<boolean>('Moderation.EnableReportSystem', true);
+    const enableFollowSystem = useFeature<boolean>('Social.EnableFollowSystem', true);
+    const enableSavedSolutions = useFeature<boolean>('Social.EnableSavedSolutions', true);
+    const enableMapLocation = useFeature<boolean>('Content.EnableMapLocation', true);
+    const allowSolutionImage = useFeature<boolean>('Content.AllowSolutionImageUpload', true);
+    const maxSolutionImages = useFeature<number>('Content.MaxSolutionImageCount', 3);
+    const maxProblemImages = useFeature<number>('Content.MaxProblemImageCount', 5);
+    const enableMentions = useFeature<boolean>('Social.EnableMentions', true);
+    const enableSharing = useFeature<boolean>('Social.EnableSharing', true);
 
     const [problem, setProblem] = useState<ProblemDetailDto | null>(null);
     const [solutions, setSolutions] = useState<SolutionDetailDto[]>([]);
@@ -36,6 +51,7 @@ const ProblemDetail = () => {
     const [reportTarget, setReportTarget] = useState<{ type: 'Problem' | 'Solution', id: number } | null>(null);
 
     const [solutionForm, setSolutionForm] = useState({ title: '', description: '' });
+    const [solutionImages, setSolutionImages] = useState<File[]>([]);
     const [submitMessage, setSubmitMessage] = useState({ text: '', type: '' });
 
     const { userId } = useAuth();
@@ -51,12 +67,16 @@ const ProblemDetail = () => {
     const [editLatitude, setEditLatitude] = useState<number | null>(null);
     const [editLongitude, setEditLongitude] = useState<number | null>(null);
     const [editClearLocation, setEditClearLocation] = useState(false);
-    const [editImage, setEditImage] = useState<File | null>(null);
+    const [editImages, setEditImages] = useState<File[]>([]);
+    const [editExistingImageUrls, setEditExistingImageUrls] = useState<string[]>([]);
     const [editIsLocating, setEditIsLocating] = useState(false);
     const [editLocationError, setEditLocationError] = useState('');
     const [editIsResolvingCity, setEditIsResolvingCity] = useState(false);
     const [editAutoCityName, setEditAutoCityName] = useState<string | null>(null);
     const [editCityCode, setEditCityCode] = useState<number>(-1);
+    const [editCustomHierarchyId, setEditCustomHierarchyId] = useState<number | null>(null);
+    const institution = useInstitution();
+    const terminology = useTerminology();
 
     // Kategorileri (Tagleri) Düzenlemek İçin:
     const [topics, setTopics] = useState<any[]>([]); // Tüm mevcut kategoriler
@@ -66,6 +86,27 @@ const ProblemDetail = () => {
     const [editingSolutionId, setEditingSolutionId] = useState<number | null>(null);
     const [editSolutionTitle, setEditSolutionTitle] = useState('');
     const [editSolutionDesc, setEditSolutionDesc] = useState('');
+    const [editSolutionImages, setEditSolutionImages] = useState<File[]>([]);
+    const [editSolutionExistingImageUrls, setEditSolutionExistingImageUrls] = useState<string[]>([]);
+
+    // Lightbox State
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+    const [lightboxIndex, setLightboxIndex] = useState(0);
+
+    const openLightbox = (images: string[], index: number) => {
+        setLightboxImages(images);
+        setLightboxIndex(index);
+        setLightboxOpen(true);
+    };
+
+    const nextLightboxImage = () => {
+        setLightboxIndex((prev) => (prev + 1) % lightboxImages.length);
+    };
+
+    const prevLightboxImage = () => {
+        setLightboxIndex((prev) => (prev - 1 + lightboxImages.length) % lightboxImages.length);
+    };
 
     useEffect(() => {
         if (id) {
@@ -292,6 +333,7 @@ const ProblemDetail = () => {
     };
 
     const handleToggleSave = async (solutionId: number) => {
+        if (!enableSavedSolutions) return;
         if (!currentUserId || currentUserId === 0) {
             alert("Kaydetmek için giriş yapmalısınız.");
             return;
@@ -328,7 +370,8 @@ const ProblemDetail = () => {
             senderId: currentUserId,
             problemId: problem.id,
             title: solutionForm.title,
-            description: solutionForm.description
+            description: solutionForm.description,
+            images: solutionImages
         };
 
         try {
@@ -336,12 +379,19 @@ const ProblemDetail = () => {
             if (result.data.success) {
                 setSubmitMessage({ text: "Çözümünüz başarıyla eklendi!", type: 'success' });
                 setSolutionForm({ title: '', description: '' });
+                setSolutionImages([]);
                 loadData(problem.id);
             } else {
                 setSubmitMessage({ text: "Hata: " + result.data.message, type: 'error' });
             }
-        } catch (err) {
-            setSubmitMessage({ text: "Sunucu hatası oluştu.", type: 'error' });
+        } catch (err: any) {
+            let errMsg = "Sunucu hatası oluştu.";
+            if (err.response?.data) {
+                if (typeof err.response.data === 'string') errMsg = err.response.data;
+                else if (err.response.data.message) errMsg = err.response.data.message;
+                else if (err.response.data.errors) errMsg = Object.values(err.response.data.errors).flat().join('\n');
+            }
+            setSubmitMessage({ text: "Hata: " + errMsg, type: 'error' });
         }
     };
 
@@ -357,7 +407,9 @@ const ProblemDetail = () => {
                 latitude: editLatitude,
                 longitude: editLongitude,
                 clearLocation: editClearLocation,
-                image: editImage
+                customHierarchyId: editCustomHierarchyId,
+                imageUrls: editExistingImageUrls.join(','),
+                images: editImages
             };
 
             await problemService.update(updatedProblem);
@@ -365,8 +417,14 @@ const ProblemDetail = () => {
             // Konum/şehir/resim değişebileceği için yeniden çek
             await loadData(problem!.id);
             setIsEditingProblem(false);
-        } catch (err) {
-            alert("Güncellenemedi.");
+        } catch (err: any) {
+            let errMsg = "Güncellenemedi.";
+            if (err.response?.data) {
+                if (typeof err.response.data === 'string') errMsg = err.response.data;
+                else if (err.response.data.message) errMsg = err.response.data.message;
+                else if (err.response.data.errors) errMsg = Object.values(err.response.data.errors).flat().join('\n');
+            }
+            alert("Hata: " + errMsg);
         }
     };
 
@@ -392,20 +450,29 @@ const ProblemDetail = () => {
         } catch (err) { alert("Sorun silinemedi."); }
     };
 
-    const handleUpdateSolution = async (solutionId: number, currentSolution: any) => {
+    const handleUpdateSolution = async (currentSolution: any) => {
         try {
-            const updatedData = {
+            const updatedData: any = {
                 ...currentSolution,
                 title: editSolutionTitle,
-                description: editSolutionDesc
+                description: editSolutionDesc,
+                imageUrls: editSolutionExistingImageUrls.join(','),
+                images: editSolutionImages
             };
             await solutionService.update(updatedData);
 
-            // UI'ı anında güncelle (Sayfa yenilemeden)
-            setSolutions(prev => prev.map(s => s.id === solutionId ? { ...s, title: editSolutionTitle, description: editSolutionDesc } : s));
+            // UI'ı anında güncelle (Sayfa yenilemeden) - Resimler değiştiği için reload etmek daha sağlıklı olabilir
+            await loadData(problem!.id);
             setEditingSolutionId(null);
-        } catch (err) {
-            alert("Çözüm güncellenemedi.");
+            setEditSolutionImages([]);
+        } catch (err: any) {
+            let errMsg = "Çözüm güncellenemedi.";
+            if (err.response?.data) {
+                if (typeof err.response.data === 'string') errMsg = err.response.data;
+                else if (err.response.data.message) errMsg = err.response.data.message;
+                else if (err.response.data.errors) errMsg = Object.values(err.response.data.errors).flat().join('\n');
+            }
+            alert("Hata: " + errMsg);
         }
     };
 
@@ -455,16 +522,34 @@ const ProblemDetail = () => {
                         <div className="h-2 w-full bg-green-500"></div>
                     )}
 
-                    {problem.imageUrl && (
-                        <div className="h-80 w-full bg-gray-100">
-                            <img src={`/uploads/problems/${problem.imageUrl}`} alt={problem.title} className="w-full h-full object-cover" />
+                    {problem.imageUrls && problem.imageUrls.length > 0 && (
+                        <div className="flex overflow-x-auto gap-4 p-4 bg-gray-50 border-b custom-scrollbar">
+                            {problem.imageUrls.map((url, idx) => (
+                                <div 
+                                    key={idx} 
+                                    onClick={() => openLightbox(problem.imageUrls!.map(u => `/uploads/problems/${u}`), idx)}
+                                    className="h-64 w-96 flex-shrink-0 rounded-2xl overflow-hidden border bg-white group relative shadow-sm cursor-zoom-in"
+                                >
+                                     <img src={`/uploads/problems/${url}`} alt={`${problem.title} ${idx + 1}`} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
+                                </div>
+                            ))}
                         </div>
                     )}
 
                     <div className="p-8">
                         {/* Başlık ve Rozetler */}
                         <div className="flex flex-wrap gap-2 mb-4">
-                            <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg">{problem.cityName}</span>
+                            <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg">
+                                {(() => {
+                                    if (problem.customHierarchyId != null && institution?.customHierarchyJson) {
+                                        try {
+                                            const items = JSON.parse(institution.customHierarchyJson) as string[];
+                                            return items[problem.customHierarchyId] || problem.cityName;
+                                        } catch { return problem.cityName; }
+                                    }
+                                    return problem.cityName;
+                                })()}
+                            </span>
 
                             {/* Sorun çözüldüyse Rozeti Göster */}
                             {isProblemResolved && (
@@ -479,18 +564,20 @@ const ProblemDetail = () => {
                                 <span key={t.id} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm flex items-center gap-1">
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
                                     {t.name}
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleToggleTopicFollow(t.id); }}
-                                        title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
-                                        className="ml-1 hover:scale-110 transition-transform focus:outline-none"
-                                    >
-                                        {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
-                                    </button>
+                                    {enableFollowSystem && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleToggleTopicFollow(t.id); }}
+                                            title={followedTopicIds.includes(t.id) ? "Kategori takibini bırak" : "Bu kategoriyi takip et"}
+                                            className="ml-1 hover:scale-110 transition-transform focus:outline-none"
+                                        >
+                                            {followedTopicIds.includes(t.id) ? '🔔' : '🔕'}
+                                        </button>
+                                    )}
                                 </span>
                             ))}
                         </div>
 
-                        {(problem.address || hasCoords) && (
+                        {(problem.address || hasCoords) && enableMapLocation && (
                             <div className="mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-5">
                                 <div className="flex items-start justify-between gap-4 flex-wrap">
                                     <div>
@@ -583,119 +670,164 @@ const ProblemDetail = () => {
 
                                 {/* ŞEHİR (DROPDOWN) */}
                                 <div className="pt-2 border-t border-slate-200 mt-2">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Şehir</label>
-                                    <select
-                                        value={editCityCode}
-                                        onChange={(e) => {
-                                            setEditCityCode(Number(e.target.value));
-                                            setEditAutoCityName(null);
-                                            setEditClearLocation(false);
-                                        }}
-                                        disabled={editCityLocked || editIsResolvingCity}
-                                        className="w-full border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none p-3 rounded-xl font-bold bg-white shadow-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                                    >
-                                        <option value={0}>Şehir seçin</option>
-                                        {cities.map((c: any) => (
-                                            <option key={c.value} value={c.value}>{c.text}</option>
-                                        ))}
-                                    </select>
-                                    <div className="text-[11px] font-bold text-slate-500 mt-2">
-                                        {editCityLocked ? 'Konum seçili olduğu için şehir kilitlidir.' : 'Konum seçmezseniz şehir bilgisini buradan değiştirebilirsiniz.'}
-                                    </div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{terminology.cityLabel}</label>
+                                    {institution?.customHierarchyJson ? (
+                                        <select
+                                            value={editCustomHierarchyId ?? ''}
+                                            onChange={(e) => setEditCustomHierarchyId(e.target.value === '' ? null : Number(e.target.value))}
+                                            className="w-full border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none p-3 rounded-xl font-bold bg-white shadow-sm"
+                                        >
+                                            <option value="">{terminology.cityLabel} Seçiniz</option>
+                                            {(() => {
+                                                try {
+                                                    const items = JSON.parse(institution.customHierarchyJson) as string[];
+                                                    return items.map((item, idx) => (
+                                                        <option key={idx} value={idx}>{item}</option>
+                                                    ));
+                                                } catch { return null; }
+                                            })()}
+                                        </select>
+                                    ) : (
+                                        <select
+                                            value={editCityCode}
+                                            onChange={(e) => {
+                                                setEditCityCode(Number(e.target.value));
+                                                setEditAutoCityName(null);
+                                                setEditClearLocation(false);
+                                            }}
+                                            disabled={editCityLocked || editIsResolvingCity}
+                                            className="w-full border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none p-3 rounded-xl font-bold bg-white shadow-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                                        >
+                                            <option value={0}>Şehir seçin</option>
+                                            {cities.map((c: any) => (
+                                                <option key={c.value} value={c.value}>{c.text}</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    {!institution?.customHierarchyJson && (
+                                        <div className="text-[11px] font-bold text-slate-500 mt-2">
+                                            {editCityLocked ? 'Konum seçili olduğu için şehir kilitlidir.' : 'Konum seçmezseniz şehir bilgisini buradan değiştirebilirsiniz.'}
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* KONUM */}
-                                <div className="pt-2 border-t border-slate-200 mt-2">
-                                    <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Konum</label>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={handleEditGetMyLocation}
-                                                disabled={editIsLocating}
-                                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                                {enableMapLocation && (
+                                    <div className="pt-2 border-t border-slate-200 mt-2">
+                                        <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Konum</label>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleEditGetMyLocation}
+                                                    disabled={editIsLocating}
+                                                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                                                >
+                                                    {editIsLocating ? 'Konum alınıyor…' : 'Konumumu Al'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setEditClearLocation(true);
+                                                        setEditLatitude(null);
+                                                        setEditLongitude(null);
+                                                        setEditAddress('');
+                                                        setEditAutoCityName(null);
+                                                        setEditLocationError('');
+                                                    }}
+                                                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 hover:bg-slate-100"
+                                                >
+                                                    Konumu Temizle
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="text-[11px] font-bold text-slate-600 mb-2 pl-1">
+                                            {editClearLocation ? (
+                                                <span>Konum kaldırılacak.</span>
+                                            ) : editIsResolvingCity ? (
+                                                <span>Şehir tespit ediliyor…</span>
+                                            ) : editAutoCityName ? (
+                                                <span>Şehir (otomatik): <span className="text-slate-900">{editAutoCityName}</span></span>
+                                            ) : (
+                                                <span>Pin bırakır veya konum alırsanız şehir otomatik seçilir.</span>
+                                            )}
+                                        </div>
+
+                                        {editLocationError && (
+                                            <div className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 mb-2">
+                                                {editLocationError}
+                                            </div>
+                                        )}
+
+                                        <input
+                                            type="text"
+                                            placeholder="Adres (opsiyonel)"
+                                            className="w-full border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none p-3 rounded-xl text-sm bg-white shadow-sm"
+                                            value={editAddress}
+                                            onChange={e => {
+                                                setEditAddress(e.target.value);
+                                                setEditClearLocation(false);
+                                            }}
+                                        />
+
+                                        <div className="mt-3 h-56 w-full rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                                            <MapContainer
+                                                center={editMapCenter}
+                                                zoom={editMapZoom}
+                                                scrollWheelZoom={false}
+                                                className="h-full w-full"
                                             >
-                                                {editIsLocating ? 'Konum alınıyor…' : 'Konumumu Al'}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setEditClearLocation(true);
-                                                    setEditLatitude(null);
-                                                    setEditLongitude(null);
-                                                    setEditAddress('');
-                                                    setEditAutoCityName(null);
-                                                    setEditLocationError('');
-                                                }}
-                                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 hover:bg-slate-100"
-                                            >
-                                                Konumu Temizle
-                                            </button>
+                                                <TileLayer
+                                                    attribution='&copy; OpenStreetMap katkıda bulunanlar'
+                                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                                />
+                                                <EditLocationClickHandler />
+                                                {!editClearLocation && editLatitude !== null && editLongitude !== null && (
+                                                    <Marker position={[editLatitude, editLongitude] as LatLngExpression} />
+                                                )}
+                                            </MapContainer>
                                         </div>
                                     </div>
+                                )}
 
-                                    <div className="text-[11px] font-bold text-slate-600 mb-2 pl-1">
-                                        {editClearLocation ? (
-                                            <span>Konum kaldırılacak.</span>
-                                        ) : editIsResolvingCity ? (
-                                            <span>Şehir tespit ediliyor…</span>
-                                        ) : editAutoCityName ? (
-                                            <span>Şehir (otomatik): <span className="text-slate-900">{editAutoCityName}</span></span>
-                                        ) : (
-                                            <span>Pin bırakır veya konum alırsanız şehir otomatik seçilir.</span>
-                                        )}
-                                    </div>
-
-                                    {editLocationError && (
-                                        <div className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 mb-2">
-                                            {editLocationError}
+                                {/* RESİMLER */}
+                                <div className="pt-2 border-t border-slate-200 mt-2">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Resimler (Maks: {maxProblemImages})</label>
+                                    
+                                    {/* Mevcut Resimler */}
+                                    {editExistingImageUrls.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mb-3">
+                                            {editExistingImageUrls.map((url, idx) => (
+                                                <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border shadow-sm group">
+                                                    <img src={`/uploads/problems/${url}`} alt="Mevcut" className="w-full h-full object-cover" />
+                                                    <button 
+                                                        onClick={() => setEditExistingImageUrls(prev => prev.filter((_, i) => i !== idx))}
+                                                        className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl-lg opacity-0 group-hover:opacity-100 transition"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                    </button>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
 
                                     <input
-                                        type="text"
-                                        placeholder="Adres (opsiyonel)"
-                                        className="w-full border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none p-3 rounded-xl text-sm bg-white shadow-sm"
-                                        value={editAddress}
-                                        onChange={e => {
-                                            setEditAddress(e.target.value);
-                                            setEditClearLocation(false);
-                                        }}
-                                    />
-
-                                    <div className="mt-3 h-56 w-full rounded-2xl overflow-hidden border border-slate-200 bg-white">
-                                        <MapContainer
-                                            center={editMapCenter}
-                                            zoom={editMapZoom}
-                                            scrollWheelZoom={false}
-                                            className="h-full w-full"
-                                        >
-                                            <TileLayer
-                                                attribution='&copy; OpenStreetMap katkıda bulunanlar'
-                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                            />
-                                            <EditLocationClickHandler />
-                                            {!editClearLocation && editLatitude !== null && editLongitude !== null && (
-                                                <Marker position={[editLatitude, editLongitude] as LatLngExpression} />
-                                            )}
-                                        </MapContainer>
-                                    </div>
-                                </div>
-
-                                {/* RESİM */}
-                                <div className="pt-2 border-t border-slate-200 mt-2">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Resim</label>
-                                    <input
                                         type="file"
+                                        multiple
                                         accept="image/*"
                                         className="w-full text-sm"
                                         onChange={(e) => {
-                                            const file = e.target.files?.[0] || null;
-                                            setEditImage(file);
+                                            const files = Array.from(e.target.files || []);
+                                            if (files.length + editExistingImageUrls.length > maxProblemImages) {
+                                                alert(`En fazla ${maxProblemImages} görsel seçebilirsiniz.`);
+                                                e.target.value = '';
+                                                return;
+                                            }
+                                            setEditImages(files);
                                         }}
                                     />
                                     <div className="text-[11px] font-bold text-slate-500 mt-1">
-                                        {editImage ? `Seçilen: ${editImage.name}` : 'Yeni bir resim seçmezseniz mevcut resim korunur.'}
+                                        {editImages.length > 0 ? `${editImages.length} yeni görsel seçildi.` : 'Yeni resim seçmezseniz mevcutlar korunur.'}
                                     </div>
                                 </div>
 
@@ -709,24 +841,40 @@ const ProblemDetail = () => {
                             <div>
                                 <div className="flex flex-wrap items-center gap-4 mb-4">
                                     <h1 className="text-3xl font-black text-gray-900">{problem.title}</h1>
-                                    <button 
+                                    {enableFollowSystem && (
+                                    <button
                                         onClick={handleToggleFollow}
                                         className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border shadow-sm ${isFollowing ? 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}
                                     >
                                         {isFollowing ? '🔕 Takipten Çık' : '🔔 Takip Et'}
                                     </button>
+                                    )}
+                                    {enableUpvote && (
                                     <button
                                         onClick={handleToggleUpvote}
                                         className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border shadow-sm ${
-                                            isUpvoted 
-                                            ? 'bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200' 
+                                            isUpvoted
+                                            ? 'bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200'
                                             : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
                                         }`}
                                     >
                                         ✋ Ben de Yaşıyorum ({problem.upvoteCount || 0})
                                     </button>
+                                    )}
+                                    {enableSharing && (
+                                        <div className="ml-2">
+                                            <SocialShare 
+                                                url={`/problem/${problem.id}`} 
+                                                title={problem.title} 
+                                                description={problem.description}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
-                                <p className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap mb-8">{problem.description}</p>
+                                <MentionText 
+                                    text={problem.description} 
+                                    className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap mb-8 block"
+                                />
                             </div>
                         )}
 
@@ -762,9 +910,11 @@ const ProblemDetail = () => {
                                                 setEditLatitude((problem as any).latitude ?? null);
                                                 setEditLongitude((problem as any).longitude ?? null);
                                                 setEditCityCode((problem as any).cityCode ?? 0);
+                                                setEditCustomHierarchyId(problem.customHierarchyId ?? null);
                                                 setEditAutoCityName(null);
                                                 setEditClearLocation(false);
-                                                setEditImage(null);
+                                                setEditExistingImageUrls(problem.imageUrls || []);
+                                                setEditImages([]);
                                                 setEditLocationError('');
                                             }}
                                             className="flex items-center gap-1.5 px-4 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 font-bold text-xs rounded-lg shadow-sm hover:bg-yellow-100 transition"
@@ -779,7 +929,7 @@ const ProblemDetail = () => {
                                     </div>
 
                                 )}
-                                {currentUserId !== problem.senderId && currentUserId !== 0 && (
+                                {enableReports && currentUserId !== problem.senderId && currentUserId !== 0 && (
                                     <button onClick={() => openReportModal('Problem', problem.id)} className="text-xs font-bold text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-100 px-4 py-2 rounded-xl transition flex items-center gap-1.5">
                                         🚩 Şikayet Et
                                     </button>
@@ -856,24 +1006,51 @@ const ProblemDetail = () => {
                                                 </div>
 
                                                 <div className='flex mt-2'>
-                                                    {/* OYLAMA KISMI (SOL TARAFTA) */}
-                                                    <div className="flex flex-col items-center justify-start mr-5 space-y-1 bg-gray-50 p-2 rounded-2xl h-fit border border-gray-100">
-                                                        <button onClick={() => handleVote(sol.id, true)} className="text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-xl transition p-1.5">
-                                                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" /></svg>
-                                                        </button>
-                                                        <span className="text-lg font-black text-gray-800 py-1">{sol.voteCount || 0}</span>
-                                                        <button onClick={() => handleVote(sol.id, false)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition p-1.5">
-                                                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                                                        </button>
+                                                    {/* OYLAMA VE KAYDETME KISMI (SOL TARAFTA) */}
+                                                    {(enableUpvote || enableSavedSolutions || enableSharing) && (
+                                                    <div className="flex flex-col items-center justify-start mr-5 space-y-2 bg-gray-50/50 p-2 rounded-2xl h-fit border border-gray-100/50 shadow-sm">
+                                                        {enableSharing && (
+                                                            <SocialShare 
+                                                                variant="dropdown"
+                                                                url={`/problem/${problem.id}?solution=${sol.id}`}
+                                                                title={`${problem.title} - ${sol.title}`}
+                                                            />
+                                                        )}
+                                                        {enableUpvote && (
+                                                            <>
+                                                                <button onClick={() => handleVote(sol.id, true)} className="text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-xl transition p-1.5">
+                                                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" /></svg>
+                                                                </button>
+                                                                <span className="text-lg font-black text-gray-800 py-0.5">{sol.voteCount || 0}</span>
+                                                                <button onClick={() => handleVote(sol.id, false)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition p-1.5">
+                                                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                                                </button>
+                                                            </>
+                                                        )}
 
-                                                        <button 
-                                                            onClick={() => handleToggleSave(sol.id)}
-                                                            className={`mt-2 p-1.5 rounded-xl transition flex flex-col items-center ${savedSolutionIds.includes(sol.id) ? 'text-blue-500 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}`}
-                                                            title={savedSolutionIds.includes(sol.id) ? "Kaydedilenlerden Çıkar" : "Çözümü Kaydet"}
-                                                        >
-                                                            <span className="text-lg">💾</span>
-                                                        </button>
+                                                        {enableSavedSolutions && (
+                                                            <button
+                                                                onClick={() => handleToggleSave(sol.id)}
+                                                                className={`p-2 rounded-xl transition-all duration-200 flex flex-col items-center shadow-sm active:scale-95 ${
+                                                                    savedSolutionIds.includes(sol.id) 
+                                                                    ? 'text-amber-600 bg-amber-100 border border-amber-200 ring-2 ring-amber-500/20' 
+                                                                    : 'text-gray-400 bg-white border border-gray-100 hover:text-amber-500 hover:bg-amber-50 hover:border-amber-100'
+                                                                }`}
+                                                                title={savedSolutionIds.includes(sol.id) ? "Kaydedilenlerden Çıkar" : "Çözümü Kaydet"}
+                                                            >
+                                                                {savedSolutionIds.includes(sol.id) ? (
+                                                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                                                        <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+                                                                    </svg>
+                                                                ) : (
+                                                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                                                                    </svg>
+                                                                )}
+                                                            </button>
+                                                        )}
                                                     </div>
+                                                    )}
                                                     {/* EĞER DÜZENLE BUTONUNA BASILDIYSA FORM AÇILIR */}
                                                     {editingSolutionId === sol.id ? (
                                                         <div className="space-y-3 animate-fade-in-down bg-slate-50 p-5 rounded-xl border border-indigo-100">
@@ -884,23 +1061,103 @@ const ProblemDetail = () => {
                                                                 onChange={e => setEditSolutionTitle(e.target.value)}
                                                                 placeholder="Çözüm Başlığı"
                                                             />
-                                                            <textarea
-                                                                className="w-full border border-slate-200 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white shadow-sm"
-                                                                rows={4}
-                                                                value={editSolutionDesc}
-                                                                onChange={e => setEditSolutionDesc(e.target.value)}
-                                                                placeholder="Çözüm Detayları"
-                                                            ></textarea>
-                                                            <div className="flex justify-end gap-2 pt-2">
+                                                            {enableMentions ? (
+                                                                <MentionWrapper 
+                                                                    value={editSolutionDesc} 
+                                                                    onChange={(val) => setEditSolutionDesc(val)}
+                                                                    institutionId={problem?.institutionId}
+                                                                >
+                                                                    <textarea
+                                                                        className="w-full border border-slate-200 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white shadow-sm"
+                                                                        rows={4}
+                                                                        value={editSolutionDesc}
+                                                                        onChange={e => setEditSolutionDesc(e.target.value)}
+                                                                        placeholder="Çözüm Detayları"
+                                                                    ></textarea>
+                                                                </MentionWrapper>
+                                                            ) : (
+                                                                <textarea
+                                                                    className="w-full border border-slate-200 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white shadow-sm"
+                                                                    rows={4}
+                                                                    value={editSolutionDesc}
+                                                                    onChange={e => setEditSolutionDesc(e.target.value)}
+                                                                    placeholder="Çözüm Detayları"
+                                                                ></textarea>
+                                                            )}
+
+                                                            {/* Mevcut Resimleri Düzenle */}
+                                                            {allowSolutionImage && (
+                                                                <div className="mt-3 space-y-3">
+                                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Mevcut Resimler</label>
+                                                                    <div className="flex gap-2 overflow-x-auto pb-2">
+                                                                        {editSolutionExistingImageUrls.map((url, idx) => (
+                                                                            <div key={idx} className="relative h-20 w-28 rounded-lg overflow-hidden border group shrink-0 shadow-sm">
+                                                                                <img src={`/uploads/solutions/${url}`} className="w-full h-full object-cover" alt="Eski resim" />
+                                                                                <button 
+                                                                                    onClick={() => setEditSolutionExistingImageUrls(prev => prev.filter((_, i) => i !== idx))}
+                                                                                    className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                                                                >
+                                                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                                                </button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+
+                                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Yeni Resim Ekle (Toplam Maks: {maxSolutionImages})</label>
+                                                                    <input 
+                                                                        type="file" multiple accept="image/*"
+                                                                        onChange={(e) => {
+                                                                            const files = Array.from(e.target.files || []);
+                                                                            if (files.length + editSolutionExistingImageUrls.length > maxSolutionImages) {
+                                                                                alert(`Toplamda en fazla ${maxSolutionImages} görsel olabilir.`);
+                                                                                e.target.value = '';
+                                                                                return;
+                                                                            }
+                                                                            setEditSolutionImages(files);
+                                                                        }}
+                                                                        className="w-full text-xs text-indigo-600 file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-black file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                                                    />
+                                                                    {editSolutionImages.length > 0 && (
+                                                                        <div className="flex gap-2 overflow-x-auto">
+                                                                            {editSolutionImages.map((img, idx) => (
+                                                                                <div key={idx} className="relative h-20 w-28 rounded-lg overflow-hidden border shrink-0 shadow-sm">
+                                                                                    <img src={URL.createObjectURL(img)} className="w-full h-full object-cover" alt="Yeni resim" />
+                                                                                    <button onClick={() => setEditSolutionImages(prev => prev.filter((_, i) => i !== idx))} className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-md shadow-sm"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            <div className="flex justify-end gap-2 pt-4">
                                                                 <button onClick={() => setEditingSolutionId(null)} className="px-4 py-2 bg-white border border-slate-300 text-slate-600 font-bold text-xs rounded-xl shadow-sm hover:bg-slate-50">İptal</button>
-                                                                <button onClick={() => handleUpdateSolution(sol.id, sol)} className="px-6 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md hover:bg-indigo-700">Kaydet</button>
+                                                                <button onClick={() => handleUpdateSolution(sol)} className="px-6 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md hover:bg-indigo-700 transition">Güncelle</button>
                                                             </div>
                                                         </div>
                                                     ) : (
                                                         // NORMAL GÖSTERİM MODU
                                                         <div className="flex-1 pr-0 md:pr-12">
                                                             <h4 className="text-xl font-bold text-gray-900 mb-3">{sol.title}</h4>
-                                                            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{sol.description}</p>
+                                                            <MentionText 
+                                                                text={sol.description} 
+                                                                className="text-gray-700 leading-relaxed whitespace-pre-wrap block"
+                                                            />
+
+                                                            {/* Çözüm Resimleri */}
+                                                            {sol.imageUrls && sol.imageUrls.length > 0 && (
+                                                                <div className="mt-4 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                                                    {sol.imageUrls.map((url: string, idx: number) => (
+                                                                        <div 
+                                                                            key={idx} 
+                                                                            onClick={() => openLightbox(sol.imageUrls!.map((u: string) => `/uploads/solutions/${u}`), idx)}
+                                                                            className="h-40 w-60 flex-shrink-0 rounded-xl overflow-hidden border shadow-sm group cursor-zoom-in"
+                                                                        >
+                                                                            <img src={`/uploads/solutions/${url}`} alt={`Çözüm ${idx + 1}`} className="w-full h-full object-cover transition hover:scale-105" />
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
 
                                                             <div className="mt-5 flex items-center gap-3">
                                                                 <Link to={`/user/${sol.senderId}`} className="h-10 w-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center shrink-0 border border-gray-100 shadow-sm">
@@ -922,9 +1179,11 @@ const ProblemDetail = () => {
 
                                                 </div>
 
+                                                {enableComments && (
                                                 <div className="mt-6">
-                                                    <CommentSection solutionId={sol.id} />
+                                                    <CommentSection solutionId={sol.id} institutionId={problem?.institutionId} />
                                                 </div>
+                                                )}
 
                                                 <div className="flex justify-end mt-4 pt-4 border-t border-gray-100/60 gap-2">
                                                     {currentUserId === sol.senderId && (
@@ -934,6 +1193,8 @@ const ProblemDetail = () => {
                                                                     setEditingSolutionId(sol.id);
                                                                     setEditSolutionTitle(sol.title);
                                                                     setEditSolutionDesc(sol.description);
+                                                                    setEditSolutionExistingImageUrls(sol.imageUrls || []);
+                                                                    setEditSolutionImages([]);
                                                                 }}
                                                                 className="px-3 py-1.5 bg-yellow-50 text-yellow-700 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-yellow-200 hover:bg-yellow-100 transition shadow-sm"
                                                             >
@@ -945,7 +1206,7 @@ const ProblemDetail = () => {
                                                         </div>
 
                                                     )}
-                                                    {currentUserId !== sol.senderId && currentUserId !== 0 && (
+                                                    {enableReports && currentUserId !== sol.senderId && currentUserId !== 0 && (
                                                         <button onClick={() => openReportModal('Solution', sol.id)} className="text-[10px] text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-100 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider transition">
                                                             🚩 Şikayet Et
                                                         </button>
@@ -978,14 +1239,56 @@ const ProblemDetail = () => {
                                     </div>
                                     <div className="mb-6">
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Detaylı Açıklama</label>
-                                        <textarea
-                                            required rows={5}
-                                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition resize-none"
-                                            placeholder="Ayrıntılarıyla anlat..."
-                                            value={solutionForm.description}
-                                            onChange={(e) => setSolutionForm({ ...solutionForm, description: e.target.value })}
-                                        />
+                                        {enableMentions ? (
+                                            <MentionWrapper 
+                                                value={solutionForm.description} 
+                                                onChange={(val) => setSolutionForm({ ...solutionForm, description: val })}
+                                                institutionId={problem?.institutionId}
+                                            >
+                                                <textarea
+                                                    required rows={5}
+                                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition resize-none"
+                                                    placeholder="Ayrıntılarıyla anlat..."
+                                                    value={solutionForm.description}
+                                                    onChange={(e) => setSolutionForm({ ...solutionForm, description: e.target.value })}
+                                                />
+                                            </MentionWrapper>
+                                        ) : (
+                                            <textarea
+                                                required rows={5}
+                                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition resize-none"
+                                                placeholder="Ayrıntılarıyla anlat..."
+                                                value={solutionForm.description}
+                                                onChange={(e) => setSolutionForm({ ...solutionForm, description: e.target.value })}
+                                            />
+                                        )}
                                     </div>
+
+                                    {allowSolutionImage && (
+                                        <div className="mb-6">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Resimler (Maks: {maxSolutionImages})</label>
+                                            <input 
+                                                type="file"
+                                                multiple
+                                                accept="image/*"
+                                                onChange={(e) => {
+                                                    const files = Array.from(e.target.files || []);
+                                                    if (files.length > maxSolutionImages) {
+                                                        alert(`En fazla ${maxSolutionImages} görsel seçebilirsiniz.`);
+                                                        e.target.value = '';
+                                                        return;
+                                                    }
+                                                    setSolutionImages(files);
+                                                }}
+                                                className="w-full text-xs"
+                                            />
+                                            {solutionImages.length > 0 && (
+                                                <div className="mt-2 text-xs font-bold text-blue-600">
+                                                    {solutionImages.length} görsel seçildi.
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {submitMessage.text && (
                                         <div className={`mb-4 text-sm font-bold p-3 rounded-xl ${submitMessage.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
@@ -1012,13 +1315,85 @@ const ProblemDetail = () => {
             </main>
 
             {/* Şikayet Modalı */}
-            {reportTarget && (
+            {enableReports && reportTarget && (
                 <ReportModal
                     isOpen={isReportModalOpen}
                     onClose={() => setIsReportModalOpen(false)}
                     targetType={reportTarget.type}
                     targetId={reportTarget.id}
                 />
+            )}
+
+            {/* LIGHTBOX (Resim Galerisi) */}
+            {lightboxOpen && (
+                <div 
+                    onClick={() => setLightboxOpen(false)}
+                    className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center animate-fade-in cursor-zoom-out"
+                >
+                    {/* Üst Bar */}
+                    <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center text-white z-20">
+                        <div className="text-sm font-bold bg-white/10 px-4 py-2 rounded-full backdrop-blur-md">
+                            {lightboxIndex + 1} / {lightboxImages.length}
+                        </div>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); }}
+                            className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all duration-300 group"
+                        >
+                            <svg className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* Ana Resim */}
+                    <div className="relative w-full h-full flex items-center justify-center p-4 md:p-12" onClick={(e) => e.stopPropagation()}>
+                        {lightboxImages.length > 1 && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); prevLightboxImage(); }}
+                                className="absolute left-4 md:left-8 z-10 p-4 bg-white/5 hover:bg-white/20 text-white rounded-full transition-all group"
+                            >
+                                <svg className="w-8 h-8 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                            </button>
+                        )}
+
+                        <div className="max-w-7xl max-h-full flex items-center justify-center">
+                            <img 
+                                src={lightboxImages[lightboxIndex]} 
+                                alt={`Galeri ${lightboxIndex + 1}`}
+                                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-zoom-in cursor-default"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+
+                        {lightboxImages.length > 1 && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); nextLightboxImage(); }}
+                                className="absolute right-4 md:right-8 z-10 p-4 bg-white/5 hover:bg-white/20 text-white rounded-full transition-all group"
+                            >
+                                <svg className="w-8 h-8 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Alt Önizlemeler */}
+                    {lightboxImages.length > 1 && (
+                        <div className="absolute bottom-10 flex gap-3 px-6 overflow-x-auto max-w-full custom-scrollbar py-2">
+                            {lightboxImages.map((img, i) => (
+                                <button 
+                                    key={i} 
+                                    onClick={() => setLightboxIndex(i)}
+                                    className={`h-16 w-24 shrink-0 rounded-lg overflow-hidden border-2 transition-all duration-300 ${lightboxIndex === i ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-50 hover:opacity-100'}`}
+                                >
+                                    <img src={img} className="w-full h-full object-cover" alt="Önizleme" />
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             )}
         </div>
     );

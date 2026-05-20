@@ -8,5 +8,6 @@ export const actionService = {
   toggleProblemUpvote: (problemId: number) => api.post(`/action/toggle-problem-upvote?problemId=${problemId}`),
   checkProblemUpvote: (problemId: number) => api.get(`/action/check-problem-upvote?problemId=${problemId}`),
   toggleTopicFollow: (topicId: number) => api.post(`/action/toggle-topic-follow?topicId=${topicId}`),
-  checkTopicFollow: (topicId: number) => api.get(`/action/check-topic-follow?topicId=${topicId}`)
+  checkTopicFollow: (topicId: number) => api.get(`/action/check-topic-follow?topicId=${topicId}`),
+  getMySavedSolutions: () => api.get('/action/get-my-saved-solutions')
 };

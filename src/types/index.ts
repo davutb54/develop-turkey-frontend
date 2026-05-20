@@ -44,6 +44,11 @@ export interface UserDetailDto {
     registerDate: string; // Tarihler string olarak gelir (ISO formatı)
     deleteDate?: string | null;
     profileImageUrl?: string | null;
+    customHierarchyId?: number | null;
+    mentionNotificationEnabled: boolean;
+    isProfilePublic: boolean;
+    showSolutions: boolean;
+    showProblems: boolean;
 }
 
 // Herkese Açık Kullanıcı Detayları (Entities/DTOs/User/UserPublicProfileDto.cs)
@@ -60,6 +65,10 @@ export interface UserPublicProfileDto {
     registerDate: string;
     profileImageUrl?: string | null;
     institutionId: number;
+    customHierarchyId?: number | null;
+    isProfilePublic: boolean;
+    showSolutions: boolean;
+    showProblems: boolean;
 }
 
 // Konu Başlıkları (Entities/Concrete/Topic.cs)
@@ -94,13 +103,14 @@ export interface ProblemDetailDto {
     isReported: boolean;
     isDeleted: boolean;
     sendDate: string;
-    imageUrl?: string | null;
+    imageUrls?: string[] | null;
     isResolvedByExpert: boolean;
     solutionCount: number;
     viewCount: number;
     senderImageUrl?: string | null;
     upvoteCount: number;
     followerCount: number;
+    customHierarchyId?: number | null;
 }
 
 export interface TopicDto {
@@ -126,6 +136,7 @@ export interface SolutionDetailDto {
     voteCount: number;
     expertApprovalStatus: number;
     senderImageUrl?: string | null;
+    imageUrls?: string[] | null;
 }
 
 // Yorum Detayları (Entities/DTOs/CommentDetailDto.cs)
@@ -168,6 +179,8 @@ export interface UserForRegisterDto {
     genderCode: number;
     emailNotificationPermission: boolean;
     captchaToken?: string;
+    agreementAccepted?: boolean;
+    customHierarchyId?: number | null;
 }
 
 // Profil Resmi Yüklemek İçin (UserImageUpdateDto)
@@ -182,12 +195,48 @@ export interface ProblemAddDto {
     description: string;
     cityCode: number;
     topicIds: number[];
-    image?: File | null;
+    images?: File[] | null;
     address?: string;
     latitude?: number;
     longitude?: number;
     solutionTitle?: string;       // YENİ EKLENDİ
     solutionDescription?: string;
+    solutionImages?: File[] | null;
+    customHierarchyId?: number | null;
+}
+
+export interface ProblemUpdateDto extends ProblemAddDto {
+    id: number;
+    senderId: number;
+    imageUrls?: string;
+    sendDate: string;
+    isHighlighted: boolean;
+    isReported: boolean;
+    isDeleted: boolean;
+    isResolved: boolean;
+    institutionId: number;
+    viewCount: number;
+    clearLocation: boolean;
+}
+
+export interface SolutionAddDto {
+    senderId?: number;
+    problemId: number;
+    title: string;
+    description: string;
+    images?: File[] | null;
+}
+
+export interface SolutionUpdateDto extends SolutionAddDto {
+    id: number;
+    senderId: number;
+    imageUrls?: string;
+    sendDate: string;
+    isHighlighted: boolean;
+    isReported: boolean;
+    isDeleted: boolean;
+    expertApprovalStatus: number;
+    institutionId: number;
 }
 
 export interface Gender {
@@ -208,6 +257,7 @@ export interface ProblemFilterDto {
     cityCode?: number;
     topicId?: number;
     searchText?: string;
+    customHierarchyId?: number | null;
 }
 
 // Yorumlar İçin
@@ -268,6 +318,7 @@ export interface Log {
     level: string;
     message: string;
     details?: string | null;
+    institutionId?: number | null;
     creationDate: string;
 }
 
@@ -278,6 +329,7 @@ export interface LogFilterDto {
     searchText?: string;
     startDate?: string;
     endDate?: string;
+    institutionId?: number;
     page?: number;
     pageSize?: number;
     isActivityLog?: boolean;
@@ -300,6 +352,11 @@ export interface UserForUpdateDto {
     email: string;
     cityCode: number;
     genderCode: number;
+    customHierarchyId?: number | null;
+    mentionNotificationEnabled: boolean;
+    isProfilePublic: boolean;
+    showSolutions: boolean;
+    showProblems: boolean;
 }
 
 export interface UserForPasswordUpdateDto {
@@ -321,6 +378,11 @@ export interface Institution {
     domain: string;
     logoUrl?: string | null;
     primaryColor?: string | null;
+    featuresJson?: string;
+    terminologyJson?: string;
+    customFieldsJson?: string;
+    customHierarchyLabel?: string | null;
+    customHierarchyJson?: string | null;
     status: boolean;
 }
 
@@ -397,3 +459,160 @@ export interface LegalAgreement {
     isActive: boolean;
     publishedAt: string;   // ISO tarih
 }
+
+export interface FeatureGroup {
+    id: number;
+    name: string;
+    orderIndex: number;
+}
+
+export interface FeatureDefinition {
+    id: number;
+    groupId: number;
+    key: string;
+    displayName: string;
+    description?: string;
+    inputType: string; // "Boolean", "Text", "Number", "Color", "Select"
+    defaultValue: string;
+    optionsJson?: string | null;
+    isSystemLevel: boolean;
+    orderIndex: number;
+}
+export interface EmailTemplate {
+    id: number;
+    templateKey: string;
+    subject: string;
+    body: string;
+    description?: string;
+    availablePlaceholders?: string;
+    isActive: boolean;
+}
+
+// --- WORKFLOW TİPLERİ ---
+export interface WorkflowTriggerDto {
+    id: number;
+    name: string;
+    codeName: string;
+    description: string;
+    targetEntity: string;
+    isActive: boolean;
+}
+
+export interface WorkflowFieldDto {
+    id: number;
+    name: string;
+    fieldPath: string;
+    dataType: string;
+    isActive: boolean;
+}
+
+export interface WorkflowActionDto {
+    id: number;
+    name: string;
+    actionCode: string;
+    parametersSchemaJson: string;
+    isActive: boolean;
+}
+
+export interface DynamicRule {
+    id: number;
+    institutionId: number;
+    name: string;
+    triggerEvent: string;
+    flowJson: string;
+    version: number;
+    priority: number;
+    description: string;
+    createdAt: string;
+    updatedAt: string;
+    createdByUserId: number;
+    isActive: boolean;
+}
+
+export interface SaveWorkflowDto {
+    id?: number;
+    name: string;
+    triggerEvent: string;
+    flowJson: string;
+    priority: number;
+    description: string;
+    isActive: boolean;
+}
+
+export interface WorkflowLog {
+    id: number;
+    institutionId: number;
+    ruleId: number;
+    ruleName: string;
+    triggerEvent: string;
+    triggeredByUserId: number;
+    /** 'success' | 'partial' | 'failed' | 'error' */
+    status: string;
+    errorMessage?: string | null;
+    /** JSON string — string[] */
+    traceJson?: string | null;
+    totalNodeCount: number;
+    executedNodeCount: number;
+    durationMs: number;
+    executedAt: string;
+}
+
+export interface WorkflowLogFilterDto {
+    ruleId?: number;
+    triggerEvent?: string;
+    status?: string;
+    triggeredByUserId?: number;
+    institutionId?: number;
+    startDate?: string;
+    endDate?: string;
+    searchText?: string;
+    page?: number;
+    pageSize?: number;
+}
+
+export type TriggerDefinition = {
+    id: string;
+    value: string;
+    label: string;
+    description: string;
+    icon: string;
+    category: string;
+    isBuiltIn: boolean;
+};
+
+export type FieldDefinition = {
+    id: string;
+    value: string;
+    label: string;
+    description?: string;
+    type: 'string' | 'number' | 'boolean' | 'enum';
+    enumValues?: string[];
+    category: string;
+};
+
+export type OperatorDefinition = {
+    id: string;
+    value: string;
+    label: string;
+    applicableTo: ('string' | 'number' | 'boolean' | 'enum')[];
+};
+
+export type ActionDefinition = {
+    id: string;
+    value: string;
+    label: string;
+    description: string;
+    icon: string;
+    category: string;
+    parameters: ActionParameter[];
+    isBuiltIn: boolean;
+};
+
+export type ActionParameter = {
+    key: string;
+    label: string;
+    type: 'text' | 'number' | 'boolean' | 'select';
+    options?: string[];
+    required: boolean;
+    defaultValue?: string;
+};

@@ -1,26 +1,31 @@
 // src/pages/Login.tsx
 import { useState } from 'react';
-import { userService } from '../services/userService';
+import { authService } from '../services/authService';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { GoogleLogin } from '@react-oauth/google';
 import toast from 'react-hot-toast';
+import { useFeature } from '../hooks/useFeature';
 
 const Login = () => {
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [showVerifyLink, setShowVerifyLink] = useState(false);
   const navigate = useNavigate();
   const { checkAuth } = useAuth();
+  const allowGoogleLogin = useFeature<boolean>('Identity.AllowGoogleLogin', true);
+  const enableCaptcha = useFeature<boolean>('Identity.EnableCaptcha', true);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setShowVerifyLink(false);
 
     try {
-      const response = await userService.login({ userName, password, captchaToken: captchaToken || undefined });
+      const response = await authService.login({ userName, password, captchaToken: captchaToken || undefined });
 
       // Backend artık HttpOnly cookie dönüyor ve response.data.success = true gönderiyor
       if (response.data && (response.data as any).success) {
@@ -38,19 +43,25 @@ const Login = () => {
         const data = err.response.data;
         const contentType = err.response.headers?.['content-type'] || '';
         
+        let message = "";
         if (typeof data === 'string') {
           // HTML içeriği gelirse (502, 504 vb.) temiz mesaj göster
           if (data.includes('<!DOCTYPE') || data.includes('<html') || contentType.includes('text/html')) {
-            setError("Sunucu şu anda yoğun veya ulaşılamıyor. Lütfen birazdan tekrar deneyin.");
+            message = "Sunucu şu anda yoğun veya ulaşılamıyor. Lütfen birazdan tekrar deneyin.";
           } else {
-            setError(data);
+            message = data;
           }
         } else if (Array.isArray(data)) {
           // Validation errors
-          setError(data.map((e: any) => e.errorMessage || e.message).join(", "));
+          message = data.map((e: any) => e.errorMessage || e.message).join(", ");
         } else {
           // Message (PascalCase - standard) or message (lowercase - custom)
-          setError(data.Message || data.message || "Giriş başarısız. Lütfen bilgilerinizi kontrol edin.");
+          message = data.Message || data.message || "Giriş başarısız. Lütfen bilgilerinizi kontrol edin.";
+        }
+
+        setError(message);
+        if (message.toLowerCase().includes('doğrulamanız gerekmektedir')) {
+          setShowVerifyLink(true);
         }
       } else if (err.request) {
         setError("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.");
@@ -62,14 +73,15 @@ const Login = () => {
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
     try {
-      const res = await userService.googleLogin(credentialResponse.credential);
+      const res = await authService.googleLogin(credentialResponse.credential);
       if (res.data.success) {
         await checkAuth();
         toast.success('Giriş başarılı!');
         navigate('/');
       }
     } catch (err: any) {
-      toast.error(err.response?.data || "Google ile giriş yapılırken hata oluştu.");
+      const errorMsg = err.response?.data?.message || err.response?.data || "Google ile giriş yapılırken hata oluştu.";
+      toast.error(typeof errorMsg === 'string' ? errorMsg : "Giriş başarısız.");
     }
   };
 
@@ -85,6 +97,7 @@ const Login = () => {
           </p>
         </div>
 
+        {allowGoogleLogin && (
         <div className="mt-8">
           <div className="w-full flex justify-center mb-6">
             <GoogleLogin
@@ -96,13 +109,14 @@ const Login = () => {
               text="continue_with"
             />
           </div>
-          
+
           <div className="relative flex items-center mb-6">
             <div className="flex-grow border-t border-gray-300"></div>
             <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">veya</span>
             <div className="flex-grow border-t border-gray-300"></div>
           </div>
         </div>
+        )}
 
         <form className="space-y-6" onSubmit={handleLogin}>
           <div className="rounded-md shadow-sm -space-y-px">
@@ -135,12 +149,24 @@ const Login = () => {
           </div>
 
           {error && (
-            <div className="text-red-500 text-sm text-center font-medium">
-              {error}
+            <div className="space-y-3">
+              <div className="text-red-500 text-sm text-center font-medium bg-red-50 p-2 rounded-lg border border-red-100">
+                {error}
+              </div>
+              {showVerifyLink && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/verify-email')}
+                  className="w-full py-2 px-4 bg-indigo-50 text-indigo-700 text-sm font-bold rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-100"
+                >
+                  Doğrulama Sayfasına Git →
+                </button>
+              )}
             </div>
           )}
 
           {/* Cloudflare Turnstile Bot Koruması */}
+          {enableCaptcha && (
           <div className="flex justify-center">
             <Turnstile
               siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
@@ -149,12 +175,13 @@ const Login = () => {
               onExpire={() => setCaptchaToken(null)}
             />
           </div>
+          )}
 
           <div>
             <button
               type="submit"
-              disabled={!captchaToken}
-              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white transition duration-150 ease-in-out ${!captchaToken ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'}`}
+              disabled={enableCaptcha && !captchaToken}
+              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white transition duration-150 ease-in-out ${(enableCaptcha && !captchaToken) ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'}`}
             >
               Giriş Yap
             </button>

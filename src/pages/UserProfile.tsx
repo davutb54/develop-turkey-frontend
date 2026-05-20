@@ -7,6 +7,8 @@ import type { UserPublicProfileDto, ProblemDetailDto, SolutionDetailDto } from '
 import Navbar from '../components/Navbar';
 import ReportModal from '../components/ReportModal';
 import { getProfileImageUrl } from '../utils/imageUtils';
+import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
+import { useAuth } from '../context/AuthContext';
 
 const UserProfile = () => {
     const { id } = useParams<{ id: string }>(); // URL'den tıklanan kişinin ID'sini alıyoruz
@@ -17,6 +19,21 @@ const UserProfile = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const enableReports = useFeature<boolean>('Moderation.EnableReportSystem', true);
+    const enableCustomHierarchy = useFeature<boolean>('Content.EnableCustomHierarchy', false);
+    const { userId: currentUserId } = useAuth();
+    const institution = useInstitution();
+    const terminology = useTerminology();
+    const showJoinedDate = useFeature<boolean>('Profile.ShowJoinedDate', true);
+    const showStatistics = useFeature<boolean>('Profile.ShowStatistics', true);
+
+    useEffect(() => {
+        if (user) {
+            if (!user.showProblems && user.showSolutions) {
+                setActiveTab('solutions');
+            }
+        }
+    }, [user]);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -24,22 +41,32 @@ const UserProfile = () => {
             setLoading(true);
 
             try {
-                const userId = parseInt(id);
-                // Kullanıcının bilgilerini, sorunlarını ve çözümlerini aynı anda çekiyoruz
-                const [userRes, probRes, solRes] = await Promise.all([
-                    userService.getPublicProfile(userId),
-                    problemService.getBySender(userId),
-                    solutionService.getBySender(userId)
-                ]);
+                const isNumeric = /^\d+$/.test(id);
+                let userRes;
+                const instId = institution?.id || 1; // Fallback to 1 if not detected
+                
+                if (isNumeric) {
+                    userRes = await userService.getPublicProfile(parseInt(id), instId);
+                } else {
+                    userRes = await userService.getPublicProfileByUserName(id, instId);
+                }
 
                 if (userRes.data.success) {
-                    setUser(userRes.data.data);
+                    const fetchedUser = userRes.data.data;
+                    setUser(fetchedUser);
+                    
+                    // ID numeric değilse bile user'ın gerçek ID'sini kullanarak sorun ve çözümleri çek
+                    const actualUserId = fetchedUser.id;
+                    const [probRes, solRes] = await Promise.all([
+                        problemService.getBySender(actualUserId),
+                        solutionService.getBySender(actualUserId)
+                    ]);
+
+                    if (probRes.data.success) setProblems(probRes.data.data);
+                    if (solRes.data.success) setSolutions(solRes.data.data);
                 } else {
                     setError(userRes.data.message || "Kullanıcı bulunamadı.");
                 }
-
-                if (probRes.data.success) setProblems(probRes.data.data);
-                if (solRes.data.success) setSolutions(solRes.data.data);
 
             } catch (err) {
                 setError("Bilgiler yüklenirken bir hata oluştu.");
@@ -52,7 +79,29 @@ const UserProfile = () => {
     }, [id]);
 
     if (loading) return <div className="text-center p-20 font-medium text-blue-600">Kullanıcı Yükleniyor...</div>;
-    if (error || !user) return <div className="text-center p-20 text-red-500 font-bold">{error || "Kullanıcı bulunamadı"}</div>;
+    if (error) return <div className="text-center p-20 text-red-500 font-bold">{error}</div>;
+    
+    // Profil gizli mi kontrolü (Kendi profili değilse ve Admin değilse)
+    const isOwnProfile = currentUserId?.toString() === user?.id.toString();
+    const canSeePrivateProfile = isOwnProfile; // Buraya Admin check de eklenebilir
+
+    if (!user) return <div className="text-center p-20 text-red-500 font-bold">Kullanıcı bulunamadı</div>;
+    
+    if (!user.isProfilePublic && !canSeePrivateProfile) {
+        return (
+            <div className="min-h-screen bg-gray-50 pb-12">
+                <Navbar />
+                <div className="max-w-xl mx-auto py-20 px-4 text-center">
+                    <div className="bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
+                        <div className="text-6xl mb-6">🔒</div>
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2">Bu Profil Gizlidir</h2>
+                        <p className="text-gray-500 leading-relaxed">Bu kullanıcı profilini gizlemeyi tercih etmiştir.</p>
+                        <Link to="/" className="inline-block mt-8 text-blue-600 font-bold hover:underline">Ana Sayfaya Dön</Link>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 pb-12">
@@ -97,44 +146,80 @@ const UserProfile = () => {
 
                         <div className="mt-8 flex gap-8 border-t border-gray-100 pt-6 text-sm">
                             <div className="flex items-center text-gray-700">
-                                <span className="font-bold text-gray-500 uppercase text-xs mr-2">Şehir:</span>
-                                <span className="font-medium">{user.cityName}</span>
+                                <span className="font-bold text-gray-500 uppercase text-xs mr-2">{terminology.cityLabel}:</span>
+                                <span className="font-medium">
+                                    {(() => {
+                                        if (enableCustomHierarchy && user.customHierarchyId != null && institution?.customHierarchyJson) {
+                                            try {
+                                                const items = JSON.parse(institution.customHierarchyJson) as string[];
+                                                return items[user.customHierarchyId] || user.cityName;
+                                            } catch { return user.cityName; }
+                                        }
+                                        return user.cityName;
+                                    })()}
+                                </span>
                             </div>
-                            <div className="flex items-center text-gray-700">
-                                <span className="font-bold text-gray-500 uppercase text-xs mr-2">Kayıt:</span>
-                                <span className="font-medium">{new Date(user.registerDate).toLocaleDateString('tr-TR')}</span>
-                            </div>
-                            <button
-                                onClick={() => setIsReportModalOpen(true)}
-                                className="ml-4 px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1"
-                            >
-                                🚩 Profili Şikayet Et
-                            </button>
+                            {showJoinedDate && (
+                                <div className="flex items-center text-gray-700">
+                                    <span className="font-bold text-gray-500 uppercase text-xs mr-2">Kayıt:</span>
+                                    <span className="font-medium">{new Date(user.registerDate).toLocaleDateString('tr-TR')}</span>
+                                </div>
+                            )}
+                            {enableReports && currentUserId !== user.id && currentUserId !== 0 && (
+                                <button
+                                    onClick={() => setIsReportModalOpen(true)}
+                                    className="ml-4 px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1"
+                                >
+                                    🚩 Profili Şikayet Et
+                                </button>
+                            )}
                         </div>
+
+                        {showStatistics && (
+                            <div className="px-6 pb-6 pt-4 flex gap-4 border-t border-gray-50 bg-gray-50/30">
+                                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex-1 text-center">
+                                    <div className="text-2xl font-black text-gray-800">{problems.length}</div>
+                                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{terminology.problemLabel}</div>
+                                </div>
+                                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex-1 text-center">
+                                    <div className="text-2xl font-black text-gray-800">{solutions.length}</div>
+                                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Çözüm</div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {/* Sekmeler (Sadece Sorunlar ve Çözümler var, Ayarlar yok) */}
                 <div className="bg-white shadow-md rounded-xl overflow-hidden">
                     <div className="flex border-b">
-                        <button
-                            onClick={() => setActiveTab('problems')}
-                            className={`flex-1 py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'problems' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-500 hover:bg-gray-50'
-                                }`}
-                        >
-                            Kullanıcının Sorunları ({problems.length})
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('solutions')}
-                            className={`flex-1 py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'solutions' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-500 hover:bg-gray-50'
-                                }`}
-                        >
-                            Kullanıcının Çözümleri ({solutions.length})
-                        </button>
+                        {user.showProblems && (
+                            <button
+                                onClick={() => setActiveTab('problems')}
+                                className={`flex-1 py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'problems' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-500 hover:bg-gray-50'
+                                    }`}
+                            >
+                                Kullanıcının Sorunları {showStatistics && `(${problems.length})`}
+                            </button>
+                        )}
+                        {user.showSolutions && (
+                            <button
+                                onClick={() => setActiveTab('solutions')}
+                                className={`flex-1 py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'solutions' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-500 hover:bg-gray-50'
+                                    }`}
+                            >
+                                Kullanıcının Çözümleri {showStatistics && `(${solutions.length})`}
+                            </button>
+                        )}
+                        {!user.showProblems && !user.showSolutions && (
+                            <div className="flex-1 py-4 text-sm font-bold text-gray-400 text-center uppercase">
+                                İçerik Paylaşımı Gizli
+                            </div>
+                        )}
                     </div>
 
                     <div className="p-6">
-                        {activeTab === 'problems' ? (
+                        {activeTab === 'problems' && user.showProblems ? (
                             <div className="space-y-4">
                                 {problems.length === 0 ? (
                                     <p className="text-center text-gray-500 py-10">Kullanıcı henüz bir sorun paylaşmamış.</p>
@@ -143,14 +228,24 @@ const UserProfile = () => {
                                         <div key={prob.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition">
                                             <div>
                                                 <h4 className="font-bold text-gray-900">{prob.title}</h4>
-                                                <p className="text-xs text-gray-500">{prob.cityName} • {new Date(prob.sendDate).toLocaleDateString('tr-TR')}</p>
+                                                <p className="text-xs text-gray-500">
+                                                    {(() => {
+                                                        if (prob.customHierarchyId != null && institution?.customHierarchyJson) {
+                                                            try {
+                                                                const items = JSON.parse(institution.customHierarchyJson) as string[];
+                                                                return items[prob.customHierarchyId] || prob.cityName;
+                                                            } catch { return prob.cityName; }
+                                                        }
+                                                        return prob.cityName;
+                                                    })()} • {new Date(prob.sendDate).toLocaleDateString('tr-TR')}
+                                                </p>
                                             </div>
                                             <Link to={`/problem/${prob.id}`} className="text-blue-600 text-sm font-bold hover:underline">İncele</Link>
                                         </div>
                                     ))
                                 )}
                             </div>
-                        ) : (
+                        ) : activeTab === 'solutions' && user.showSolutions ? (
                             <div className="space-y-4">
                                 {solutions.length === 0 ? (
                                     <p className="text-center text-gray-500 py-10">Kullanıcı henüz bir çözüm önerisinde bulunmamış.</p>
@@ -169,13 +264,19 @@ const UserProfile = () => {
                                     ))
                                 )}
                             </div>
+                        ) : (
+                            <div className="py-20 text-center text-gray-400">
+                                <div className="text-6xl mb-4 opacity-50">😶</div>
+                                <p className="font-bold text-gray-500">İçerik Paylaşımı Gizli</p>
+                                <p className="text-sm mt-1">Kullanıcı paylaşımlarını gizlemeyi tercih etmiş.</p>
+                            </div>
                         )}
                     </div>
                 </div>
 
             </div>
             {/* Şikayet Modalı */}
-            {user && (
+            {user && enableReports && (
                 <ReportModal
                     isOpen={isReportModalOpen}
                     onClose={() => setIsReportModalOpen(false)}

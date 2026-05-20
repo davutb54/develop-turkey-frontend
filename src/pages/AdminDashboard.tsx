@@ -10,6 +10,7 @@ import { feedbackService } from '../services/feedbackService';
 import { aboutService } from '../services/aboutService';
 import AgreementsTab from '../components/AgreementsTab';
 import WysiwygEditor from '../components/WysiwygEditor';
+import EmailTemplatesList from '../components/admin/EmailTemplatesList';
 import type { AdminDashboardDto, DashboardAnalyticsDto, SystemHealthDto, ProblemDetailDto, SolutionDetailDto, UserDetailDto, Topic, LogFilterDto, ReportDto, Institution, Log, SystemSettings } from '../types';
 import Navbar from '../components/Navbar';
 import { Link, useNavigate } from 'react-router-dom';
@@ -17,6 +18,55 @@ import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, AreaChart, Area, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import TurkeyMap from 'turkey-map-react';
 import { getProfileImageUrl } from '../utils/imageUtils';
+
+
+const TagListManager = ({
+    label,
+    items,
+    onAdd,
+    onRemove,
+    colorClass,
+    placeholder = "Ekle..."
+}: {
+    label: string,
+    items: string[],
+    onAdd: (item: string) => void,
+    onRemove: (item: string) => void,
+    colorClass: string,
+    placeholder?: string
+}) => {
+    const [newItem, setNewItem] = useState('');
+    return (
+        <div className="space-y-3">
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">{label}</label>
+            <div className="flex gap-2">
+                <input
+                    type="text"
+                    value={newItem}
+                    onChange={e => setNewItem(e.target.value)}
+                    placeholder={placeholder}
+                    className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+                <button
+                    type="button"
+                    onClick={() => { if (newItem.trim()) { onAdd(newItem.trim()); setNewItem(''); } }}
+                    className={`px-4 py-2 rounded-xl text-white font-bold text-xs transition active:scale-95 ${colorClass}`}
+                >
+                    Ekle
+                </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                {items.map((item, idx) => (
+                    <span key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">
+                        {item}
+                        <button type="button" onClick={() => onRemove(item)} className="text-slate-400 hover:text-red-500 transition-colors font-black">×</button>
+                    </span>
+                ))}
+                {items.length === 0 && <span className="text-[10px] text-slate-400 font-bold italic">Liste boş</span>}
+            </div>
+        </div>
+    );
+};
 
 const AdminDashboard = () => {
     const { userId } = useAuth();
@@ -104,8 +154,12 @@ const AdminDashboard = () => {
     const [newTopicInstId, setNewTopicInstId] = useState('');
     const [newTopicImage, setNewTopicImage] = useState<File | null>(null);
 
+
     const [instFormData, setInstFormData] = useState<Institution>({
-        name: '', subtitle: '', domain: '', logoUrl: '', primaryColor: '#2563eb', status: true
+        name: '', subtitle: '', domain: '', logoUrl: '', primaryColor: '#2563eb',
+        customFieldsJson: '[]',
+        customHierarchyLabel: '', customHierarchyJson: '[]',
+        status: true
     });
     const [instLoading, setInstLoading] = useState(false);
     const [instError, setInstError] = useState('');
@@ -122,11 +176,35 @@ const AdminDashboard = () => {
     const [activityLogPage, setActivityLogPage] = useState(1);
     const [hasMoreActivityLogs, setHasMoreActivityLogs] = useState(true);
     const [activityLogLoading, setActivityLogLoading] = useState(false);
+    const [activityLogFilter, setActivityLogFilter] = useState({
+        searchText: '',
+        institutionId: '' as string | number,
+        category: ''
+    });
 
     const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
 
     // --- SEKME STATE'LERİ ---
-    const [activeTab, setActiveTab] = useState<'command-center' | 'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'activity-logs' | 'expert-approvals' | 'feedbacks' | 'settings' | 'agreements' | 'corporate'>('command-center');
+    const [activeTab, setActiveTab] = useState<'command-center' | 'overview' | 'users' | 'topics' | 'institutions' | 'problems' | 'solutions' | 'reports' | 'logs' | 'activity-logs' | 'expert-approvals' | 'feedbacks' | 'settings' | 'agreements' | 'corporate' | 'email-templates'>('command-center');
+
+    const handleUpdateIpList = (type: 'WhitelistIps' | 'BlacklistIps', newIps: string[], isEdit: boolean) => {
+        const currentData = isEdit ? editInstData : instFormData;
+        const setFunction = isEdit ? setEditInstData : setInstFormData;
+
+        let jsonObj: any = {};
+        try {
+            const raw = currentData.customFieldsJson || '{}';
+            jsonObj = JSON.parse(raw === '[]' ? '{}' : raw);
+            if (Array.isArray(jsonObj)) jsonObj = {};
+        } catch { jsonObj = {}; }
+
+        jsonObj[type] = newIps;
+
+        setFunction((prev: any) => ({
+            ...prev,
+            customFieldsJson: JSON.stringify(jsonObj)
+        }));
+    };
     const [reportTab, setReportTab] = useState<'problems' | 'solutions' | 'users'>('problems');
     const [loading, setLoading] = useState(true);
 
@@ -142,8 +220,14 @@ const AdminDashboard = () => {
     const [editTopicStatus, setEditTopicStatus] = useState(true);
 
     const [editingInst, setEditingInst] = useState<Institution | null>(null);
-    const [editInstData, setEditInstData] = useState({ name: '', subtitle: '', domain: '', primaryColor: '', status: true });
+    const [editInstData, setEditInstData] = useState<Institution>({
+        name: '', subtitle: '', domain: '', primaryColor: '#2563eb',
+        customFieldsJson: '[]',
+        customHierarchyLabel: '', customHierarchyJson: '[]',
+        status: true
+    });
     const [editInstLogo, setEditInstLogo] = useState<File | null>(null);
+    const [editInstError, setEditInstError] = useState('');
 
     // --- KULLANICI UYARI MODAL STATE'LERİ ---
     const [warningTargetUserId, setWarningTargetUserId] = useState<number | null>(null);
@@ -287,15 +371,16 @@ const AdminDashboard = () => {
             // Sayfa ilk defa açıldığında boş kalmaması için tab verilerini de bir kere çekebiliriz, 
             // ancak görev gereği optimize şekilde loadAllData sadece sabit verileri getirecek.
             // Alt sekmelerin dolması için temel verileri de çağırıyoruz:
-            await Promise.all([
+            const initialRequests = [
                 fetchTopics(),
                 fetchProblems(),
                 fetchSolutions(),
                 fetchReports(),
                 fetchUsers(1),
-                fetchFeedbacks(1),
                 fetchLogs()
-            ]);
+            ];
+            initialRequests.push(fetchFeedbacks(1));
+            await Promise.all(initialRequests);
         } catch (err) { console.error("Veriler yüklenemedi", err); }
         finally { setLoading(false); }
     };
@@ -353,12 +438,19 @@ const AdminDashboard = () => {
     const fetchActivityLogs = async (page: number, append: boolean = false) => {
         setActivityLogLoading(true);
         try {
-            const res = await adminService.getLogs({ isActivityLog: true, page, pageSize: 20 });
+            const res = await adminService.getLogs({ 
+                isActivityLog: true, 
+                page, 
+                pageSize: 20,
+                searchText: activityLogFilter.searchText || undefined,
+                institutionId: activityLogFilter.institutionId ? parseInt(activityLogFilter.institutionId.toString()) : undefined,
+                category: activityLogFilter.category || undefined
+            });
             if (res.data.success) {
                 const newData = res.data.data;
                 if (newData.length < 20) setHasMoreActivityLogs(false);
                 else setHasMoreActivityLogs(true);
-                
+
                 if (append) setActivityLogs(prev => [...prev, ...newData]);
                 else setActivityLogs(newData);
             }
@@ -373,7 +465,7 @@ const AdminDashboard = () => {
             setActivityLogPage(1);
             fetchActivityLogs(1, false);
         }
-    }, [activeTab]);
+    }, [activeTab, activityLogFilter.institutionId, activityLogFilter.category]);
 
     useEffect(() => {
         if (activeTab === 'users') {
@@ -630,9 +722,14 @@ const AdminDashboard = () => {
         try { await solutionService.delete(id); loadAllData(); } catch { alert("Silinemedi."); }
     };
 
-    const handleInstChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value, type, checked } = e.target;
-        setInstFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    const handleInstChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const target = e.target;
+        const { name, value } = target;
+        if (target instanceof HTMLInputElement && target.type === 'checkbox') {
+            setInstFormData(prev => ({ ...prev, [name]: target.checked }));
+            return;
+        }
+        setInstFormData(prev => ({ ...prev, [name]: value }));
     };
 
     const handleUpdateTopic = async (e: React.FormEvent) => {
@@ -661,16 +758,34 @@ const AdminDashboard = () => {
         formData.append("Name", editInstData.name);
         formData.append("Subtitle", editInstData.subtitle || '');
         formData.append("Domain", editInstData.domain);
-        formData.append("PrimaryColor", editInstData.primaryColor);
+        formData.append("PrimaryColor", editInstData.primaryColor || '#4f46e5');
+        formData.append("CustomFieldsJson", editInstData.customFieldsJson || '[]');
+        formData.append("CustomHierarchyLabel", editInstData.customHierarchyLabel || '');
+        formData.append("CustomHierarchyJson", editInstData.customHierarchyJson || '[]');
         formData.append("Status", editInstData.status.toString());
         if (editingInst.logoUrl) formData.append("ExistingLogoUrl", editingInst.logoUrl);
         if (editInstLogo) formData.append("Logo", editInstLogo);
 
         try {
-            await institutionService.update(formData);
-            setEditingInst(null);
-            loadAllData();
-        } catch { alert("Kurum güncellenemedi."); }
+            setEditInstError('');
+            const result = await institutionService.update(formData);
+            if (result.data.success) {
+                setEditingInst(null);
+                loadAllData();
+                alert("Kurum başarıyla güncellendi!");
+            } else {
+                setEditInstError(result.data.message || "Kurum güncellenemedi.");
+            }
+        } catch (err: any) {
+            console.error("Institution update error:", err);
+            let errMsg = "Kurum güncellenemedi.";
+            if (err.response?.data) {
+                if (typeof err.response.data === 'string') errMsg = err.response.data;
+                else if (err.response.data.message) errMsg = err.response.data.message;
+                else if (err.response.data.errors) errMsg = Object.values(err.response.data.errors).flat().join('\n');
+            }
+            setEditInstError(errMsg);
+        }
     };
 
     const handleAddInstitution = async (e: React.FormEvent) => {
@@ -685,6 +800,9 @@ const AdminDashboard = () => {
         formData.append("Subtitle", instFormData.subtitle || '');
         formData.append("Domain", instFormData.domain);
         formData.append("PrimaryColor", instFormData.primaryColor || '#2563eb');
+        formData.append("CustomFieldsJson", instFormData.customFieldsJson || '[]');
+        formData.append("CustomHierarchyLabel", instFormData.customHierarchyLabel || '');
+        formData.append("CustomHierarchyJson", instFormData.customHierarchyJson || '[]');
         formData.append("Status", instFormData.status.toString());
         if (instLogoFile) formData.append("Logo", instLogoFile);
 
@@ -692,11 +810,27 @@ const AdminDashboard = () => {
             const response = await institutionService.add(formData);
             if (response.data.success) {
                 setInstSuccess(`${instFormData.name} başarıyla eklendi!`);
-                setInstFormData({ name: '', subtitle: '', domain: '', logoUrl: '', primaryColor: '#2563eb', status: true });
+                setInstFormData({
+                    name: '', subtitle: '', domain: '', logoUrl: '', primaryColor: '#2563eb',
+                    customFieldsJson: '[]',
+                    customHierarchyLabel: '', customHierarchyJson: '[]',
+                    status: true
+                });
                 setInstLogoFile(null);
                 loadAllData();
-            } else { setInstError(response.data.message); }
-        } catch (err: any) { setInstError(err.response?.data?.message || "Kurum eklenirken hata."); }
+            } else { 
+                setInstError(response.data.message || "Kurum eklenirken hata oluştu."); 
+            }
+        } catch (err: any) {
+            console.error("Institution add error:", err);
+            let errMsg = "Kurum eklenirken hata.";
+            if (err.response?.data) {
+                if (typeof err.response.data === 'string') errMsg = err.response.data;
+                else if (err.response.data.message) errMsg = err.response.data.message;
+                else if (err.response.data.errors) errMsg = Object.values(err.response.data.errors).flat().join('\n');
+            }
+            setInstError(errMsg);
+        }
         finally { setInstLoading(false); }
     };
 
@@ -714,6 +848,7 @@ const AdminDashboard = () => {
             formData.append("Status", (!inst.status).toString());
             if (inst.primaryColor) formData.append("PrimaryColor", inst.primaryColor);
             if (inst.logoUrl) formData.append("ExistingLogoUrl", inst.logoUrl);
+            formData.append("CustomFieldsJson", inst.customFieldsJson || '[]');
 
             await institutionService.update(formData);
             loadAllData();
@@ -941,11 +1076,19 @@ const AdminDashboard = () => {
                             { id: 'logs', label: 'Sistem Logları (SIEM)', icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 },
                             { id: 'activity-logs', label: 'Aksiyon Geçmişi', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', count: 0 },
                             { id: 'agreements', label: 'Sözleşmeler', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', count: 0 },
-                            { id: 'corporate', label: '🏢 Kurumsal', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', count: 0 }
-                        ].map(item => (
+                            { id: 'email-templates', label: 'E-posta Şablonları', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', count: 0 },
+                            { id: 'features', label: 'Modül Yönetimi', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', count: 0 },
+                            { id: 'corporate', label: 'Hakkımızda', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', count: 0 }
+                        ].filter((item: any) => !item.hidden).map((item: any) => (
                             <button
                                 key={item.id}
-                                onClick={() => setActiveTab(item.id as any)}
+                                onClick={() => {
+                                    if (item.id === 'features') {
+                                        navigate('/admin/features');
+                                    } else {
+                                        setActiveTab(item.id as any);
+                                    }
+                                }}
                                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all duration-300 ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 translate-x-2' : 'bg-transparent text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 border border-transparent hover:border-indigo-100'}`}
                             >
                                 <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
@@ -1109,11 +1252,11 @@ const AdminDashboard = () => {
                                                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                                             </div>
                                             <label className="relative inline-flex items-center cursor-pointer">
-                                                <input 
-                                                    type="checkbox" 
+                                                <input
+                                                    type="checkbox"
                                                     checked={systemSettings.isMaintenanceMode}
                                                     onChange={(e) => setSystemSettings({ ...systemSettings, isMaintenanceMode: e.target.checked })}
-                                                    className="sr-only peer" 
+                                                    className="sr-only peer"
                                                 />
                                                 <div className="relative w-14 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-500"></div>
                                             </label>
@@ -1129,11 +1272,11 @@ const AdminDashboard = () => {
                                                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
                                             </div>
                                             <label className="relative inline-flex items-center cursor-pointer">
-                                                <input 
-                                                    type="checkbox" 
+                                                <input
+                                                    type="checkbox"
                                                     checked={systemSettings.disableNewRegistrations}
                                                     onChange={(e) => setSystemSettings({ ...systemSettings, disableNewRegistrations: e.target.checked })}
-                                                    className="sr-only peer" 
+                                                    className="sr-only peer"
                                                 />
                                                 <div className="relative w-14 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
                                             </label>
@@ -1152,7 +1295,7 @@ const AdminDashboard = () => {
                                         <div className="relative z-10 space-y-4">
                                             <h4 className="text-lg font-bold text-amber-400">Bakım Modu Mesajı</h4>
                                             <p className="text-slate-400 text-sm">Kullanıcıların yönlendirildikleri sayfada görecekleri mesaj:</p>
-                                            <textarea 
+                                            <textarea
                                                 value={systemSettings.maintenanceMessage || ''}
                                                 onChange={(e) => setSystemSettings({ ...systemSettings, maintenanceMessage: e.target.value })}
                                                 placeholder="Sistem şu anda bakım aşamasındadır..."
@@ -1307,13 +1450,13 @@ const AdminDashboard = () => {
                                 </div>
 
                                 <div className="flex items-center justify-end gap-4">
-                                    <button 
+                                    <button
                                         onClick={loadAllData}
                                         className="px-8 py-4 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-all active:scale-95"
                                     >
                                         Değişiklikleri İptal Et
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={handleUpdateSystemSettings}
                                         disabled={settingsLoading}
                                         className={`px-12 py-4 rounded-2xl font-black text-white shadow-2xl transition-all active:scale-95 flex items-center gap-3 ${settingsLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'}`}
@@ -1331,6 +1474,13 @@ const AdminDashboard = () => {
                                         )}
                                     </button>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* 1.5 E-POSTA ŞABLONLARI */}
+                        {activeTab === 'email-templates' && (
+                            <div className="animate-fade-in">
+                                <EmailTemplatesList />
                             </div>
                         )}
 
@@ -1725,6 +1875,153 @@ const AdminDashboard = () => {
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <div className="mt-4 pt-4 border-t border-slate-100">
+                                            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between">
+                                                <div>
+                                                    <div className="text-sm font-black text-indigo-900">Özellik ve Modül Yönetimi</div>
+                                                    <div className="text-xs text-indigo-700">Özellikleri artık merkezi "Modüller" sayfasından yönetebilirsiniz.</div>
+                                                </div>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => navigate('/admin/features')}
+                                                    className="px-4 py-2 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-sm hover:bg-indigo-700 transition"
+                                                >
+                                                    Modüllere Git
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
+                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-2 mb-2">Özel Hiyerarşi (Bölüm/Şube)</div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">Hiyerarşi Başlığı</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Örn: Fakülteler, Şubeler..."
+                                                        value={instFormData.customHierarchyLabel || ''}
+                                                        onChange={(e) => setInstFormData(prev => ({ ...prev, customHierarchyLabel: e.target.value }))}
+                                                        className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">Hiyerarşi Değerleri (Alt alta yazın)</label>
+                                                    <textarea
+                                                        placeholder="Mühendislik Fakültesi&#10;Edebiyat Fakültesi..."
+                                                        value={(() => {
+                                                            try {
+                                                                return instFormData.customHierarchyJson ? (JSON.parse(instFormData.customHierarchyJson) as string[]).join('\n') : '';
+                                                            } catch { return ''; }
+                                                        })()}
+                                                        onChange={(e) => {
+                                                            const values = e.target.value.split('\n').filter(v => v.trim() !== '');
+                                                            setInstFormData(prev => ({ ...prev, customHierarchyJson: JSON.stringify(values) }));
+                                                        }}
+                                                        rows={3}
+                                                        className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white resize-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-slate-50 border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
+                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-2 mb-2 flex items-center gap-2">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                                                Özel Hiyerarşi (Bölüm/Şube/Fakülte)
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">Hiyerarşi Başlığı</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Örn: Fakülteler, Şubeler..."
+                                                        value={instFormData.customHierarchyLabel || ''}
+                                                        onChange={(e) => setInstFormData(prev => ({ ...prev, customHierarchyLabel: e.target.value }))}
+                                                        className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                                                    />
+                                                </div>
+                                                <TagListManager
+                                                    label="Hiyerarşi Değerleri"
+                                                    placeholder="Örn: Mühendislik Fakültesi"
+                                                    items={(() => {
+                                                        try {
+                                                            const raw = instFormData.customHierarchyJson || '[]';
+                                                            return JSON.parse(raw);
+                                                        } catch { return []; }
+                                                    })()}
+                                                    onAdd={(item) => {
+                                                        const current = (() => { try { return JSON.parse(instFormData.customHierarchyJson || '[]'); } catch { return []; } })();
+                                                        if (!current.includes(item)) {
+                                                            setInstFormData(prev => ({ ...prev, customHierarchyJson: JSON.stringify([...current, item]) }));
+                                                        }
+                                                    }}
+                                                    onRemove={(item) => {
+                                                        const current = (() => { try { return JSON.parse(instFormData.customHierarchyJson || '[]'); } catch { return []; } })();
+                                                        setInstFormData(prev => ({ ...prev, customHierarchyJson: JSON.stringify(current.filter((i: string) => i !== item)) }));
+                                                    }}
+                                                    colorClass="bg-indigo-500 hover:bg-indigo-600 shadow-indigo-500/20"
+                                                />
+                                            </div>
+                                        </div>
+
+                                         <div className="bg-slate-100/50 border border-slate-200 rounded-2xl p-5 space-y-6">
+                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-2 mb-2 flex items-center gap-2">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                                                IP Güvenlik Ayarları (Whitelist & Blacklist)
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <TagListManager
+                                                    label="İzinli IP'ler (Whitelist)"
+                                                    placeholder="Örn: 127.0.0.1"
+                                                    items={(() => {
+                                                        try {
+                                                            const raw = instFormData.customFieldsJson || '{}';
+                                                            const obj = JSON.parse(raw === '[]' ? '{}' : raw);
+                                                            return obj.WhitelistIps || [];
+                                                        } catch { return []; }
+                                                    })()}
+                                                    onAdd={(ip) => {
+                                                        const current = (() => { try { const r = instFormData.customFieldsJson || '{}'; const o = JSON.parse(r === '[]' ? '{}' : r); return o.WhitelistIps || []; } catch { return []; } })();
+                                                        if (!current.includes(ip)) handleUpdateIpList('WhitelistIps', [...current, ip], false);
+                                                    }}
+                                                    onRemove={(ip) => {
+                                                        const current = (() => { try { const r = instFormData.customFieldsJson || '{}'; const o = JSON.parse(r === '[]' ? '{}' : r); return o.WhitelistIps || []; } catch { return []; } })();
+                                                        handleUpdateIpList('WhitelistIps', current.filter((i: string) => i !== ip), false);
+                                                    }}
+                                                    colorClass="bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
+                                                />
+                                                <TagListManager
+                                                    label="Yasaklı IP'ler (Blacklist)"
+                                                    placeholder="Örn: 127.0.0.1"
+                                                    items={(() => {
+                                                        try {
+                                                            const raw = instFormData.customFieldsJson || '{}';
+                                                            const obj = JSON.parse(raw === '[]' ? '{}' : raw);
+                                                            return obj.BlacklistIps || [];
+                                                        } catch { return []; }
+                                                    })()}
+                                                    onAdd={(ip) => {
+                                                        const current = (() => { try { const r = instFormData.customFieldsJson || '{}'; const o = JSON.parse(r === '[]' ? '{}' : r); return o.BlacklistIps || []; } catch { return []; } })();
+                                                        if (!current.includes(ip)) handleUpdateIpList('BlacklistIps', [...current, ip], false);
+                                                    }}
+                                                    onRemove={(ip) => {
+                                                        const current = (() => { try { const r = instFormData.customFieldsJson || '{}'; const o = JSON.parse(r === '[]' ? '{}' : r); return o.BlacklistIps || []; } catch { return []; } })();
+                                                        handleUpdateIpList('BlacklistIps', current.filter((i: string) => i !== ip), false);
+                                                    }}
+                                                    colorClass="bg-rose-500 hover:bg-rose-600 shadow-rose-500/20"
+                                                />
+                                            </div>
+                                            <div className="pt-2">
+                                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Ham JSON Çıktısı (Sistem için)</label>
+                                                <input
+                                                    readOnly
+                                                    value={instFormData.customFieldsJson || '[]'}
+                                                    className="w-full border border-slate-200 rounded-xl px-4 py-2 text-[10px] bg-slate-50 font-mono text-slate-400 cursor-not-allowed"
+                                                />
+                                            </div>
+                                        </div>
+
                                         <div className="flex items-center gap-2 mt-2">
                                             <input id="inst-status" type="checkbox" name="status" checked={instFormData.status} onChange={handleInstChange} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
                                             <label htmlFor="inst-status" className="text-sm font-bold text-slate-700">Kurum Aktif (Kayıt Olunabilir)</label>
@@ -1775,13 +2072,31 @@ const AdminDashboard = () => {
                                                         <div className="flex justify-end gap-2">
                                                             <button
                                                                 onClick={() => {
+                                                                    setEditInstError('');
                                                                     setEditingInst(inst);
-                                                                    setEditInstData({ name: inst.name, subtitle: inst.subtitle || '', domain: inst.domain, primaryColor: inst.primaryColor || '#2563eb', status: inst.status });
+                                                                    setEditInstData({
+                                                                        id: inst.id,
+                                                                        name: inst.name,
+                                                                        subtitle: inst.subtitle || '',
+                                                                        domain: inst.domain,
+                                                                        primaryColor: inst.primaryColor || '#2563eb',
+                                                                        logoUrl: inst.logoUrl,
+                                                                        customFieldsJson: inst.customFieldsJson || '[]',
+                                                                        customHierarchyLabel: inst.customHierarchyLabel || '',
+                                                                        customHierarchyJson: inst.customHierarchyJson || '[]',
+                                                                        status: inst.status
+                                                                    });
                                                                     setEditInstLogo(null);
                                                                 }}
                                                                 className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm bg-white text-blue-600 border-blue-200 hover:bg-blue-50">
                                                                 Düzenle
                                                             </button>
+                                                             <button
+                                                                 onClick={() => navigate(`/admin/features?instId=${inst.id}`)}
+                                                                 className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100"
+                                                             >
+                                                                 Özellikler
+                                                             </button>
                                                             <button onClick={() => handleToggleInstitutionStatus(inst)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${inst.status ? 'bg-white text-rose-500 border-rose-200 hover:bg-rose-50' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
                                                                 {inst.status ? 'Pasife Al' : 'Aktif Et'}
                                                             </button>
@@ -2254,16 +2569,23 @@ const AdminDashboard = () => {
 
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 shadow-inner mb-8">
                                     <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Veritabanı Filtreleme</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-                                        <div className="lg:col-span-2 flex flex-col sm:flex-row gap-4">
-                                            <div className="flex-1">
-                                                <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Arama (IP, User, Hata)</label>
-                                                <input type="text" placeholder="IP Adresi veya metin..." className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.searchText || ''} onChange={e => setLogFilter({ ...logFilter, searchText: e.target.value })} />
-                                            </div>
-                                            <div className="sm:w-40 shrink-0">
-                                                <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Tarih</label>
-                                                <input type="date" className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.endDate ? logFilter.endDate.split('T')[0] : ''} onChange={e => setLogFilter({ ...logFilter, endDate: e.target.value })} />
-                                            </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+                                        <div className="lg:col-span-2">
+                                            <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Arama (IP, User, Hata)</label>
+                                            <input type="text" placeholder="IP Adresi veya metin..." className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.searchText || ''} onChange={e => setLogFilter({ ...logFilter, searchText: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Kurum</label>
+                                            <select className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-white" value={logFilter.institutionId?.toString() || ''} onChange={e => setLogFilter({ ...logFilter, institutionId: e.target.value ? parseInt(e.target.value) : undefined })}>
+                                                <option value="">Tüm Kurumlar</option>
+                                                {institutions.map(inst => (
+                                                    <option key={inst.id} value={inst.id}>{inst.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Tarih</label>
+                                            <input type="date" className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" value={logFilter.endDate ? logFilter.endDate.split('T')[0] : ''} onChange={e => setLogFilter({ ...logFilter, endDate: e.target.value })} />
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Kategori</label>
@@ -2286,7 +2608,7 @@ const AdminDashboard = () => {
                                                 <option value="Critical">Kritik (Critical)</option>
                                             </select>
                                         </div>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 lg:col-start-6">
                                             <button onClick={handleFilterLogs} className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl text-sm shadow-md hover:bg-black transition">Filtrele</button>
                                             <button onClick={clearLogFilters} className="px-4 py-3 bg-white border border-slate-300 text-slate-600 font-bold rounded-xl text-sm shadow-sm hover:bg-slate-50">Sil</button>
                                         </div>
@@ -2366,9 +2688,48 @@ const AdminDashboard = () => {
                             12. AKSİYON GEÇMİŞİ (TIMELINE)
                             ========================================================================= */}
                         {activeTab === 'activity-logs' && (
-                            <div className="animate-fade-in relative max-w-4xl mx-auto">
-                                <h2 className="text-2xl font-black text-slate-800 mb-8 border-b pb-4">Yönetici Aksiyon Geçmişi</h2>
-                                
+                            <div className="animate-fade-in relative max-w-5xl mx-auto pb-20">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b pb-4">
+                                    <h2 className="text-2xl font-black text-slate-800">Yönetici Aksiyon Geçmişi</h2>
+                                    
+                                    <div className="flex flex-wrap items-end gap-3">
+                                        <div className="w-48">
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Kurum Filtresi</label>
+                                            <select 
+                                                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none bg-white shadow-sm"
+                                                value={activityLogFilter.institutionId}
+                                                onChange={e => setActivityLogFilter({...activityLogFilter, institutionId: e.target.value})}
+                                            >
+                                                <option value="">Tüm Kurumlar</option>
+                                                {institutions.map(inst => (
+                                                    <option key={inst.id} value={inst.id!}>{inst.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="w-40">
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Kategori</label>
+                                            <select 
+                                                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none bg-white shadow-sm"
+                                                value={activityLogFilter.category}
+                                                onChange={e => setActivityLogFilter({...activityLogFilter, category: e.target.value})}
+                                            >
+                                                <option value="">Tüm Aksiyonlar</option>
+                                                <option value="AdminAction">Genel Admin</option>
+                                                <option value="Feature">Özellik (Feature)</option>
+                                                <option value="FeatureDefinition">Özellik Tanımı</option>
+                                                <option value="Security">Güvenlik</option>
+                                                <option value="Institution">Kurum Ayarları</option>
+                                            </select>
+                                        </div>
+                                        <button 
+                                            onClick={() => setActivityLogFilter({ searchText: '', institutionId: '', category: '' })}
+                                            className="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-200 transition"
+                                        >
+                                            Temizle
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
                                     {activityLogs.length === 0 && !activityLogLoading && (
                                         <div className="text-center py-10 text-slate-500 font-medium">Henüz hiçbir aksiyon kaydı bulunmuyor.</div>
@@ -2380,9 +2741,9 @@ const AdminDashboard = () => {
                                         const bgColor = isRed ? 'bg-red-500' : isYellow ? 'bg-amber-500' : 'bg-blue-500';
                                         const textColor = isRed ? 'text-red-700' : isYellow ? 'text-amber-700' : 'text-blue-700';
                                         const badgeBg = isRed ? 'bg-red-100' : isYellow ? 'bg-amber-100' : 'bg-blue-100';
-                                        const icon = isRed ? 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' 
-                                                  : isYellow ? 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z'
-                                                  : 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z';
+                                        const icon = isRed ? 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'
+                                            : isYellow ? 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z'
+                                                : 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z';
 
                                         return (
                                             <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
@@ -2406,10 +2767,10 @@ const AdminDashboard = () => {
                                         );
                                     })}
                                 </div>
-                                
+
                                 {hasMoreActivityLogs && (
                                     <div className="text-center mt-8 pb-4">
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 const nextPage = activityLogPage + 1;
                                                 setActivityLogPage(nextPage);
@@ -2627,9 +2988,17 @@ const AdminDashboard = () => {
 
             {editingInst && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-lg animate-fade-in-down border border-slate-100">
-                        <h3 className="text-xl font-black text-slate-800 mb-4">Kurum Düzenle</h3>
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto animate-fade-in-down border border-slate-100">
+                        <h3 className="text-xl font-black text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10">Kurum Düzenle</h3>
                         <form onSubmit={handleUpdateInst} className="space-y-4">
+                            {editInstError && (
+                                <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4 rounded-xl shadow-sm animate-shake">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-red-400">⚠️</span>
+                                        <p className="text-sm font-bold text-red-700 whitespace-pre-line">{editInstError}</p>
+                                    </div>
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kurum Adı</label>
@@ -2646,21 +3015,151 @@ const AdminDashboard = () => {
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tema Rengi</label>
                                     <div className="flex items-center gap-2">
-                                        <input type="color" value={editInstData.primaryColor} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="h-11 w-14 rounded-xl border border-slate-200 cursor-pointer shadow-sm" />
-                                        <input type="text" value={editInstData.primaryColor} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                        <input type="color" value={editInstData.primaryColor || '#4f46e5'} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="h-11 w-14 rounded-xl border border-slate-200 cursor-pointer shadow-sm" />
+                                        <input type="text" value={editInstData.primaryColor || ''} onChange={e => setEditInstData({ ...editInstData, primaryColor: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Yeni Logo (Opsiyonel)</label>
-                                    <input type="file" accept="image/*" onChange={e => setEditInstLogo(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 outline-none text-sm bg-slate-50" />
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Logo Ayarı</label>
+                                    <div className="flex items-center gap-4">
+                                        {editInstData.logoUrl && (
+                                            <div className="shrink-0">
+                                                <img src={editInstData.logoUrl} alt="Mevcut Logo" className="w-11 h-11 rounded-xl object-cover border border-slate-200 shadow-sm" />
+                                            </div>
+                                        )}
+                                        <div className="flex-1">
+                                            <input type="file" accept="image/*" onChange={e => setEditInstLogo(e.target.files ? e.target.files[0] : null)} className="w-full border border-slate-200 shadow-sm rounded-xl px-2 py-2 outline-none text-xs bg-slate-50" />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+                            <div className="mt-4 pt-4 border-t border-slate-100">
+                                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between">
+                                    <div>
+                                        <div className="text-sm font-black text-indigo-900">Özellik ve Modül Yönetimi</div>
+                                        <div className="text-xs text-indigo-700">Bu kurumun özelliklerini yönetmek için modüller sayfasına gidin.</div>
+                                    </div>
+                                    <button 
+                                        type="button"
+                                        onClick={() => navigate(`/admin/features?instId=${editingInst?.id}`)}
+                                        className="px-4 py-2 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-sm hover:bg-indigo-700 transition"
+                                    >
+                                        Özelliklere Git
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-50 border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-2 mb-2 flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                                    Özel Hiyerarşi (Bölüm/Şube/Fakülte)
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">Hiyerarşi Başlığı</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Örn: Fakülteler, Şubeler..."
+                                            value={editInstData.customHierarchyLabel || ''}
+                                            onChange={(e) => setEditInstData(prev => ({ ...prev, customHierarchyLabel: e.target.value }))}
+                                            className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                                        />
+                                    </div>
+                                    <TagListManager
+                                        label="Hiyerarşi Değerleri"
+                                        placeholder="Örn: Mühendislik Fakültesi"
+                                        items={(() => {
+                                            try {
+                                                const raw = editInstData.customHierarchyJson || '[]';
+                                                return JSON.parse(raw);
+                                            } catch { return []; }
+                                        })()}
+                                        onAdd={(item) => {
+                                            const current = (() => { try { return JSON.parse(editInstData.customHierarchyJson || '[]'); } catch { return []; } })();
+                                            if (!current.includes(item)) {
+                                                setEditInstData(prev => ({ ...prev, customHierarchyJson: JSON.stringify([...current, item]) }));
+                                            }
+                                        }}
+                                        onRemove={(item) => {
+                                            const current = (() => { try { return JSON.parse(editInstData.customHierarchyJson || '[]'); } catch { return []; } })();
+                                            setEditInstData(prev => ({ ...prev, customHierarchyJson: JSON.stringify(current.filter((i: string) => i !== item)) }));
+                                        }}
+                                        colorClass="bg-indigo-500 hover:bg-indigo-600 shadow-indigo-500/20"
+                                    />
+                                </div>
+                            </div>
+
+                             <div className="bg-slate-100/50 border border-slate-200 rounded-2xl p-5 space-y-6">
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-2 mb-2 flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                                    IP Güvenlik Ayarları (Whitelist & Blacklist)
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <TagListManager
+                                        label="İzinli IP'ler (Whitelist)"
+                                        placeholder="Örn: 127.0.0.1"
+                                        items={(() => {
+                                            try {
+                                                const raw = editInstData.customFieldsJson || '{}';
+                                                const obj = JSON.parse(raw === '[]' ? '{}' : raw);
+                                                return obj.WhitelistIps || [];
+                                            } catch { return []; }
+                                        })()}
+                                        onAdd={(ip) => {
+                                            const current = (() => { try { const r = editInstData.customFieldsJson || '{}'; const o = JSON.parse(r === '[]' ? '{}' : r); return o.WhitelistIps || []; } catch { return []; } })();
+                                            if (!current.includes(ip)) handleUpdateIpList('WhitelistIps', [...current, ip], true);
+                                        }}
+                                        onRemove={(ip) => {
+                                            const current = (() => { try { const r = editInstData.customFieldsJson || '{}'; const o = JSON.parse(r === '[]' ? '{}' : r); return o.WhitelistIps || []; } catch { return []; } })();
+                                            handleUpdateIpList('WhitelistIps', current.filter((i: string) => i !== ip), true);
+                                        }}
+                                        colorClass="bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
+                                    />
+                                    <TagListManager
+                                        label="Yasaklı IP'ler (Blacklist)"
+                                        placeholder="Örn: 127.0.0.1"
+                                        items={(() => {
+                                            try {
+                                                const raw = editInstData.customFieldsJson || '{}';
+                                                const obj = JSON.parse(raw === '[]' ? '{}' : raw);
+                                                return obj.BlacklistIps || [];
+                                            } catch { return []; }
+                                        })()}
+                                        onAdd={(ip) => {
+                                            const current = (() => { try { const r = editInstData.customFieldsJson || '{}'; const o = JSON.parse(r === '[]' ? '{}' : r); return o.BlacklistIps || []; } catch { return []; } })();
+                                            if (!current.includes(ip)) handleUpdateIpList('BlacklistIps', [...current, ip], true);
+                                        }}
+                                        onRemove={(ip) => {
+                                            const current = (() => { try { const r = editInstData.customFieldsJson || '{}'; const o = JSON.parse(r === '[]' ? '{}' : r); return o.BlacklistIps || []; } catch { return []; } })();
+                                            handleUpdateIpList('BlacklistIps', current.filter((i: string) => i !== ip), true);
+                                        }}
+                                        colorClass="bg-rose-500 hover:bg-rose-600 shadow-rose-500/20"
+                                    />
+                                </div>
+                                <div className="pt-2">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Ham JSON Çıktısı (Sistem için)</label>
+                                    <input
+                                        readOnly
+                                        value={editInstData.customFieldsJson || '[]'}
+                                        className="w-full border border-slate-200 rounded-xl px-4 py-2 text-[10px] bg-slate-50 font-mono text-slate-400 cursor-not-allowed"
+                                    />
+                                </div>
+                            </div>
+
                             <div className="flex items-center gap-2 mt-4 pt-2 border-t border-slate-100">
                                 <input type="checkbox" id="instStatus" checked={editInstData.status} onChange={e => setEditInstData({ ...editInstData, status: e.target.checked })} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
                                 <label htmlFor="instStatus" className="text-sm font-bold text-slate-700">Kurum Aktif (Sitede Gösterilsin)</label>
                             </div>
                             <div className="flex gap-3 pt-4">
-                                <button type="button" onClick={() => setEditingInst(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm">İptal</button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setEditingInst(null);
+                                    }}
+                                    className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm"
+                                >
+                                    İptal
+                                </button>
                                 <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition active:scale-95">Güncelle</button>
                             </div>
                         </form>
@@ -2707,9 +3206,25 @@ const AdminDashboard = () => {
                                 if (response.data.success) {
                                     localStorage.setItem('isImpersonating', 'true');
                                     window.location.href = '/';
+                                } else {
+                                    // Başarı 200 ama success false ise (bazı durumlarda)
+                                    alert(response.data.message || "Geçiş başarısız.");
                                 }
                             } catch (err: any) {
-                                alert(err.response?.data || "Geçiş başarısız. Şifreyi kontrol ediniz.");
+                                console.error("Sudo transition error:", err);
+                                let errMsg = "Geçiş başarısız. Şifreyi kontrol ediniz.";
+                                
+                                if (err.response?.data) {
+                                    if (typeof err.response.data === 'string') {
+                                        errMsg = err.response.data;
+                                    } else if (err.response.data.message) {
+                                        errMsg = err.response.data.message;
+                                    } else if (err.response.data.errors) {
+                                        // ModelValidation hataları için
+                                        errMsg = Object.values(err.response.data.errors).flat().join('\n');
+                                    }
+                                }
+                                alert(errMsg);
                             }
                         }} className="space-y-4">
                             <div>

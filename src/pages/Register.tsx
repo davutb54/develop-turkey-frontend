@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { userService } from '../services/userService';
+import { authService } from '../services/authService';
 import { constantService } from '../services/constantService';
 import { legalAgreementService } from '../services/legalAgreementService';
 import { useNavigate, Link } from 'react-router-dom';
@@ -10,10 +10,14 @@ import { useAuth } from '../context/AuthContext';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { GoogleLogin } from '@react-oauth/google';
 import toast from 'react-hot-toast';
+import { useFeature } from '../hooks/useFeature';
 
 const Register = () => {
   const navigate = useNavigate();
   const { checkAuth } = useAuth();
+  const allowGoogleLogin = useFeature<boolean>('Identity.AllowGoogleLogin', true);
+  const enableCaptcha = useFeature<boolean>('Identity.EnableCaptcha', true);
+  const requireAgreement = true;
 
   const SESSION_KEY = 'register_form';
 
@@ -93,7 +97,7 @@ const Register = () => {
     e.preventDefault();
     setError('');
 
-    if (!isAccepted) {
+    if (requireAgreement && !isAccepted) {
         setError("Devam etmek için sözleşmeyi onaylamalısınız.");
         return;
     }
@@ -115,7 +119,7 @@ const Register = () => {
     setLoading(true);
 
     try {
-      const response = await userService.register({ ...formData, captchaToken: captchaToken || undefined });
+      const response = await authService.register({ ...formData, captchaToken: captchaToken || undefined, agreementAccepted: isAccepted });
 
       if (response.data && (response.data as any).success) {
         sessionStorage.removeItem(SESSION_KEY);
@@ -170,7 +174,7 @@ const Register = () => {
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
     try {
-      const res = await userService.googleLogin(credentialResponse.credential);
+      const res = await authService.googleLogin(credentialResponse.credential);
       if (res.data.success) {
         await checkAuth();
         toast.success('Giriş başarılı!');
@@ -191,6 +195,7 @@ const Register = () => {
           <p className="mt-2 text-center text-sm text-gray-500 italic font-medium">Türkiye'yi Geliştirme Platformu</p>
         </div>
 
+        {allowGoogleLogin && (
         <div className="mt-8">
           <div className="w-full flex justify-center mb-6">
             <GoogleLogin
@@ -202,13 +207,14 @@ const Register = () => {
               text="continue_with"
             />
           </div>
-          
+
           <div className="relative flex items-center mb-6">
             <div className="flex-grow border-t border-gray-300"></div>
             <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">veya</span>
             <div className="flex-grow border-t border-gray-300"></div>
           </div>
         </div>
+        )}
 
         <form className="space-y-4" onSubmit={handleRegister}>
 
@@ -296,6 +302,7 @@ const Register = () => {
           </div>
 
           {/* --- SÖZLEŞME ONAYI --- */}
+          {requireAgreement && (
           <div className="flex items-start mt-4 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 transition-all hover:bg-indigo-50">
             <div className="flex items-center h-5">
               <input
@@ -321,10 +328,12 @@ const Register = () => {
               </label>
             </div>
           </div>
+          )}
 
           {error && <div className="text-red-500 text-xs text-center font-bold bg-red-50 p-2.5 rounded-xl border border-red-100">{error}</div>}
 
           {/* Cloudflare Turnstile Bot Koruması */}
+          {enableCaptcha && (
           <div className="flex justify-center">
             <Turnstile
               siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
@@ -333,12 +342,13 @@ const Register = () => {
               onExpire={() => setCaptchaToken(null)}
             />
           </div>
+          )}
 
           <button
             type="submit"
-            disabled={loading || !isAccepted || !captchaToken}
-            className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-transparent text-sm font-black rounded-xl text-white shadow-lg transition-all active:scale-95 
-                ${(loading || !isAccepted || !captchaToken) ? 'bg-slate-300 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700 shadow-green-100'}`}
+            disabled={loading || (requireAgreement && !isAccepted) || (enableCaptcha && !captchaToken)}
+            className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-transparent text-sm font-black rounded-xl text-white shadow-lg transition-all active:scale-95
+                ${(loading || !isAccepted || (enableCaptcha && !captchaToken)) ? 'bg-slate-300 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700 shadow-green-100'}`}
           >
             {loading ? (
               <>

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { userService } from '../services/userService';
 import { legalAgreementService } from '../services/legalAgreementService';
+import { featureService } from '../services/featureService';
 
 // null = yükleniyor, false = giriş yok, number = kullanıcı id'si
 interface AuthContextType {
@@ -42,8 +43,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.data && response.data.success) {
         const user = response.data.data;
 
+        // Feature: Identity.RequireEmailVerification - email doğrulama zorunlu mu?
+        let requireEmailVerification = true;
+        try {
+          const featuresRes = await featureService.getInstitutionFeatures(1);
+          if (featuresRes.data.success) {
+            const features = featuresRes.data.data || {};
+            const rawValue = features['Identity.RequireEmailVerification'];
+            if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+              requireEmailVerification = rawValue.toLowerCase() === 'true';
+            }
+          }
+        } catch {
+          // Feature okunamazsa varsayılan true
+        }
+
         // Oturum açıkken e-posta doğrulanmamışsa kullanıcıyı sistemden at ve doğrulama sayfasına yönlendir
-        if (user?.isEmailVerified === false) {
+        if (requireEmailVerification && user?.isEmailVerified === false) {
           try {
             // VerifyEmail sayfasında otomatik tekrar gönderme için
             sessionStorage.setItem('pending_verify_email', user.email || '');

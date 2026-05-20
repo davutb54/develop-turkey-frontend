@@ -1,62 +1,28 @@
 import api from './api';
-import type { 
-    IDataResult, 
-    IResult, 
-    AccessToken, 
-    UserForLoginDto, 
-    UserForRegisterDto, 
+import type {
+    IDataResult,
+    IResult,
     UserDetailDto,
     UserPublicProfileDto,
     UserImageUpdateDto,
-    UserForPasswordUpdateDto,
     UserForUpdateDto
 } from '../types';
 
 export const userService = {
-    // Backend doğrudan AccessToken objesi döndürüyor (success/message sarmalayıcısı olmadan)
-    login: async (data: UserForLoginDto) => {
-        return api.post<AccessToken>('/user/login', data);
-    },
-
-    googleLogin: (credential: string) => api.post('/user/google-login', { credential }),
-
-    // Register da başarılı olursa AccessToken döndürüyor
-    register: async (data: UserForRegisterDto) => {
-        return api.post<AccessToken>('/user/register', data);
-    },
-
     getById: async (id: number) => {
         return api.get<IDataResult<UserDetailDto>>(`/user/getbyid?id=${id}`);
     },
 
-    getPublicProfile: async (id: number) => {
-        return api.get<IDataResult<UserPublicProfileDto>>(`/user/getpublicprofile?id=${id}`);
+    getPublicProfile: async (id: number, institutionId: number) => {
+        return api.get<IDataResult<UserPublicProfileDto>>(`/user/getpublicprofile?id=${id}&institutionId=${institutionId}`);
+    },
+
+    getPublicProfileByUserName: async (username: string, institutionId: number) => {
+        return api.get<IDataResult<UserPublicProfileDto>>(`/user/getpublicprofilebyusername?username=${username}&institutionId=${institutionId}`);
     },
 
     getMe: async () => {
         return api.get<IDataResult<UserDetailDto>>('/user/me');
-    },
-
-    logout: async () => {
-        return api.post<IResult>('/user/logout');
-    },
-
-    revertImpersonation: async () => {
-        return api.post<IResult>('/user/revertimpersonation');
-    },
-
-    uploadProfileImage: async (data: UserImageUpdateDto) => {
-        const formData = new FormData();
-        formData.append('userId', data.userId.toString());
-        formData.append('image', data.image);
-
-        return api.post<IResult>('/user/uploadprofileimage', formData, {
-        });
-    },
-
-    // Şifre Güncelle (UserController/updatepassword)
-    updatePassword: async (data: UserForPasswordUpdateDto) => {
-        return api.post<IResult>('/user/updatepassword', data);
     },
 
     getAll: async () => {
@@ -81,6 +47,13 @@ export const userService = {
         return api.get(`/user/getallpaged?${query.toString()}`);
     },
 
+    searchMentions: async (searchText: string, institutionId?: number) => {
+        const query = new URLSearchParams();
+        query.append('searchText', searchText);
+        if (institutionId) query.append('institutionId', institutionId.toString());
+        return api.get<IDataResult<{ items: UserPublicProfileDto[] }>>(`/user/searchmentions?${query.toString()}`);
+    },
+
     updateDetails: async (data: UserForUpdateDto) => {
         return api.post<IResult>('/user/updatedetails', data);
     },
@@ -89,5 +62,12 @@ export const userService = {
         return api.post<IResult>('/user/updateusername', JSON.stringify(newUsername), {
             headers: { 'Content-Type': 'application/json' }
         });
+    },
+
+    uploadProfileImage: async (data: UserImageUpdateDto) => {
+        const formData = new FormData();
+        formData.append('userId', data.userId.toString());
+        formData.append('image', data.image);
+        return api.post<IResult>('/user/uploadprofileimage', formData);
     },
 };

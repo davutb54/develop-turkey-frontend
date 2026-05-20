@@ -73,7 +73,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder = "Seçiniz", 
                         {/* Varsayılan / Sıfırlama Seçeneği */}
                         <li
                             className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-500 italic border-b border-gray-50"
-                            onClick={() => { onChange(0); setIsOpen(false); setSearchTerm(''); }}
+                            onClick={() => { onChange(''); setIsOpen(false); setSearchTerm(''); }}
                         >
                             {placeholder}
                         </li>

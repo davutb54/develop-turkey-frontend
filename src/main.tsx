@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { NotificationProvider } from './context/NotificationContext'
+import { FeatureProvider } from './context/FeatureContext'
 import { Toaster } from 'react-hot-toast'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 
@@ -26,12 +27,14 @@ L.Icon.Default.mergeOptions({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <GoogleOAuthProvider clientId={clientId}>
     <AuthProvider>
-      <NotificationProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-        <Toaster />
-      </NotificationProvider>
+      <FeatureProvider>
+        <NotificationProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+          <Toaster />
+        </NotificationProvider>
+      </FeatureProvider>
     </AuthProvider>
   </GoogleOAuthProvider>
 )

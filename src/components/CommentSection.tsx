@@ -3,12 +3,17 @@ import { commentService } from '../services/commentService';
 import type { CommentDetailDto } from '../types';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useFeature } from '../hooks/useFeature';
+import MentionWrapper from './MentionWrapper';
+import MentionText from './MentionText';
 
 interface Props {
     solutionId: number;
+    institutionId?: number;
 }
 
-const CommentSection = ({ solutionId }: Props) => {
+const CommentSection = ({ solutionId, institutionId }: Props) => {
+    const enableMentions = useFeature<boolean>('Social.EnableMentions', true);
     const [comments, setComments] = useState<CommentDetailDto[]>([]);
     const [loading, setLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
@@ -187,13 +192,25 @@ const CommentSection = ({ solutionId }: Props) => {
                                         {/* DÜZENLEME FORMU VEYA NORMAL METİN */}
                                         {editingCommentId === comment.id ? (
                                             <div className="mt-2 mb-3 bg-white p-3 rounded-xl border border-indigo-100 shadow-sm animate-fade-in">
-                                                <textarea
-                                                    className="w-full text-sm border-none focus:ring-0 outline-none resize-none bg-transparent"
-                                                    rows={2}
-                                                    value={editCommentText}
-                                                    onChange={e => setEditCommentText(e.target.value)}
-                                                    autoFocus
-                                                ></textarea>
+                                                {enableMentions ? (
+                                                    <MentionWrapper value={editCommentText} onChange={(val) => setEditCommentText(val)} institutionId={institutionId}>
+                                                        <textarea
+                                                            className="w-full text-sm border-none focus:ring-0 outline-none resize-none bg-transparent"
+                                                            rows={2}
+                                                            value={editCommentText}
+                                                            onChange={e => setEditCommentText(e.target.value)}
+                                                            autoFocus
+                                                        ></textarea>
+                                                    </MentionWrapper>
+                                                ) : (
+                                                    <textarea
+                                                        className="w-full text-sm border-none focus:ring-0 outline-none resize-none bg-transparent"
+                                                        rows={2}
+                                                        value={editCommentText}
+                                                        onChange={e => setEditCommentText(e.target.value)}
+                                                        autoFocus
+                                                    ></textarea>
+                                                )}
                                                 <div className="flex gap-2 justify-end mt-2 pt-2 border-t border-slate-50">
                                                     <button onClick={() => setEditingCommentId(null)} className="px-3 py-1.5 bg-slate-100 text-slate-600 font-bold text-[10px] uppercase tracking-wider rounded-lg hover:bg-slate-200 transition">İptal</button>
                                                     <button onClick={() => handleUpdateComment(comment.id)} className="px-4 py-1.5 bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-wider rounded-lg shadow-sm hover:bg-indigo-700 transition">Kaydet</button>
@@ -201,7 +218,10 @@ const CommentSection = ({ solutionId }: Props) => {
                                             </div>
                                         ) : (
                                             <div>
-                                                <p className="text-slate-700 text-sm leading-relaxed mb-2 pl-9">{comment.text}</p>
+                                                <MentionText 
+                                                    text={comment.text} 
+                                                    className="text-slate-700 text-sm leading-relaxed mb-2 pl-9 block"
+                                                />
 
                                                 {/* YANITLA BUTONU (Ana yorumlar için) */}
                                                 <button
@@ -216,14 +236,27 @@ const CommentSection = ({ solutionId }: Props) => {
                                         {/* YANIT YAZMA KUTUSU */}
                                         {replyingTo === comment.id && (
                                             <form onSubmit={(e) => handleSendComment(e, comment.id)} className="flex gap-2 mt-3 ml-9 animate-fade-in-down bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
-                                                <input
-                                                    type="text"
-                                                    className="flex-1 text-sm border-none bg-transparent px-2 py-1 outline-none"
-                                                    placeholder={`@${comment.senderUsername} kullanıcısına yanıt ver...`}
-                                                    value={replyText}
-                                                    onChange={(e) => setReplyText(e.target.value)}
-                                                    autoFocus
-                                                />
+                                                {enableMentions ? (
+                                                    <MentionWrapper value={replyText} onChange={(val) => setReplyText(val)} institutionId={institutionId}>
+                                                        <input
+                                                            type="text"
+                                                            className="w-full text-sm border-none bg-transparent px-2 py-1 outline-none"
+                                                            placeholder={`@${comment.senderUsername} kullanıcısına yanıt ver...`}
+                                                            value={replyText}
+                                                            onChange={(e) => setReplyText(e.target.value)}
+                                                            autoFocus
+                                                        />
+                                                    </MentionWrapper>
+                                                ) : (
+                                                    <input
+                                                        type="text"
+                                                        className="flex-1 text-sm border-none bg-transparent px-2 py-1 outline-none"
+                                                        placeholder={`@${comment.senderUsername} kullanıcısına yanıt ver...`}
+                                                        value={replyText}
+                                                        onChange={(e) => setReplyText(e.target.value)}
+                                                        autoFocus
+                                                    />
+                                                )}
                                                 <button type="submit" className="bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2 rounded-lg hover:bg-indigo-700 transition shadow-sm active:scale-95" disabled={!replyText.trim()}>
                                                     Gönder
                                                 </button>
@@ -259,20 +292,35 @@ const CommentSection = ({ solutionId }: Props) => {
                                                     {/* ALT YORUM İÇİN DÜZENLEME FORMU VEYA NORMAL METİN */}
                                                     {editingCommentId === sub.id ? (
                                                         <div className="mt-2 bg-white p-2 rounded-lg border border-indigo-100 shadow-sm animate-fade-in ml-7">
-                                                            <textarea
-                                                                className="w-full text-xs border-none focus:ring-0 outline-none resize-none bg-transparent"
-                                                                rows={2}
-                                                                value={editCommentText}
-                                                                onChange={e => setEditCommentText(e.target.value)}
-                                                                autoFocus
-                                                            ></textarea>
+                                                            {enableMentions ? (
+                                                                <MentionWrapper value={editCommentText} onChange={(val) => setEditCommentText(val)} institutionId={institutionId}>
+                                                                    <textarea
+                                                                        className="w-full text-xs border-none focus:ring-0 outline-none resize-none bg-transparent"
+                                                                        rows={2}
+                                                                        value={editCommentText}
+                                                                        onChange={e => setEditCommentText(e.target.value)}
+                                                                        autoFocus
+                                                                    ></textarea>
+                                                                </MentionWrapper>
+                                                            ) : (
+                                                                <textarea
+                                                                    className="w-full text-xs border-none focus:ring-0 outline-none resize-none bg-transparent"
+                                                                    rows={2}
+                                                                    value={editCommentText}
+                                                                    onChange={e => setEditCommentText(e.target.value)}
+                                                                    autoFocus
+                                                                ></textarea>
+                                                            )}
                                                             <div className="flex gap-2 justify-end mt-1 pt-1 border-t border-slate-50">
                                                                 <button onClick={() => setEditingCommentId(null)} className="px-2 py-1 bg-slate-100 text-slate-600 font-bold text-[9px] uppercase tracking-wider rounded md hover:bg-slate-200 transition">İptal</button>
                                                                 <button onClick={() => handleUpdateComment(sub.id)} className="px-3 py-1 bg-indigo-600 text-white font-bold text-[9px] uppercase tracking-wider rounded-md shadow-sm hover:bg-indigo-700 transition">Kaydet</button>
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <p className="text-slate-600 text-xs ml-7">{sub.text}</p>
+                                                        <MentionText 
+                                                            text={sub.text} 
+                                                            className="text-slate-600 text-xs ml-7 block"
+                                                        />
                                                     )}
                                                 </div>
                                             ))}
@@ -290,13 +338,25 @@ const CommentSection = ({ solutionId }: Props) => {
                             {/* Giriş yapmamışsa varsayılan ikon, yapmışsa baş harfi */}
                             {currentUserId ? "B" : "?"}
                         </div>
-                        <input
-                            type="text"
-                            className="flex-1 text-sm border-none bg-transparent py-2 outline-none text-slate-700"
-                            placeholder="Çözüm hakkında bir şeyler söyle..."
-                            value={newComment}
-                            onChange={(e) => setNewComment(e.target.value)}
-                        />
+                        {enableMentions ? (
+                            <MentionWrapper value={newComment} onChange={(val) => setNewComment(val)} institutionId={institutionId}>
+                                <input
+                                    type="text"
+                                    className="w-full text-sm border-none bg-transparent py-2 outline-none text-slate-700"
+                                    placeholder="Çözüm hakkında bir şeyler söyle..."
+                                    value={newComment}
+                                    onChange={(e) => setNewComment(e.target.value)}
+                                />
+                            </MentionWrapper>
+                        ) : (
+                            <input
+                                type="text"
+                                className="flex-1 text-sm border-none bg-transparent py-2 outline-none text-slate-700"
+                                placeholder="Çözüm hakkında bir şeyler söyle..."
+                                value={newComment}
+                                onChange={(e) => setNewComment(e.target.value)}
+                            />
+                        )}
                         <button type="submit" className="bg-indigo-600 text-white text-xs font-black uppercase tracking-wider px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition shadow-sm active:scale-95" disabled={!newComment.trim()}>
                             Gönder
                         </button>

@@ -1,15 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { userService } from '../services/userService';
+import { authService } from '../services/authService';
 import { institutionService } from '../services/institutionService';
 import { feedbackService } from '../services/feedbackService';
 import type { UserDetailDto, Institution } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useFeature } from '../hooks/useFeature';
+import { useTerminology } from '../context/FeatureContext';
 import NotificationBell from './NotificationBell';
 import { getProfileImageUrl } from '../utils/imageUtils';
 
 const Navbar = () => {
   const { userId } = useAuth();
+  const terminology = useTerminology();
+  const enableFeedbackInbox = useFeature<boolean>('Communication.EnableFeedbackInbox', true);
   const [user, setUser] = useState<UserDetailDto | null>(null);
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +63,7 @@ const Navbar = () => {
   }, [userId]);
 
   const handleLogout = async () => {
-    try { await userService.logout(); } catch (e) { console.error(e); }
+    try { await authService.logout(); } catch (e) { console.error(e); }
     setUser(null);
     localStorage.removeItem('isImpersonating');
     document.documentElement.style.removeProperty('--theme-color');
@@ -69,7 +74,7 @@ const Navbar = () => {
 
   const handleRevertImpersonation = async () => {
       try {
-          const response = await userService.revertImpersonation();
+          const response = await authService.revertImpersonation();
           if (response.data.success) {
               localStorage.removeItem('isImpersonating');
               window.location.href = '/admin';
@@ -165,16 +170,18 @@ const Navbar = () => {
                       <>
                         {/* --- MASAÜSTÜ MENÜ (Sadece lg ekranlarda görünür) --- */}
                         <div className="hidden lg:flex items-center gap-4">
-                          <button
-                            onClick={() => setIsFeedbackOpen(true)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition shadow-sm active:scale-95 ${isCustomTheme ? 'bg-white/10 text-white hover:bg-white/20 border border-white/20' : 'text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200'}`}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                            İstek / Öneri
-                          </button>
+                          {enableFeedbackInbox && (
+                            <button
+                              onClick={() => setIsFeedbackOpen(true)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition shadow-sm active:scale-95 ${isCustomTheme ? 'bg-white/10 text-white hover:bg-white/20 border border-white/20' : 'text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200'}`}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                              İstek / Öneri
+                            </button>
+                          )}
 
                           <Link to="/add-problem" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-white/20 text-white hover:bg-white/30 border border-white/20' : 'text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200'}`}>
-                            + Sorun Paylaş
+                            + {(terminology.problemLabel || 'Sorun')} Paylaş
                           </Link>
 
                           <Link to="/about" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-white/10 text-white hover:bg-white/20 border border-white/20' : 'text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200'}`}>
@@ -316,19 +323,21 @@ const Navbar = () => {
               </Link>
               <Link to="/add-problem" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-3">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                Sorun Paylaş
+                {(terminology.problemLabel || 'Sorun')} Paylaş
               </Link>
               <Link to="/about" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-3">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 Hakkımızda
               </Link>
-              <button
-                onClick={() => { setIsFeedbackOpen(true); setIsMobileMenuOpen(false); }}
-                className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-amber-600 flex items-center gap-3"
-              >
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                Yönetime İstek / Öneri
-              </button>
+              {enableFeedbackInbox && (
+                <button
+                  onClick={() => { setIsFeedbackOpen(true); setIsMobileMenuOpen(false); }}
+                  className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-amber-600 flex items-center gap-3"
+                >
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                  Yönetime İstek / Öneri
+                </button>
+              )}
 
               {/* Bildirimler (mobil) */}
               <NotificationBell mobile onClose={() => setIsMobileMenuOpen(false)} />

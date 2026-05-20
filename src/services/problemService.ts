@@ -1,17 +1,10 @@
 import api from './api';
-import type { IDataResult, IResult, ProblemDetailDto, ProblemAddDto } from '../types';
+import type { IDataResult, IResult, ProblemDetailDto, ProblemAddDto, ProblemFilterDto } from '../types';
 
 export const problemService = {
 
     // Filtreli Listeleme (ProblemController/getlist)
-    getList: async (filterDto: {
-        topicId?: number;
-        cityCode?: number;
-        searchText?: string;
-        isOfficialResponse?: boolean;
-        page?: number;
-        pageSize?: number;
-    }) => {
+    getList: async (filterDto: ProblemFilterDto & { page?: number; pageSize?: number; isOfficialResponse?: boolean }) => {
         // Objedeki null, undefined veya boş string olanları temizleyip URL parametresine çevirir
         const queryParams = new URLSearchParams();
         Object.entries(filterDto).forEach(([key, value]) => {
@@ -41,6 +34,9 @@ export const problemService = {
         formData.append('title', data.title);
         formData.append('description', data.description);
         formData.append('cityCode', data.cityCode.toString());
+        if (data.customHierarchyId !== undefined && data.customHierarchyId !== null) {
+            formData.append('CustomHierarchyId', data.customHierarchyId.toString());
+        }
 
         if (data.address) {
             formData.append('Address', data.address);
@@ -52,21 +48,27 @@ export const problemService = {
             formData.append('Longitude', data.longitude.toString());
         }
 
-        // YENİ: Seçilen her bir kategori ID'sini FormData'ya ekliyoruz
         if (data.topicIds && data.topicIds.length > 0) {
             data.topicIds.forEach(id => {
                 formData.append('TopicIds', id.toString());
             });
         }
 
-        if (data.image) {
-            formData.append('Image', data.image);
+        if (data.images && data.images.length > 0) {
+            data.images.forEach(img => {
+                formData.append('Images', img);
+            });
         }
         if (data.solutionTitle) {
             formData.append('SolutionTitle', data.solutionTitle);
         }
         if (data.solutionDescription) {
             formData.append('SolutionDescription', data.solutionDescription);
+        }
+        if (data.solutionImages && data.solutionImages.length > 0) {
+            data.solutionImages.forEach(img => {
+                formData.append('SolutionImages', img);
+            });
         }
 
         return api.post<IResult>('/problem/add', formData);
@@ -89,6 +91,9 @@ export const problemService = {
         formData.append('Title', String(problem.title ?? ''));
         formData.append('Description', String(problem.description ?? ''));
         formData.append('CityCode', String(problem.cityCode ?? 0));
+        if (problem.customHierarchyId !== undefined && problem.customHierarchyId !== null) {
+            formData.append('CustomHierarchyId', String(problem.customHierarchyId));
+        }
 
         formData.append('ClearLocation', String(!!problem.clearLocation));
 
@@ -102,11 +107,13 @@ export const problemService = {
             formData.append('Longitude', String(problem.longitude));
         }
 
-        if (problem.imageUrl !== undefined) {
-            formData.append('ImageUrl', String(problem.imageUrl ?? ''));
+        if (problem.imageUrls !== undefined) {
+            formData.append('ImageUrls', String(problem.imageUrls ?? ''));
         }
-        if (problem.image) {
-            formData.append('Image', problem.image);
+        if (problem.images && problem.images.length > 0) {
+            problem.images.forEach((img: File) => {
+                formData.append('Images', img);
+            });
         }
 
         formData.append('SendDate', sendDateValue);

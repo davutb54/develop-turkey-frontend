@@ -13,29 +13,42 @@ import { useAuth } from '../context/AuthContext';
 import { getProfileImageUrl } from '../utils/imageUtils';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
+import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
+import { actionService } from '../services/actionService';
 
 const Profile = () => {
     const { userId } = useAuth();
     const navigate = useNavigate();
+    const enableMapLocation = useFeature<boolean>('Content.EnableMapLocation', true);
     const [user, setUser] = useState<UserDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
     const [error] = useState('');
     const [uploading, setUploading] = useState(false);
     const [myProblems, setMyProblems] = useState<ProblemDetailDto[]>([]);
     const [mySolutions, setMySolutions] = useState<SolutionDetailDto[]>([]);
-    const [activeTab, setActiveTab] = useState<'problems' | 'solutions' | 'settings'>('problems');
+    const [savedSolutions, setSavedSolutions] = useState<SolutionDetailDto[]>([]);
+    const [activeTab, setActiveTab] = useState<'problems' | 'solutions' | 'saved' | 'settings'>('problems');
+    const enableSavedSolutions = useFeature<boolean>('Social.EnableSavedSolutions', true);
     const [passForm, setPassForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
 
     // --- GERİ BİLDİRİM MESAJLARI (YENİ) ---
     const [passMessage, setPassMessage] = useState({ type: '', text: '' });
     const [updateMessage, setUpdateMessage] = useState({ type: '', text: '' });
+    const [prefMessage, setPrefMessage] = useState({ type: '', text: '' });
     const [isUpdating, setIsUpdating] = useState(false);
     const [isPassUpdating, setIsPassUpdating] = useState(false);
 
     const [updateData, setUpdateData] = useState({
         userName: '',
-        name: '', surname: '', email: '', cityCode: 1, genderCode: 1
+        name: '', surname: '', email: '', cityCode: 1, genderCode: 1,
+        customHierarchyId: null as number | null,
+        mentionNotificationEnabled: true,
+        isProfilePublic: true,
+        showSolutions: true,
+        showProblems: true
     });
+    const institution = useInstitution();
+    const terminology = useTerminology();
     const [cities, setCities] = useState<City[]>([]);
     const [genders, setGenders] = useState<Gender[]>([]);
 
@@ -61,6 +74,7 @@ const Profile = () => {
     const [editIsResolvingCity, setEditIsResolvingCity] = useState(false);
     const [editAutoCityName, setEditAutoCityName] = useState<string | null>(null);
     const [editCityCode, setEditCityCode] = useState<number>(-1);
+    const [editCustomHierarchyId, setEditCustomHierarchyId] = useState<number | null>(null);
 
     useEffect(() => {
         if (userId !== null) {
@@ -90,7 +104,12 @@ const Profile = () => {
                 setUpdateData({
                     userName: u.userName,
                     name: u.name, surname: u.surname, email: u.email,
-                    cityCode: u.cityCode || 1, genderCode: u.genderCode || 1
+                    cityCode: u.cityCode || 1, genderCode: u.genderCode || 1,
+                    customHierarchyId: u.customHierarchyId ?? null,
+                    mentionNotificationEnabled: u.mentionNotificationEnabled,
+                    isProfilePublic: u.isProfilePublic,
+                    showSolutions: u.showSolutions,
+                    showProblems: u.showProblems
                 });
             }
         } catch (error) { navigate('/'); }
@@ -101,13 +120,15 @@ const Profile = () => {
         if (!userId) return;
 
         try {
-            const [probRes, solRes] = await Promise.all([
+            const [probRes, solRes, savedRes] = await Promise.all([
                 problemService.getBySender(userId),
-                solutionService.getBySender(userId)
+                solutionService.getBySender(userId),
+                actionService.getMySavedSolutions()
             ]);
 
             if (probRes.data.success) setMyProblems(probRes.data.data);
             if (solRes.data.success) setMySolutions(solRes.data.data);
+            if (savedRes.data.success) setSavedSolutions(savedRes.data.data);
         } catch (err) {
             console.error("İçerik çekme hatası:", err);
         }
@@ -142,18 +163,20 @@ const Profile = () => {
         }
     };
 
-    const handleUpdateDetails = async (e: React.FormEvent) => {
+    const handleUpdateDetails = async (e: React.FormEvent, target: 'profile' | 'preferences' = 'profile') => {
         e.preventDefault();
         if (!user) return;
 
         setIsUpdating(true);
-        setUpdateMessage({ type: '', text: '' });
+        const setMessage = target === 'profile' ? setUpdateMessage : setPrefMessage;
+        setMessage({ type: '', text: '' });
 
         try {
             const trimmedUsername = (updateData.userName || '').trim();
             const usernameChanged = trimmedUsername.length > 0 && trimmedUsername !== user.userName;
 
-            if (usernameChanged) {
+            // Kullanıcı adı değişikliği sadece profil formu submitted olduğunda yapılsın
+            if (usernameChanged && target === 'profile') {
                 await userService.updateUsername(trimmedUsername);
             }
 
@@ -163,16 +186,21 @@ const Profile = () => {
                 surname: updateData.surname,
                 email: updateData.email,
                 cityCode: updateData.cityCode,
-                genderCode: updateData.genderCode
+                genderCode: updateData.genderCode,
+                customHierarchyId: updateData.customHierarchyId,
+                mentionNotificationEnabled: updateData.mentionNotificationEnabled,
+                isProfilePublic: updateData.isProfilePublic,
+                showSolutions: updateData.showSolutions,
+                showProblems: updateData.showProblems
             });
-            setUpdateMessage({ type: 'success', text: 'Bilgileriniz başarıyla güncellendi! ✅' });
+            setMessage({ type: 'success', text: 'Bilgileriniz başarıyla güncellendi! ✅' });
             loadUserAndConstants(); // Yeni verileri çek
 
             // 3 saniye sonra mesajı temizle
-            setTimeout(() => setUpdateMessage({ type: '', text: '' }), 3000);
+            setTimeout(() => setMessage({ type: '', text: '' }), 3000);
         } catch (err) {
             const msg = (err as any)?.response?.data?.message || (err as any)?.response?.data || 'Bilgiler güncellenemedi. ❌';
-            setUpdateMessage({ type: 'error', text: typeof msg === 'string' ? msg : 'Bilgiler güncellenemedi. ❌' });
+            setMessage({ type: 'error', text: typeof msg === 'string' ? msg : 'Bilgiler güncellenemedi. ❌' });
         } finally {
             setIsUpdating(false);
         }
@@ -198,7 +226,7 @@ const Profile = () => {
 
         setIsPassUpdating(true);
         try {
-            const result = await userService.updatePassword({
+            const result = await authService.updatePassword({
                 id: userId,
                 oldPassword: isGoogleNoPassword ? '' : passForm.oldPassword,
                 newPassword: passForm.newPassword
@@ -242,6 +270,7 @@ const Profile = () => {
                 latitude: editLatitude,
                 longitude: editLongitude,
                 clearLocation: editClearLocation,
+                customHierarchyId: editCustomHierarchyId,
                 image: editImage
             };
             await problemService.update(updatedProblem);
@@ -443,8 +472,18 @@ const Profile = () => {
                                     )}
                                 </div>
                                 <div className="flex items-center text-gray-700">
-                                    <span className="w-24 font-bold text-gray-500 uppercase text-xs">Şehir:</span>
-                                    <span className="font-medium">{user?.cityName}</span>
+                                    <span className="w-24 font-bold text-gray-500 uppercase text-xs">{terminology.cityLabel}:</span>
+                                    <span className="font-medium">
+                                        {(() => {
+                                            if (user && user.customHierarchyId != null && institution?.customHierarchyJson) {
+                                                try {
+                                                    const items = JSON.parse(institution.customHierarchyJson) as string[];
+                                                    return items[user.customHierarchyId] || user.cityName;
+                                                } catch { return user.cityName; }
+                                            }
+                                            return user?.cityName;
+                                        })()}
+                                    </span>
                                 </div>
                                 <div className="flex items-center text-gray-700">
                                     <span className="w-24 font-bold text-gray-500 uppercase text-xs">Cinsiyet:</span>
@@ -459,7 +498,10 @@ const Profile = () => {
                                 <div className="flex items-center text-gray-700">
                                     <span className="w-32 font-bold text-gray-500 uppercase text-xs">Bildirimler:</span>
                                     <span className={`px-2 py-0.5 rounded text-xs font-bold shadow-sm ${user?.emailNotificationPermission ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-gray-50 text-gray-500 border border-gray-200'}`}>
-                                        {user?.emailNotificationPermission ? 'AÇIK' : 'KAPALI'}
+                                        E-Posta: {user?.emailNotificationPermission ? 'AÇIK' : 'KAPALI'}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded text-xs font-bold shadow-sm ml-2 ${user?.mentionNotificationEnabled ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-gray-50 text-gray-500 border border-gray-200'}`}>
+                                        Etiket: {user?.mentionNotificationEnabled ? 'AÇIK' : 'KAPALI'}
                                     </span>
                                 </div>
                             </div>
@@ -484,6 +526,15 @@ const Profile = () => {
                         >
                             Çözümlerim ({mySolutions.length})
                         </button>
+                        {enableSavedSolutions && (
+                            <button
+                                onClick={() => setActiveTab('saved')}
+                                className={`flex-1 min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'saved' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
+                                    }`}
+                            >
+                                Kaydedilenler ({savedSolutions.length})
+                            </button>
+                        )}
                         <button
                             onClick={() => setActiveTab('settings')}
                             className={`flex-1 min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase px-4 transition-colors ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
@@ -549,104 +600,124 @@ const Profile = () => {
                                                     </div>
 
                                                     {/* KONUM */}
-                                                    <div className="pt-2 border-t border-gray-200 mt-2">
-                                                        <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-                                                            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-1">Konum</label>
-                                                            <div className="flex items-center gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={handleEditGetMyLocation}
-                                                                    disabled={editIsLocating}
-                                                                    className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                                                                >
-                                                                    {editIsLocating ? 'Konum alınıyor…' : 'Konumumu Al'}
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setEditClearLocation(true);
-                                                                        setEditLatitude(null);
-                                                                        setEditLongitude(null);
-                                                                        setEditAddress('');
-                                                                        setEditAutoCityName(null);
-                                                                        setEditLocationError('');
-                                                                    }}
-                                                                    className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 hover:bg-gray-50"
-                                                                >
-                                                                    Konumu Temizle
-                                                                </button>
+                                                    {enableMapLocation && (
+                                                        <div className="pt-2 border-t border-gray-200 mt-2">
+                                                            <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-1">Konum</label>
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleEditGetMyLocation}
+                                                                        disabled={editIsLocating}
+                                                                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                                                    >
+                                                                        {editIsLocating ? 'Konum alınıyor…' : 'Konumumu Al'}
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setEditClearLocation(true);
+                                                                            setEditLatitude(null);
+                                                                            setEditLongitude(null);
+                                                                            setEditAddress('');
+                                                                            setEditAutoCityName(null);
+                                                                            setEditLocationError('');
+                                                                        }}
+                                                                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 hover:bg-gray-50"
+                                                                    >
+                                                                        Konumu Temizle
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                        </div>
 
-                                                        <div className="text-[11px] font-bold text-gray-600 mb-2 pl-1">
-                                                            {editClearLocation ? (
-                                                                <span>Konum kaldırılacak.</span>
-                                                            ) : editIsResolvingCity ? (
-                                                                <span>Şehir tespit ediliyor…</span>
-                                                            ) : editAutoCityName ? (
-                                                                <span>Şehir (otomatik): <span className="text-gray-900">{editAutoCityName}</span></span>
-                                                            ) : (
-                                                                <span>Pin bırakır veya konum alırsanız şehir otomatik seçilir.</span>
-                                                            )}
-                                                        </div>
-
-                                                        {/* ŞEHİR DROPDOWN (konum seçilirse kilitlenir) */}
-                                                        <select
-                                                            value={editCityCode}
-                                                            onChange={(e) => {
-                                                                setEditCityCode(Number(e.target.value));
-                                                                setEditAutoCityName(null);
-                                                                setEditClearLocation(false);
-                                                            }}
-                                                            disabled={(!editClearLocation && editLatitude !== null && editLongitude !== null) || editIsResolvingCity}
-                                                            className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-2.5 rounded-lg text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                                        >
-                                                            <option value={0}>Şehir seçin</option>
-                                                            {cities.map((c) => (
-                                                                <option key={c.value} value={c.value}>{c.text}</option>
-                                                            ))}
-                                                        </select>
-                                                        <div className="text-[11px] font-bold text-gray-500 mt-1 pl-1">
-                                                            {(!editClearLocation && editLatitude !== null && editLongitude !== null)
-                                                                ? 'Konum seçili olduğu için şehir kilitlidir.'
-                                                                : 'Konum seçmezseniz şehir bilgisini buradan değiştirebilirsiniz.'}
-                                                        </div>
-
-                                                        {editLocationError && (
-                                                            <div className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 mb-2">
-                                                                {editLocationError}
-                                                            </div>
-                                                        )}
-
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Adres (opsiyonel)"
-                                                            className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-2.5 rounded-lg text-sm bg-white"
-                                                            value={editAddress}
-                                                            onChange={e => {
-                                                                setEditAddress(e.target.value);
-                                                                setEditClearLocation(false);
-                                                            }}
-                                                        />
-
-                                                        <div className="mt-3 h-52 w-full rounded-lg overflow-hidden border border-gray-200 bg-white">
-                                                            <MapContainer
-                                                                center={editMapCenter}
-                                                                zoom={editMapZoom}
-                                                                scrollWheelZoom={false}
-                                                                className="h-full w-full"
-                                                            >
-                                                                <TileLayer
-                                                                    attribution='&copy; OpenStreetMap katkıda bulunanlar'
-                                                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                                                />
-                                                                <EditLocationClickHandler />
-                                                                {!editClearLocation && editLatitude !== null && editLongitude !== null && (
-                                                                    <Marker position={[editLatitude, editLongitude] as LatLngExpression} />
+                                                            <div className="text-[11px] font-bold text-gray-600 mb-2 pl-1">
+                                                                {editClearLocation ? (
+                                                                    <span>Konum kaldırılacak.</span>
+                                                                ) : editIsResolvingCity ? (
+                                                                    <span>Şehir tespit ediliyor…</span>
+                                                                ) : editAutoCityName ? (
+                                                                    <span>Şehir (otomatik): <span className="text-gray-900">{editAutoCityName}</span></span>
+                                                                ) : (
+                                                                    <span>Pin bırakır veya konum alırsanız şehir otomatik seçilir.</span>
                                                                 )}
-                                                            </MapContainer>
+                                                            </div>
+
+                                                            {/* ŞEHİR DROPDOWN (konum seçilirse kilitlenir) */}
+                                                            {institution?.customHierarchyJson ? (
+                                                                <select
+                                                                    value={editCustomHierarchyId ?? ''}
+                                                                    onChange={(e) => setEditCustomHierarchyId(e.target.value === '' ? null : Number(e.target.value))}
+                                                                    className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-2.5 rounded-lg text-sm bg-white"
+                                                                >
+                                                                    <option value="">{terminology.cityLabel} Seçiniz</option>
+                                                                    {(() => {
+                                                                        try {
+                                                                            const items = JSON.parse(institution.customHierarchyJson) as string[];
+                                                                            return items.map((item, idx) => (
+                                                                                <option key={idx} value={idx}>{item}</option>
+                                                                            ));
+                                                                        } catch { return null; }
+                                                                    })()}
+                                                                </select>
+                                                            ) : (
+                                                                <select
+                                                                    value={editCityCode}
+                                                                    onChange={(e) => {
+                                                                        setEditCityCode(Number(e.target.value));
+                                                                        setEditAutoCityName(null);
+                                                                        setEditClearLocation(false);
+                                                                    }}
+                                                                    disabled={(!editClearLocation && editLatitude !== null && editLongitude !== null) || editIsResolvingCity}
+                                                                    className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-2.5 rounded-lg text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                                                >
+                                                                    <option value={0}>Şehir seçin</option>
+                                                                    {cities.map((c) => (
+                                                                        <option key={c.value} value={c.value}>{c.text}</option>
+                                                                    ))}
+                                                                </select>
+                                                            )}
+                                                            <div className="text-[11px] font-bold text-gray-500 mt-1 pl-1">
+                                                                {(!editClearLocation && editLatitude !== null && editLongitude !== null)
+                                                                    ? 'Konum seçili olduğu için şehir kilitlidir.'
+                                                                    : 'Konum seçmezseniz şehir bilgisini buradan değiştirebilirsiniz.'}
+                                                            </div>
+
+                                                            {editLocationError && (
+                                                                <div className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 mb-2">
+                                                                    {editLocationError}
+                                                                </div>
+                                                            )}
+
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Adres (opsiyonel)"
+                                                                className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-2.5 rounded-lg text-sm bg-white"
+                                                                value={editAddress}
+                                                                onChange={e => {
+                                                                    setEditAddress(e.target.value);
+                                                                    setEditClearLocation(false);
+                                                                }}
+                                                            />
+
+                                                            <div className="mt-3 h-52 w-full rounded-lg overflow-hidden border border-gray-200 bg-white">
+                                                                <MapContainer
+                                                                    center={editMapCenter}
+                                                                    zoom={editMapZoom}
+                                                                    scrollWheelZoom={false}
+                                                                    className="h-full w-full"
+                                                                >
+                                                                    <TileLayer
+                                                                        attribution='&copy; OpenStreetMap katkıda bulunanlar'
+                                                                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                                                    />
+                                                                    <EditLocationClickHandler />
+                                                                    {!editClearLocation && editLatitude !== null && editLongitude !== null && (
+                                                                        <Marker position={[editLatitude, editLongitude] as LatLngExpression} />
+                                                                    )}
+                                                                </MapContainer>
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    )}
 
                                                     {/* RESİM */}
                                                     <div className="pt-2 border-t border-gray-200 mt-2">
@@ -696,6 +767,7 @@ const Profile = () => {
                                                                     setEditLatitude(prob.latitude ?? null);
                                                                     setEditLongitude(prob.longitude ?? null);
                                                                     setEditCityCode(prob.cityCode);
+                                                                    setEditCustomHierarchyId(prob.customHierarchyId ?? null);
                                                                     setEditAutoCityName(null);
                                                                     setEditClearLocation(false);
                                                                     setEditImage(null);
@@ -773,24 +845,76 @@ const Profile = () => {
                             </div>
                         )}
 
-                        {/* AYARLAR SEKMESİ */}
+                        {/* KAYDEDİLENLER SEKMESİ */}
+                        {activeTab === 'saved' && enableSavedSolutions && (
+                            <div className="space-y-4 animate-fade-in">
+                                {savedSolutions.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <div className="text-4xl mb-3">💾</div>
+                                        <p className="text-gray-500 font-medium">Henüz bir çözüm kaydetmediniz.</p>
+                                    </div>
+                                ) : (
+                                    savedSolutions.map(sol => (
+                                        <div key={sol.id} className="p-5 border border-gray-100 rounded-xl hover:shadow-md transition mb-4 bg-white shadow-sm">
+                                            <div className="flex justify-between items-start mb-2 gap-4">
+                                                <div>
+                                                    <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">{sol.problemName}</div>
+                                                    <h4 className="font-bold text-gray-900 text-lg leading-tight">{sol.title}</h4>
+                                                </div>
+                                                <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md font-medium whitespace-nowrap border border-gray-200">{new Date(sol.sendDate).toLocaleDateString('tr-TR')}</span>
+                                            </div>
+                                            <p className="text-sm text-gray-600 line-clamp-2 mb-5 leading-relaxed">{sol.description}</p>
+                                            <div className="flex justify-between items-center border-t border-gray-100 pt-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-6 w-6 rounded-full overflow-hidden bg-gray-200">
+                                                        {sol.senderImageUrl ? (
+                                                            <img src={getProfileImageUrl(sol.senderImageUrl)} alt={sol.senderUsername} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-gray-400 bg-gray-100">{sol.senderUsername[0].toUpperCase()}</div>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-xs font-bold text-gray-700">@{sol.senderUsername}</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Link to={`/problem/${sol.problemId}?solution=${sol.id}`} className="px-4 py-1.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-xs font-bold hover:bg-blue-100 transition shadow-sm active:scale-95">İncele</Link>
+                                                    <button 
+                                                        onClick={async () => {
+                                                            try {
+                                                                await actionService.toggleSolutionSave(sol.id);
+                                                                setSavedSolutions(prev => prev.filter(s => s.id !== sol.id));
+                                                            } catch { alert("İşlem başarısız oldu."); }
+                                                        }}
+                                                        className="px-4 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 transition shadow-sm active:scale-95"
+                                                    >
+                                                        Kaldır
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        )}
                         {activeTab === 'settings' && (
-                            <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-12 pt-2">
+                            <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-8 pt-2">
                                 {/* Form 1: Profil Bilgileri */}
-                                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col">
                                     <h2 className="text-xl font-bold text-gray-800 border-b border-gray-100 pb-4 mb-6">Bilgileri Güncelle</h2>
-                                    <form onSubmit={handleUpdateDetails} className="space-y-4">
+                                    <form onSubmit={(e) => handleUpdateDetails(e, 'profile')} className="space-y-4 flex-1">
                                         <div>
                                             <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Kullanıcı Adı</label>
                                             <input
                                                 type="text"
-                                                className="w-full border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition"
+                                                disabled={!useFeature<boolean>('Profile.AllowUsernameChange', true)}
+                                                className={`w-full border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition ${!useFeature<boolean>('Profile.AllowUsernameChange', true) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                 value={updateData.userName}
                                                 onChange={e => setUpdateData({ ...updateData, userName: e.target.value })}
                                                 required
                                             />
                                             <div className="text-[11px] text-gray-500 mt-1 pl-1">
-                                                Kullanıcı adınızı 30 günde 1 kez değiştirebilirsiniz.
+                                                {!useFeature<boolean>('Profile.AllowUsernameChange', true) 
+                                                    ? 'Kurumunuz kullanıcı adı değişikliğine izin vermemektedir.' 
+                                                    : 'Kullanıcı adınızı 30 günde 1 kez değiştirebilirsiniz.'}
                                             </div>
                                         </div>
 
@@ -810,14 +934,32 @@ const Profile = () => {
 
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
-                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Şehir</label>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">{terminology.cityLabel}</label>
                                                 <div className="h-[46px]">
-                                                    <SearchableSelect
-                                                        options={cities.filter(c => c.value !== 0).map(c => ({ value: c.value, label: c.text }))}
-                                                        value={updateData.cityCode}
-                                                        onChange={(val) => setUpdateData({ ...updateData, cityCode: Number(val) })}
-                                                        placeholder="Şehir Seçiniz"
-                                                    />
+                                                    {institution?.customHierarchyJson ? (
+                                                        <select
+                                                            className="w-full h-full border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none px-3 rounded-md bg-white transition cursor-pointer text-sm"
+                                                            value={updateData.customHierarchyId ?? ''}
+                                                            onChange={e => setUpdateData({ ...updateData, customHierarchyId: e.target.value === '' ? null : Number(e.target.value) })}
+                                                        >
+                                                            <option value="">{terminology.cityLabel} Seçiniz</option>
+                                                            {(() => {
+                                                                try {
+                                                                    const items = JSON.parse(institution.customHierarchyJson) as string[];
+                                                                    return items.map((item, idx) => (
+                                                                        <option key={idx} value={idx}>{item}</option>
+                                                                    ));
+                                                                } catch { return null; }
+                                                            })()}
+                                                        </select>
+                                                    ) : (
+                                                        <SearchableSelect
+                                                            options={cities.filter(c => c.value !== 0).map(c => ({ value: c.value, label: c.text }))}
+                                                            value={updateData.cityCode}
+                                                            onChange={(val) => setUpdateData({ ...updateData, cityCode: Number(val) })}
+                                                            placeholder="Şehir Seçiniz"
+                                                        />
+                                                    )}
                                                 </div>
                                             </div>
                                             <div>
@@ -848,28 +990,101 @@ const Profile = () => {
                                     </form>
                                 </div>
 
-                                {/* Form 2: Şifre Değiştirme */}
-                                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit">
-                                    <h2 className="text-xl font-bold text-gray-800 border-b border-gray-100 pb-4 mb-6">{user?.authType === 'Google' && !user?.hasPassword ? 'Şifre Belirle' : 'Şifre Değiştir'}</h2>
-                                    <form onSubmit={handleUpdatePassword} className="space-y-4">
-                                        {!(user?.authType === 'Google' && !user?.hasPassword) && (
-                                            <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Eski Şifreniz</label><input type="password" placeholder="Mevcut şifreniz" className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.oldPassword} onChange={e => setPassForm({ ...passForm, oldPassword: e.target.value })} required /></div>
-                                        )}
-                                        <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Yeni Şifre</label><input type="password" placeholder="En az 6 karakter" minLength={6} className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.newPassword} onChange={e => setPassForm({ ...passForm, newPassword: e.target.value })} required /></div>
-                                        <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Yeni Şifre (Tekrar)</label><input type="password" placeholder="Yeni şifrenizi doğrulayın" minLength={6} className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.confirmPassword} onChange={e => setPassForm({ ...passForm, confirmPassword: e.target.value })} required /></div>
-
-                                        {passMessage.text && (
-                                            <div className={`p-3 rounded-xl text-sm font-bold mt-4 animate-fade-in-down ${passMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
-                                                {passMessage.text}
+                                {/* Form 2: Gizlilik ve Bildirimler */}
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                                        <h2 className="text-xl font-bold text-gray-800 border-b border-gray-100 pb-4 mb-6">Gizlilik ve Bildirimler</h2>
+                                        <form onSubmit={(e) => handleUpdateDetails(e, 'preferences')} className="space-y-5">
+                                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100/50">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <h4 className="text-sm font-bold text-gray-800">Etiketleme Bildirimleri</h4>
+                                                        <p className="text-[11px] text-gray-500">Bir içerikte etiketlendiğinizde anlık bildirim alırsınız.</p>
+                                                    </div>
+                                                    <label className="relative inline-flex items-center cursor-pointer">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            className="sr-only peer" 
+                                                            checked={updateData.mentionNotificationEnabled}
+                                                            onChange={e => setUpdateData({ ...updateData, mentionNotificationEnabled: e.target.checked })}
+                                                        />
+                                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                                    </label>
+                                                </div>
                                             </div>
-                                        )}
 
-                                        <button type="submit" disabled={isPassUpdating} className="w-full bg-gray-900 text-white font-bold py-3.5 rounded-xl hover:bg-black transition shadow-md mt-6 disabled:bg-gray-500 active:scale-95 flex justify-center items-center gap-2">
-                                            {isPassUpdating ? (
-                                                <><svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Güncelleniyor...</>
-                                            ) : (user?.authType === 'Google' && !user?.hasPassword ? 'Şifre Belirle' : 'Şifreyi Güncelle')}
-                                        </button>
-                                    </form>
+                                            {useFeature<boolean>('Profile.AllowPrivacySettings', true) && (
+                                                <div className="space-y-4 pt-2">
+                                                    <div className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition">
+                                                        <div>
+                                                            <h5 className="text-xs font-bold text-gray-700">Profil Görünürlüğü</h5>
+                                                            <p className="text-[10px] text-gray-500">Profilinizin diğer kullanıcılar tarafından görülmesini sağlar.</p>
+                                                        </div>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input type="checkbox" className="sr-only peer" checked={updateData.isProfilePublic} onChange={e => setUpdateData({ ...updateData, isProfilePublic: e.target.checked })} />
+                                                            <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition">
+                                                        <div>
+                                                            <h5 className="text-xs font-bold text-gray-700">Sorunlarımı Göster</h5>
+                                                            <p className="text-[10px] text-gray-500">Paylaştığınız sorunların profilinizde listelenmesini sağlar.</p>
+                                                        </div>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input type="checkbox" className="sr-only peer" checked={updateData.showProblems} onChange={e => setUpdateData({ ...updateData, showProblems: e.target.checked })} />
+                                                            <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition">
+                                                        <div>
+                                                            <h5 className="text-xs font-bold text-gray-700">Çözümlerimi Göster</h5>
+                                                            <p className="text-[10px] text-gray-500">Paylaştığınız çözümlerin profilinizde listelenmesini sağlar.</p>
+                                                        </div>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input type="checkbox" className="sr-only peer" checked={updateData.showSolutions} onChange={e => setUpdateData({ ...updateData, showSolutions: e.target.checked })} />
+                                                            <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {prefMessage.text && (
+                                                <div className={`p-3 rounded-xl text-sm font-bold mt-4 animate-fade-in-down ${prefMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                                                    {prefMessage.text}
+                                                </div>
+                                            )}
+
+                                            <button type="submit" disabled={isUpdating} className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl hover:bg-black transition shadow-md mt-4 disabled:bg-gray-400 active:scale-95">
+                                                {isUpdating ? 'Kaydediliyor...' : 'Tercihleri Güncelle'}
+                                            </button>
+                                        </form>
+                                    </div>
+                                    
+                                    {/* Şifre Güncelleme */}
+                                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit">
+                                        <h2 className="text-xl font-bold text-gray-800 border-b border-gray-100 pb-4 mb-6">{user?.authType === 'Google' && !user?.hasPassword ? 'Şifre Belirle' : 'Şifre Değiştir'}</h2>
+                                        <form onSubmit={handleUpdatePassword} className="space-y-4">
+                                            {!(user?.authType === 'Google' && !user?.hasPassword) && (
+                                                <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Eski Şifreniz</label><input type="password" placeholder="Mevcut şifreniz" className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.oldPassword} onChange={e => setPassForm({ ...passForm, oldPassword: e.target.value })} required /></div>
+                                            )}
+                                            <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Yeni Şifre</label><input type="password" placeholder="En az 6 karakter" minLength={6} className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.newPassword} onChange={e => setPassForm({ ...passForm, newPassword: e.target.value })} required /></div>
+                                            <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Yeni Şifre (Tekrar)</label><input type="password" placeholder="Yeni şifrenizi doğrulayın" minLength={6} className="w-full border border-gray-200 focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none p-3 rounded-xl bg-gray-50 transition" value={passForm.confirmPassword} onChange={e => setPassForm({ ...passForm, confirmPassword: e.target.value })} required /></div>
+
+                                            {passMessage.text && (
+                                                <div className={`p-3 rounded-xl text-sm font-bold mt-4 animate-fade-in-down ${passMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                                                    {passMessage.text}
+                                                </div>
+                                            )}
+
+                                            <button type="submit" disabled={isPassUpdating} className="w-full bg-gray-900 text-white font-bold py-3.5 rounded-xl hover:bg-black transition shadow-md mt-6 disabled:bg-gray-500 active:scale-95 flex justify-center items-center gap-2">
+                                                {isPassUpdating ? (
+                                                    <><svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Güncelleniyor...</>
+                                                ) : (user?.authType === 'Google' && !user?.hasPassword ? 'Şifre Belirle' : 'Şifreyi Güncelle')}
+                                            </button>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
                         )}

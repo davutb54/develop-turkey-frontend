@@ -6,6 +6,7 @@ import type { City, Gender } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
 
 const CompleteProfile = () => {
   const navigate = useNavigate();
@@ -13,8 +14,13 @@ const CompleteProfile = () => {
 
   const [formData, setFormData] = useState({
     cityCode: 0,
-    genderCode: -1
+    genderCode: -1,
+    customHierarchyId: null as number | null
   });
+  const institution = useInstitution();
+  const terminology = useTerminology();
+  const enableCustomHierarchy = useFeature<boolean>('Content.EnableCustomHierarchy', false);
+  const requireLocation = useFeature<boolean>('Content.RequireLocationSelection', true);
 
   const [cities, setCities] = useState<City[]>([]);
   const [genders, setGenders] = useState<Gender[]>([]);
@@ -34,7 +40,8 @@ const CompleteProfile = () => {
         if (meRes.data.success) {
           setFormData({
             cityCode: meRes.data.data.cityCode || 0,
-            genderCode: meRes.data.data.genderCode || -1
+            genderCode: meRes.data.data.genderCode || -1,
+            customHierarchyId: meRes.data.data.customHierarchyId ?? null
           });
         }
       } catch (err) {
@@ -52,9 +59,15 @@ const CompleteProfile = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (formData.cityCode === -1 || formData.cityCode === 0) {
-      toast.error("Lütfen bir şehir seçiniz.");
-      return;
+    if (requireLocation) {
+        if (!enableCustomHierarchy && (formData.cityCode === -1 || formData.cityCode === 0)) {
+            toast.error(`Lütfen bir ${terminology.cityLabel} seçiniz.`);
+            return;
+        }
+        if (enableCustomHierarchy && formData.customHierarchyId === null) {
+            toast.error(`Lütfen bir ${terminology.cityLabel} seçiniz.`);
+            return;
+        }
     }
     if (formData.genderCode === -1) {
       toast.error("Lütfen cinsiyet seçiniz.");
@@ -74,7 +87,8 @@ const CompleteProfile = () => {
           surname: user.surname,
           email: user.email,
           cityCode: formData.cityCode,
-          genderCode: formData.genderCode
+          genderCode: formData.genderCode,
+          customHierarchyId: formData.customHierarchyId
         });
 
         await checkAuth(); // isProfileIncomplete false olacak
@@ -104,14 +118,33 @@ const CompleteProfile = () => {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1">Şehriniz</label>
-              <SearchableSelect
-                options={cities.filter(c => c.value !== 0).map(c => ({ value: c.value, label: c.text }))}
-                value={formData.cityCode}
-                onChange={(val) => setFormData(prev => ({ ...prev, cityCode: Number(val) }))}
-                placeholder="Şehir Seçiniz"
-                disabled={loading}
-              />
+              <label className="block text-sm font-bold text-gray-700 mb-1">{terminology.cityLabel}</label>
+              {enableCustomHierarchy ? (
+                <select
+                  value={formData.customHierarchyId ?? ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, customHierarchyId: e.target.value === '' ? null : Number(e.target.value) }))}
+                  className="input-field bg-white w-full"
+                  disabled={loading}
+                >
+                  <option value="">{terminology.cityLabel} Seçiniz</option>
+                  {(() => {
+                    try {
+                      const items = JSON.parse(institution?.customHierarchyJson || '[]') as string[];
+                      return items.map((item, idx) => (
+                        <option key={idx} value={idx}>{item}</option>
+                      ));
+                    } catch { return null; }
+                  })()}
+                </select>
+              ) : (
+                <SearchableSelect
+                  options={cities.filter(c => c.value !== 0).map(c => ({ value: c.value, label: c.text }))}
+                  value={formData.cityCode}
+                  onChange={(val) => setFormData(prev => ({ ...prev, cityCode: Number(val) }))}
+                  placeholder={`${terminology.cityLabel} Seçiniz`}
+                  disabled={loading}
+                />
+              )}
             </div>
 
             <div>
@@ -133,9 +166,9 @@ const CompleteProfile = () => {
 
           <button
             type="submit"
-            disabled={loading || formData.cityCode === 0 || formData.genderCode === -1}
+            disabled={loading || (requireLocation && ((!enableCustomHierarchy && formData.cityCode === 0) || (enableCustomHierarchy && formData.customHierarchyId === null))) || formData.genderCode === -1}
             className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-transparent text-sm font-black rounded-xl text-white shadow-lg transition-all active:scale-95 
-                ${(loading || formData.cityCode === 0 || formData.genderCode === -1) ? 'bg-slate-300 cursor-not-allowed opacity-70' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}
+                ${(loading || (requireLocation && ((!enableCustomHierarchy && formData.cityCode === 0) || (enableCustomHierarchy && formData.customHierarchyId === null))) || formData.genderCode === -1) ? 'bg-slate-300 cursor-not-allowed opacity-70' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}
           >
             {loading ? (
               <>
