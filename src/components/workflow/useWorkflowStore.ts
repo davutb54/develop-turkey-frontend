@@ -275,7 +275,7 @@ const defaultActions: ActionDefinition[] = [
 // '*' = tüm triggerlar için her zaman mevcut
 
 const TRIGGER_CONTEXT_MAP: Record<string, string[]> = {
-  '*': ['SystemUserId', 'InstitutionId', 'UserRole', 'TriggerEventName', 'UserProblemCount'],
+  '*': ['SystemUserId', 'InstitutionId', 'UserRole', 'UserScore', 'UserProblemCount', 'UserIsBanned', 'UserIsEmailVerified', 'TriggerEventName'],
 
   // Auth
   'auth':                         ['IpAddress'],
@@ -343,6 +343,37 @@ export function getAvailableFieldPaths(trigger: string): Set<string> {
   const category = trigger.split('.')[0];
   (TRIGGER_CONTEXT_MAP[category] ?? []).forEach(p => paths.add(p));
   (TRIGGER_CONTEXT_MAP[trigger] ?? []).forEach(p => paths.add(p));
+
+  // Dinamik cross-entity field'ları otomatik ekle
+  if (paths.has('TargetUserId')) {
+    paths.add('TargetUserRole');
+    paths.add('TargetUserScore');
+    paths.add('TargetUserInstitutionId');
+    paths.add('TargetUserIsBanned');
+    paths.add('TargetUserIsAdmin');
+    paths.add('TargetUserIsExpert');
+    paths.add('TargetUserIsOfficial');
+    paths.add('TargetUserIsEmailVerified');
+  }
+  if (paths.has('ProblemId')) {
+    paths.add('ProblemOwnerId');
+    paths.add('ProblemInstitutionId');
+    paths.add('ProblemViewCount');
+    paths.add('ProblemSolutionCount');
+    paths.add('ProblemUpvoteCount');
+    paths.add('ProblemFollowerCount');
+    paths.add('ProblemIsHighlighted');
+    paths.add('ProblemIsReported');
+  }
+  if (paths.has('SolutionId')) {
+    paths.add('SolutionOwnerId');
+    paths.add('SolutionInstitutionId');
+    paths.add('SolutionVoteCount');
+    paths.add('SolutionApprovalStatus');
+    paths.add('SolutionIsHighlighted');
+    paths.add('SolutionIsReported');
+  }
+
   return paths;
 }
 
@@ -410,10 +441,34 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   UserProblemCount:   'Tetikleyen kullanıcının toplam problem sayısı.',
   OldValue:           'Güncelleme öncesi eski değer (metin formatında).',
   NewValue:           'Güncelleme sonrası yeni değer (metin formatında).',
+  UserIsBanned:       'Tetikleyen kullanıcının yasaklılık durumu.',
+  UserIsEmailVerified:'Tetikleyen kullanıcının e-posta doğrulama durumu.',
+  TargetUserRole:     'Hedef kullanıcının rolü.',
+  TargetUserScore:    'Hedef kullanıcının puanı.',
+  TargetUserInstitutionId: 'Hedef kullanıcının kurum ID\'si.',
+  TargetUserIsBanned: 'Hedef kullanıcının yasaklılık durumu.',
+  TargetUserIsAdmin:  'Hedef kullanıcı Admin mi?',
+  TargetUserIsExpert: 'Hedef kullanıcı Uzman mı?',
+  TargetUserIsOfficial:'Hedef kullanıcı Resmi Yetkili mi?',
+  TargetUserIsEmailVerified: 'Hedef kullanıcının e-posta doğrulama durumu.',
   ProblemId:          'Olaya konu olan problemin ID\'si.',
+  ProblemOwnerId:     'Problemi oluşturan kişinin ID\'si.',
+  ProblemInstitutionId:'Problemin ait olduğu kurumun ID\'si.',
   ProblemStatus:      'Problemin durumu: open (açık) veya resolved (çözüldü).',
   ProblemDifficulty:  'Problemin zorluk seviyesi: easy, medium, hard veya expert.',
+  ProblemViewCount:   'Problemin görüntülenme sayısı.',
+  ProblemSolutionCount:'Probleme gelen çözüm sayısı.',
+  ProblemUpvoteCount: 'Problemin aldığı olumlu oy sayısı.',
+  ProblemFollowerCount:'Problemin takipçi sayısı.',
+  ProblemIsHighlighted:'Problem öne çıkarılmış mı?',
+  ProblemIsReported:  'Problem şikayet edilmiş mi?',
   SolutionId:         'Olaya konu olan çözümün ID\'si.',
+  SolutionOwnerId:    'Çözümü yazan kişinin ID\'si.',
+  SolutionInstitutionId:'Çözümün ait olduğu kurumun ID\'si.',
+  SolutionVoteCount:  'Çözümün oy sayısı.',
+  SolutionApprovalStatus:'Çözümün uzman onayı durumu (0=Bekliyor, 1=Onaylandı, 2=Reddedildi).',
+  SolutionIsHighlighted:'Çözüm öne çıkarılmış mı?',
+  SolutionIsReported: 'Çözüm şikayet edilmiş mi?',
   CommentId:          'Olaya konu olan yorumun ID\'si.',
   TopicId:            'Olaya konu olan konunun (topic) ID\'si.',
   AgreementId:        'Olaya konu olan yasal sözleşmenin ID\'si.',
@@ -433,6 +488,7 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
 // ─── Enum Değerler (belirli fieldlar için) ───────────────────────────────────
 const FIELD_ENUM_MAP: Record<string, string[]> = {
   UserRole:          ['User', 'Expert', 'Official', 'Admin', 'SuperAdmin'],
+  TargetUserRole:    ['User', 'Expert', 'Official', 'Admin', 'SuperAdmin'],
   ProblemStatus:     ['open', 'resolved'],
   ProblemDifficulty: ['easy', 'medium', 'hard', 'expert'],
   Severity:          ['low', 'medium', 'high'],
@@ -440,11 +496,12 @@ const FIELD_ENUM_MAP: Record<string, string[]> = {
 };
 
 const FIELD_CATEGORY_MAP: Record<string, string> = {
-  SystemUserId: 'Genel', InstitutionId: 'Genel', UserRole: 'Genel', TriggerEventName: 'Genel',
+  SystemUserId: 'Genel', InstitutionId: 'Genel', UserRole: 'Genel', TriggerEventName: 'Genel', UserIsBanned: 'Genel', UserIsEmailVerified: 'Genel',
   TargetUserId: 'Kullanıcı', UserScore: 'Kullanıcı', UserProblemCount: 'Kullanıcı', AdminId: 'Kullanıcı',
   RoleName: 'Kullanıcı', WarningId: 'Kullanıcı', Severity: 'Kullanıcı',
-  ProblemId: 'Problem', ProblemStatus: 'Problem', ProblemDifficulty: 'Problem',
-  SolutionId: 'Çözüm',
+  TargetUserRole: 'Kullanıcı', TargetUserScore: 'Kullanıcı', TargetUserInstitutionId: 'Kullanıcı', TargetUserIsBanned: 'Kullanıcı', TargetUserIsAdmin: 'Kullanıcı', TargetUserIsExpert: 'Kullanıcı', TargetUserIsOfficial: 'Kullanıcı', TargetUserIsEmailVerified: 'Kullanıcı',
+  ProblemId: 'Problem', ProblemStatus: 'Problem', ProblemDifficulty: 'Problem', ProblemOwnerId: 'Problem', ProblemInstitutionId: 'Problem', ProblemViewCount: 'Problem', ProblemSolutionCount: 'Problem', ProblemUpvoteCount: 'Problem', ProblemFollowerCount: 'Problem', ProblemIsHighlighted: 'Problem', ProblemIsReported: 'Problem',
+  SolutionId: 'Çözüm', SolutionOwnerId: 'Çözüm', SolutionInstitutionId: 'Çözüm', SolutionVoteCount: 'Çözüm', SolutionApprovalStatus: 'Çözüm', SolutionIsHighlighted: 'Çözüm', SolutionIsReported: 'Çözüm',
   CommentId: 'Yorum',
   TopicId: 'Konu',
   AgreementId: 'Yasal',
