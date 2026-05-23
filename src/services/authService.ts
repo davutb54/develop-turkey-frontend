@@ -1,5 +1,5 @@
 import api from './api';
-import type { IResult, IDataResult, AccessToken, VerifyEmailDto, ResetPasswordDto, UserForLoginDto, UserForRegisterDto, UserForPasswordUpdateDto } from '../types';
+import type { IResult, AccessToken, VerifyEmailDto, ResetPasswordDto, UserForLoginDto, UserForRegisterDto, UserForPasswordUpdateDto } from '../types';
 
 export const authService = {
     login: async (data: UserForLoginDto) => {
@@ -42,5 +42,10 @@ export const authService = {
 
     resetPassword: async (data: ResetPasswordDto) => {
         return api.post<string>('/auth/resetpassword', data);
+    },
+
+    getCapabilities: async (institutionId?: number) => {
+        const params = institutionId ? `?institutionId=${institutionId}` : '';
+        return api.get<string[]>(`/auth/me/capabilities${params}`);
     },
 };

@@ -20,7 +20,6 @@ const SocialShare: React.FC<SocialShareProps> = ({ url, title, description, vari
   const shareMessage = `📢 *${title}*\n\n${cleanDescription}\n\n🚀 Bu soruna çözüm üretmek veya destek olmak için tıkla:\n🔗 ${fullUrl}\n\n#DevelopTurkey #ŞehirSorunları #ÇözümÜret`;
 
   const encodedUrl = encodeURIComponent(fullUrl);
-  const encodedTitle = encodeURIComponent(title);
   const encodedMessage = encodeURIComponent(shareMessage);
 
   const shareLinks = [

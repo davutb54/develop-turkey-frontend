@@ -1,131 +1,174 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { userService } from '../services/userService';
+import { authService } from '../services/authService';
 import { legalAgreementService } from '../services/legalAgreementService';
 import { featureService } from '../services/featureService';
 
+const CAPABILITIES_STORAGE_KEY = 'dt_capabilities';
+
+function loadStoredCapabilities(): Set<string> {
+    try {
+        const raw = localStorage.getItem(CAPABILITIES_STORAGE_KEY);
+        if (raw) return new Set<string>(JSON.parse(raw));
+    } catch { /* ignore */ }
+    return new Set<string>();
+}
+
+function persistCapabilities(caps: Set<string>) {
+    try {
+        localStorage.setItem(CAPABILITIES_STORAGE_KEY, JSON.stringify([...caps]));
+    } catch { /* ignore */ }
+}
+
 // null = yükleniyor, false = giriş yok, number = kullanıcı id'si
 interface AuthContextType {
-  userId: number | null | false;
-  isAdmin: boolean;
-  isMaintenance: boolean;
-  isProfileIncomplete: boolean;
-  hasPendingAgreement: boolean;
-  setUserId: (id: number | false) => void;
-  setIsAdmin: (isAdmin: boolean) => void;
-  setIsMaintenance: (isMain: boolean) => void;
-  setHasPendingAgreement: (val: boolean) => void;
-  checkAuth: () => Promise<void>;
+    userId: number | null | false;
+    /** @deprecated Capability sistemine geçildi. hasCapability("admin.system_access") kullanın. */
+    isAdmin: boolean;
+    isMaintenance: boolean;
+    isProfileIncomplete: boolean;
+    hasPendingAgreement: boolean;
+    capabilities: Set<string>;
+    hasCapability: (code: string) => boolean;
+    setCapabilities: (caps: Set<string>) => void;
+    setUserId: (id: number | false) => void;
+    setIsAdmin: (isAdmin: boolean) => void;
+    setIsMaintenance: (isMain: boolean) => void;
+    setHasPendingAgreement: (val: boolean) => void;
+    checkAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
-  userId: null,
-  isAdmin: false,
-  isMaintenance: false,
-  isProfileIncomplete: false,
-  hasPendingAgreement: false,
-  setUserId: () => { },
-  setIsAdmin: () => { },
-  setIsMaintenance: () => { },
-  setHasPendingAgreement: () => { },
-  checkAuth: async () => { },
+    userId: null,
+    isAdmin: false,
+    isMaintenance: false,
+    isProfileIncomplete: false,
+    hasPendingAgreement: false,
+    capabilities: new Set(),
+    hasCapability: () => false,
+    setCapabilities: () => {},
+    setUserId: () => {},
+    setIsAdmin: () => {},
+    setIsMaintenance: () => {},
+    setHasPendingAgreement: () => {},
+    checkAuth: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [userId, setUserId] = useState<number | null | false>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [isMaintenance, setIsMaintenance] = useState<boolean>(false);
-  const [isProfileIncomplete, setIsProfileIncomplete] = useState<boolean>(false);
-  const [hasPendingAgreement, setHasPendingAgreement] = useState<boolean>(false);
+    const [userId, setUserId] = useState<number | null | false>(null);
+    const [isAdmin, setIsAdmin] = useState<boolean>(false);
+    const [isMaintenance, setIsMaintenance] = useState<boolean>(false);
+    const [isProfileIncomplete, setIsProfileIncomplete] = useState<boolean>(false);
+    const [hasPendingAgreement, setHasPendingAgreement] = useState<boolean>(false);
+    const [capabilities, setCapabilitiesState] = useState<Set<string>>(loadStoredCapabilities);
 
-  const checkAuth = async () => {
-    try {
-      const response = await userService.getMe();
-      if (response.data && response.data.success) {
-        const user = response.data.data;
+    const setCapabilities = useCallback((caps: Set<string>) => {
+        setCapabilitiesState(caps);
+        persistCapabilities(caps);
+        setIsAdmin(caps.has('admin.system_access'));
+    }, []);
 
-        // Feature: Identity.RequireEmailVerification - email doğrulama zorunlu mu?
-        let requireEmailVerification = true;
+    const hasCapability = useCallback((code: string) => capabilities.has(code), [capabilities]);
+
+    const refreshCapabilities = async (institutionId?: number) => {
         try {
-          const featuresRes = await featureService.getInstitutionFeatures(1);
-          if (featuresRes.data.success) {
-            const features = featuresRes.data.data || {};
-            const rawValue = features['Identity.RequireEmailVerification'];
-            if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
-              requireEmailVerification = rawValue.toLowerCase() === 'true';
+            const res = await authService.getCapabilities(institutionId);
+            // Backend returns { success: true, data: string[] }
+            const list: unknown = (res.data as any)?.data ?? res.data;
+            if (Array.isArray(list)) {
+                setCapabilities(new Set<string>(list as string[]));
             }
-          }
-        } catch {
-          // Feature okunamazsa varsayılan true
-        }
+        } catch { /* ignore — capabilities might be stale from localStorage */ }
+    };
 
-        // Oturum açıkken e-posta doğrulanmamışsa kullanıcıyı sistemden at ve doğrulama sayfasına yönlendir
-        if (requireEmailVerification && user?.isEmailVerified === false) {
-          try {
-            // VerifyEmail sayfasında otomatik tekrar gönderme için
-            sessionStorage.setItem('pending_verify_email', user.email || '');
-          } catch {
-            // sessionStorage erişimi engellenmiş olabilir
-          }
-
-          setUserId(false);
-          setIsAdmin(false);
-          setIsProfileIncomplete(false);
-          setHasPendingAgreement(false);
-
-          const currentPath = window.location.pathname.toLowerCase();
-          if (!currentPath.includes('/verify-email')) {
-            window.location.href = '/verify-email';
-          }
-          return;
-        }
-
-        setUserId(user.id);
-        setIsAdmin(user.isAdmin);
-        setIsMaintenance(false); // Başarılıysa bakımda değilizdir (veya adminiz)
-
-        // Eğer profil verisi eksikse bunu state'e yazıyoruz
-        if (user.cityCode === 0 || user.genderCode === -1) {
-          setIsProfileIncomplete(true);
-        } else {
-          setIsProfileIncomplete(false);
-        }
-
-        // Kullanıcı giriş yapmışsa major sözleşme onayı kontrolü
+    const checkAuth = async () => {
         try {
-          const pendingRes = await legalAgreementService.hasPending();
-          if (pendingRes.data.success) {
-            setHasPendingAgreement(pendingRes.data.data === true);
-          }
-        } catch {
-          // hasPending hatası auth akışını kesmemeli
-          setHasPendingAgreement(false);
+            const response = await userService.getMe();
+            if (response.data && response.data.success) {
+                const user = response.data.data;
+
+                // Feature: Identity.RequireEmailVerification
+                let requireEmailVerification = true;
+                try {
+                    const featuresRes = await featureService.getInstitutionFeatures(1);
+                    if (featuresRes.data.success) {
+                        const features = featuresRes.data.data || {};
+                        const rawValue = features['Identity.RequireEmailVerification'];
+                        if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+                            requireEmailVerification = rawValue.toLowerCase() === 'true';
+                        }
+                    }
+                } catch { /* varsayılan true */ }
+
+                if (requireEmailVerification && user?.isEmailVerified === false) {
+                    try {
+                        sessionStorage.setItem('pending_verify_email', user.email || '');
+                    } catch { /* ignore */ }
+
+                    setUserId(false);
+                    setIsAdmin(false);
+                    setCapabilities(new Set());
+                    setIsProfileIncomplete(false);
+                    setHasPendingAgreement(false);
+
+                    const currentPath = window.location.pathname.toLowerCase();
+                    if (!currentPath.includes('/verify-email')) {
+                        window.location.href = '/verify-email';
+                    }
+                    return;
+                }
+
+                setUserId(user.id);
+                setIsMaintenance(false);
+
+                if (user.cityCode === 0 || user.genderCode === -1) {
+                    setIsProfileIncomplete(true);
+                } else {
+                    setIsProfileIncomplete(false);
+                }
+
+                // Capability'leri arka planda tazele
+                await refreshCapabilities(user.institutionId);
+
+                try {
+                    const pendingRes = await legalAgreementService.hasPending();
+                    if (pendingRes.data.success) {
+                        setHasPendingAgreement(pendingRes.data.data === true);
+                    }
+                } catch {
+                    setHasPendingAgreement(false);
+                }
+            } else {
+                setUserId(false);
+                setIsAdmin(false);
+                setCapabilities(new Set());
+                setIsProfileIncomplete(false);
+                setHasPendingAgreement(false);
+            }
+        } catch (err: any) {
+            if (err.response && err.response.status === 503) {
+                setIsMaintenance(true);
+            }
+            setUserId(false);
+            setIsAdmin(false);
+            setCapabilities(new Set());
+            setHasPendingAgreement(false);
         }
-      } else {
-        setUserId(false);
-        setIsAdmin(false);
-        setIsProfileIncomplete(false);
-        setHasPendingAgreement(false);
-      }
-    } catch (err: any) {
-      if (err.response && err.response.status === 503) {
-        setIsMaintenance(true);
-      }
-      setUserId(false);
-      setIsAdmin(false);
-      setHasPendingAgreement(false);
-    }
-  };
+    };
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+    useEffect(() => {
+        checkAuth();
+    }, []);
 
-  return (
-    <AuthContext.Provider value={{ userId, isAdmin, isMaintenance, isProfileIncomplete, hasPendingAgreement, setUserId, setIsAdmin, setIsMaintenance, setHasPendingAgreement, checkAuth }}>
-      {children}
-    </AuthContext.Provider>
-  );
+    return (
+        <AuthContext.Provider value={{
+            userId, isAdmin, isMaintenance, isProfileIncomplete, hasPendingAgreement,
+            capabilities, hasCapability, setCapabilities,
+            setUserId, setIsAdmin, setIsMaintenance, setHasPendingAgreement, checkAuth,
+        }}>
+            {children}
+        </AuthContext.Provider>
+    );
 };
 
 export const useAuth = () => useContext(AuthContext);
-

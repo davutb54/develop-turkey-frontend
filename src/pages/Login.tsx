@@ -15,7 +15,7 @@ const Login = () => {
   const [error, setError] = useState('');
   const [showVerifyLink, setShowVerifyLink] = useState(false);
   const navigate = useNavigate();
-  const { checkAuth } = useAuth();
+  const { checkAuth, setCapabilities } = useAuth();
   const allowGoogleLogin = useFeature<boolean>('Identity.AllowGoogleLogin', true);
   const enableCaptcha = useFeature<boolean>('Identity.EnableCaptcha', true);
 
@@ -29,6 +29,11 @@ const Login = () => {
 
       // Backend artık HttpOnly cookie dönüyor ve response.data.success = true gönderiyor
       if (response.data && (response.data as any).success) {
+        // Login response'unda gelen capability listesini anında set et (checkAuth'tan önce)
+        const caps = (response.data as any).effectiveCapabilities;
+        if (Array.isArray(caps)) {
+          setCapabilities(new Set<string>(caps));
+        }
         await checkAuth();
         navigate('/');
       } else {

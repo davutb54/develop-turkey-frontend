@@ -49,8 +49,6 @@ function TracePanel({ log, onClose }: { log: WorkflowLog; onClose: () => void })
     if (log.traceJson) trace = JSON.parse(log.traceJson) as string[];
   } catch { /* ignore */ }
 
-  const statusCfg = STATUS_CONFIG[log.status] ?? STATUS_CONFIG.error;
-
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,

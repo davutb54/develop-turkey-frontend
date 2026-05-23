@@ -34,9 +34,6 @@ export interface UserDetailDto {
     cityName: string;
     gender: string;
     emailNotificationPermission: boolean;
-    isAdmin: boolean;
-    isExpert: boolean;
-    isOfficial: boolean;
     isReported: boolean;
     isDeleted: boolean;
     isBanned: boolean;
@@ -59,9 +56,6 @@ export interface UserPublicProfileDto {
     surname: string;
     cityName: string;
     gender: string;
-    isAdmin: boolean;
-    isExpert: boolean;
-    isOfficial: boolean;
     registerDate: string;
     profileImageUrl?: string | null;
     institutionId: number;

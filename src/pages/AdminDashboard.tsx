@@ -69,7 +69,7 @@ const TagListManager = ({
 };
 
 const AdminDashboard = () => {
-    const { userId } = useAuth();
+    const { userId, isAdmin } = useAuth();
     // --- TEMEL VERİ STATE'LERİ ---
     const [stats, setStats] = useState<AdminDashboardDto | null>(null);
     const [analytics, setAnalytics] = useState<DashboardAnalyticsDto | null>(null);
@@ -246,16 +246,11 @@ const AdminDashboard = () => {
         const checkAdmin = async () => {
             if (userId === null) return; // Wait for auth check
             if (userId === false) { navigate('/login'); return; }
-            try {
-                const userRes = await userService.getMe();
-                if (!userRes.data.data.isAdmin) {
-                    alert("Bu sayfaya erişim yetkiniz yok!"); navigate('/'); return;
-                }
-                loadAllData();
-            } catch { navigate('/'); }
+            if (!isAdmin) { alert("Bu sayfaya erişim yetkiniz yok!"); navigate('/'); return; }
+            loadAllData();
         };
         checkAdmin();
-    }, [userId]);
+    }, [userId, isAdmin]);
 
     const loadPendingSolutions = async () => {
         try {
@@ -868,15 +863,6 @@ const AdminDashboard = () => {
             await reportService.resolve(reportId);
             loadAllData();
         } catch { alert("İşlem başarısız oldu."); }
-    };
-
-    const handleToggleRole = async (userId: number, roleType: 'Admin' | 'Expert' | 'Official') => {
-        try {
-            if (roleType === 'Admin') await adminService.toggleAdminRole(userId);
-            if (roleType === 'Expert') await adminService.toggleExpertRole(userId);
-            if (roleType === 'Official') await adminService.toggleOfficialRole(userId);
-            fetchUsers(userPage);
-        } catch (err) { alert("Yetki işlemi başarısız oldu."); }
     };
 
     const handleIssueWarning = async (e: React.FormEvent) => {
@@ -1548,10 +1534,6 @@ const AdminDashboard = () => {
                                                 <span className="font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 shadow-sm">{institutions.length} Ağ</span>
                                             </li>
                                             <li className="flex justify-between items-center border-b border-slate-200 pb-3">
-                                                <span className="text-slate-600 font-medium">Uzman / Yetkili Kişiler</span>
-                                                <span className="font-black text-slate-900 bg-white px-3 py-1 rounded-lg border shadow-sm">{users.filter(u => u.isExpert || u.isOfficial).length} Kişi</span>
-                                            </li>
-                                            <li className="flex justify-between items-center border-b border-slate-200 pb-3">
                                                 <span className="text-slate-600 font-medium">Banlı Kullanıcılar</span>
                                                 <span className="font-black text-red-600 bg-red-50 px-3 py-1 rounded-lg border border-red-100 shadow-sm">{stats.bannedUsers} Kişi</span>
                                             </li>
@@ -1707,16 +1689,10 @@ const AdminDashboard = () => {
                                                             {/* -- Roller -- */}
                                                             <td className="px-6 py-4 flex gap-1.5 flex-wrap">
                                                                 {u.isBanned ? <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded text-[10px] font-black border border-red-200 tracking-wider uppercase">Banlı</span> : <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black border border-green-200 tracking-wider uppercase">Aktif</span>}
-                                                                {u.isAdmin && <span className="ml-1 px-2.5 py-1 bg-purple-100 text-purple-700 rounded text-[10px] font-black border border-purple-200 tracking-wider uppercase">Admin</span>}
-                                                                {u.isExpert && <span className="ml-1 px-2.5 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-black border border-blue-200 tracking-wider uppercase">Uzman</span>}
-                                                                {u.isOfficial && <span className="ml-1 px-2.5 py-1 bg-cyan-100 text-cyan-700 rounded text-[10px] font-black border border-cyan-200 tracking-wider uppercase">Makam</span>}
                                                             </td>
                                                             {/* -- Yetki İşlemleri -- */}
                                                             <td className="px-6 py-4 text-right">
                                                                 <div className="flex justify-end gap-2 flex-wrap items-center">
-                                                                    <button onClick={() => handleToggleRole(u.id, 'Admin')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isAdmin ? 'bg-purple-500 text-white border-purple-600 hover:bg-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Admin</button>
-                                                                    <button onClick={() => handleToggleRole(u.id, 'Expert')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isExpert ? 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Uzman</button>
-                                                                    <button onClick={() => handleToggleRole(u.id, 'Official')} className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition shadow-sm ${u.isOfficial ? 'bg-cyan-500 text-white border-cyan-600 hover:bg-cyan-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>Resmi</button>
                                                                     <button onClick={() => handleBanToggle(u.id, u.isBanned)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 ${u.isBanned ? 'bg-slate-800 text-white border-slate-900 hover:bg-black' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
                                                                         {u.isBanned ? 'Ban Kaldır' : 'Banla'}
                                                                     </button>

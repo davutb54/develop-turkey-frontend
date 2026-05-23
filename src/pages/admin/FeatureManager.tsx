@@ -4,6 +4,7 @@ import type { FeatureGroup, FeatureDefinition } from '../../types';
 import Navbar from '../../components/Navbar';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { Can } from '../../components/Can';
 import InstitutionFeaturePanel from './InstitutionFeaturePanel';
 import { institutionService } from '../../services/institutionService';
 
@@ -147,6 +148,7 @@ const FeatureManager = () => {
                             Özellik Grupları
                         </h2>
 
+                        <Can capability="admin.feature_group_manage">
                         <form onSubmit={handleSaveGroup} className="mb-8 p-4 bg-slate-50 rounded-2xl border border-slate-200">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -167,6 +169,7 @@ const FeatureManager = () => {
                                 )}
                             </div>
                         </form>
+                        </Can>
 
                         <div className="space-y-3">
                             {groups.sort((a, b) => a.orderIndex - b.orderIndex).map(group => (
@@ -175,10 +178,12 @@ const FeatureManager = () => {
                                         <div className="font-bold text-slate-800">{group.name}</div>
                                         <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Sıra: {group.orderIndex}</div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => { setEditingGroup(group); setGroupName(group.name); setGroupOrder(group.orderIndex); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">✏️</button>
-                                        <button onClick={() => handleDeleteGroup(group.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition">🗑️</button>
-                                    </div>
+                                    <Can capability="admin.feature_group_manage">
+                                        <div className="flex gap-2">
+                                            <button onClick={() => { setEditingGroup(group); setGroupName(group.name); setGroupOrder(group.orderIndex); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">✏️</button>
+                                            <button onClick={() => handleDeleteGroup(group.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition">🗑️</button>
+                                        </div>
+                                    </Can>
                                 </div>
                             ))}
                         </div>
@@ -191,6 +196,7 @@ const FeatureManager = () => {
                             Özellik Tanımları
                         </h2>
 
+                        <Can capability="admin.feature_definition_manage">
                         <form onSubmit={handleSaveDef} className="mb-8 p-4 bg-slate-50 rounded-2xl border border-slate-200">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -232,6 +238,7 @@ const FeatureManager = () => {
                                 )}
                             </div>
                         </form>
+                        </Can>
 
                         <div className="space-y-3 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
                             {definitions.map(def => {
@@ -247,17 +254,19 @@ const FeatureManager = () => {
                                                     <span className="px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded text-[9px] font-bold uppercase">{group?.name || 'Grup Yok'}</span>
                                                 </div>
                                             </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => {
-                                                    setEditingDef(def);
-                                                    setDefKey(def.key);
-                                                    setDefDisplayName(def.displayName);
-                                                    setDefGroupId(def.groupId);
-                                                    setDefInputType(def.inputType);
-                                                    setDefDefaultValue(def.defaultValue);
-                                                }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">✏️</button>
-                                                <button onClick={() => handleDeleteDef(def.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition">🗑️</button>
-                                            </div>
+                                            <Can capability="admin.feature_definition_manage">
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => {
+                                                        setEditingDef(def);
+                                                        setDefKey(def.key);
+                                                        setDefDisplayName(def.displayName);
+                                                        setDefGroupId(def.groupId);
+                                                        setDefInputType(def.inputType);
+                                                        setDefDefaultValue(def.defaultValue);
+                                                    }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">✏️</button>
+                                                    <button onClick={() => handleDeleteDef(def.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition">🗑️</button>
+                                                </div>
+                                            </Can>
                                         </div>
                                     </div>
                                 );

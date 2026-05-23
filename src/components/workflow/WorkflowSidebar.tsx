@@ -1,4 +1,5 @@
 import type { DragEvent } from 'react';
+import { useCapability } from '../../hooks/useCapability';
 
 type BlockItem = {
   type: string;
@@ -45,6 +46,8 @@ const blockItems: BlockItem[] = [
 ];
 
 function WorkflowSidebar() {
+  const canExecuteCSharp = useCapability('expert.csharp_execute');
+
   const onDragStart = (event: DragEvent<HTMLDivElement>, nodeType: string) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
     event.dataTransfer.effectAllowed = 'move';
@@ -84,7 +87,7 @@ function WorkflowSidebar() {
       </div>
 
       {/* Blok kartları */}
-      {blockItems.map((item) => (
+      {blockItems.filter(item => item.type !== 'csharpNode' || canExecuteCSharp).map((item) => (
         <div
           key={item.type}
           draggable

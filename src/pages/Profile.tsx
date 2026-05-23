@@ -440,9 +440,6 @@ const Profile = () => {
                                     <p className="text-gray-500 font-medium">@{user?.userName}</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    {user?.isAdmin && <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm">Yönetici</span>}
-                                    {user?.isExpert && <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm">Uzman</span>}
-                                    {user?.isOfficial && <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm">Resmi Makam</span>}
                                 </div>
                             </div>
                         </div>

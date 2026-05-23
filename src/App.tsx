@@ -14,6 +14,13 @@ import CompleteProfile from './pages/CompleteProfile';
 import AdminDashboard from './pages/AdminDashboard';
 import FeatureManager from './pages/admin/FeatureManager';
 import WorkflowBuilder from './pages/admin/WorkflowBuilder';
+import DashboardLayout from './pages/admin/dashboard/DashboardLayout';
+import Overview from './pages/admin/dashboard/Overview';
+import CapabilityMetrics from './pages/admin/dashboard/CapabilityMetrics';
+import WorkflowMetricsPage from './pages/admin/dashboard/WorkflowMetrics';
+import UserMetricsPage from './pages/admin/dashboard/UserMetrics';
+import SystemHealthPage from './pages/admin/dashboard/SystemHealth';
+import AuditLogBrowser from './pages/admin/dashboard/AuditLogBrowser';
 import Maintenance from './pages/Maintenance';
 import NotFound from './pages/NotFound';
 import NotificationsPage from './pages/NotificationsPage';
@@ -123,6 +130,14 @@ function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/features" element={<FeatureManager />} />
         <Route path="/admin/workflow" element={<WorkflowBuilder />} />
+        <Route path="/admin/dashboard" element={<DashboardLayout />}>
+          <Route index element={<Overview />} />
+          <Route path="capabilities" element={<CapabilityMetrics />} />
+          <Route path="workflow" element={<WorkflowMetricsPage />} />
+          <Route path="users" element={<UserMetricsPage />} />
+          <Route path="system" element={<SystemHealthPage />} />
+          <Route path="audit-log" element={<AuditLogBrowser />} />
+        </Route>
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/maintenance" element={<Maintenance />} />
         <Route path="/about" element={<About />} />

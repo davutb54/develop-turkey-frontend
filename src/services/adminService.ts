@@ -39,16 +39,6 @@ export const adminService = {
     getLogs: async (filter: LogFilterDto) => {
         return api.get<IDataResult<Log[]>>('/admin/getlogs', { params: filter });
     },
-    // YETKİLENDİRME METODLARI
-    toggleAdminRole: async (userId: number) => {
-        return api.post<IResult>(`/admin/toggleadminrole?userId=${userId}`);
-    },
-    toggleExpertRole: async (userId: number) => {
-        return api.post<IResult>(`/admin/toggleexpertrole?userId=${userId}`);
-    },
-    toggleOfficialRole: async (userId: number) => {
-        return api.post<IResult>(`/admin/toggleofficialrole?userId=${userId}`);
-    },
     toggleProblemHighlight: async (problemId: number) => {
         return api.post<IResult>(`/admin/toggleproblemhighlight?problemId=${problemId}`);
     },

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { featureService } from '../../services/featureService';
-import { useAuth } from '../../context/AuthContext';
+import { useCapability } from '../../hooks/useCapability';
 import type { FeatureGroup, FeatureDefinition } from '../../types';
 
 interface InstitutionFeaturePanelProps {
@@ -12,7 +12,7 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
   institutionId,
   institutionName,
 }) => {
-  const { isAdmin } = useAuth();
+  const canWrite = useCapability('admin.institution_feature_write');
   const [groups, setGroups] = useState<FeatureGroup[]>([]);
   const [definitions, setDefinitions] = useState<FeatureDefinition[]>([]);
   const [currentValues, setCurrentValues] = useState<Record<string, string>>({});
@@ -81,7 +81,7 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
 
   const renderInput = (def: FeatureDefinition) => {
     const value = getEffectiveValue(def);
-    const isDisabled = def.isSystemLevel && !isAdmin;
+    const isDisabled = def.isSystemLevel && !canWrite;
 
     if (def.inputType === 'Boolean') {
       const isEnabled = value === 'true';
@@ -195,9 +195,9 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
           )}
           <button
             onClick={handleSave}
-            disabled={!hasPendingChanges || saving}
+            disabled={!hasPendingChanges || saving || !canWrite}
             className={`px-5 py-2 text-sm font-bold rounded-xl transition flex items-center gap-2 ${
-              hasPendingChanges
+              hasPendingChanges && canWrite
                 ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'
                 : 'bg-slate-100 text-slate-400 cursor-not-allowed'
             }`}

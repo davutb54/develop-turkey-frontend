@@ -55,9 +55,11 @@ const EmailTemplatesList: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Bu şablonu silmek istediğinize emin misiniz?')) return;
+    const template = templates.find(t => t.id === id);
+    if (!template) return;
 
     try {
-      const response = await emailTemplateService.delete(id);
+      const response = await emailTemplateService.delete(template);
       if (response.success) {
         toast.success(response.message);
         fetchTemplates();

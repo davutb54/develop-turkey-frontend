@@ -4,7 +4,8 @@ import type { UserPublicProfileDto } from '../types';
 import { getProfileImageUrl } from '../utils/imageUtils';
 
 interface MentionWrapperProps {
-    children: React.ReactElement<HTMLTextAreaElement | HTMLInputElement>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    children: React.ReactElement<any>;
     value: string;
     onChange: (newValue: string) => void;
     institutionId?: number;
@@ -46,7 +47,6 @@ const MentionWrapper: React.FC<MentionWrapperProps> = ({ children, value, onChan
     const calculateDropdownPosition = (input: HTMLTextAreaElement | HTMLInputElement, index: number) => {
         // Basit bir konumlandırma; gerçek pixel hassasiyeti için "caret-pos" kütüphanesi gerekebilir.
         // Şimdilik input'un altına sabitliyoruz.
-        const rect = input.getBoundingClientRect();
         setDropdownPos({
             top: input.offsetHeight + 5,
             left: Math.min(index * 8, input.offsetWidth - 200) // Kaba bir tahmin
@@ -154,7 +154,6 @@ const MentionWrapper: React.FC<MentionWrapperProps> = ({ children, value, onChan
                                         <span className="text-sm font-bold text-gray-900 truncate">@{user.userName}</span>
                                         <span className="text-[10px] text-gray-500 truncate">{user.name} {user.surname}</span>
                                     </div>
-                                    {user.isOfficial && <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold ml-auto">Resmi</span>}
                                 </div>
                             ))
                         )}

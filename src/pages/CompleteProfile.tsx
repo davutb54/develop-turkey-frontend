@@ -88,7 +88,11 @@ const CompleteProfile = () => {
           email: user.email,
           cityCode: formData.cityCode,
           genderCode: formData.genderCode,
-          customHierarchyId: formData.customHierarchyId
+          customHierarchyId: formData.customHierarchyId,
+          mentionNotificationEnabled: user.mentionNotificationEnabled ?? true,
+          isProfilePublic: user.isProfilePublic ?? true,
+          showSolutions: user.showSolutions ?? true,
+          showProblems: user.showProblems ?? true,
         });
 
         await checkAuth(); // isProfileIncomplete false olacak

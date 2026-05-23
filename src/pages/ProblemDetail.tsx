@@ -11,6 +11,7 @@ import CommentSection from '../components/CommentSection';
 import ReportModal from '../components/ReportModal';
 import { topicService } from '../services/topicService';
 import { useAuth } from '../context/AuthContext';
+import { useCapability } from '../hooks/useCapability';
 import { getProfileImageUrl } from '../utils/imageUtils';
 import { actionService } from '../services/actionService';
 import { constantService } from '../services/constantService';
@@ -56,6 +57,16 @@ const ProblemDetail = () => {
 
     const { userId } = useAuth();
     const currentUserId = userId || 0;
+
+    // Capability gating
+    const canUpdateOwnProblem   = useCapability('user.problem_update_own');
+    const canDeleteOwnProblem   = useCapability('user.problem_delete_own');
+    const canModDeleteProblem   = useCapability('moderation.problem_delete');
+    const canModResolveProblem  = useCapability('moderation.problem_resolve');
+    const canModHighlight       = useCapability('moderation.problem_highlight');
+    const canUpdateOwnSolution  = useCapability('user.solution_update_own');
+    const canDeleteOwnSolution  = useCapability('user.solution_delete_own');
+    const canModDeleteSolution  = useCapability('moderation.solution_delete');
 
     const [isEditingProblem, setIsEditingProblem] = useState(false);
     const [editProblemData, setEditProblemData] = useState({ title: '', description: '' });
@@ -900,6 +911,7 @@ const ProblemDetail = () => {
                             <div className="flex items-center gap-3 mt-4 sm:mt-0">
                                 {currentUserId === problem.senderId && (
                                     <div className="flex justify-end mb-4 gap-2">
+                                        {canUpdateOwnProblem && (
                                         <button
                                             onClick={() => {
                                                 setIsEditingProblem(true);
@@ -922,12 +934,52 @@ const ProblemDetail = () => {
                                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                                             Sorunu Düzenle
                                         </button>
+                                        )}
+                                        {canDeleteOwnProblem && (
                                         <button onClick={handleDeleteProblem} className="text-xs font-bold text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                             Sorunumu Sil
                                         </button>
+                                        )}
                                     </div>
-
+                                )}
+                                {/* Moderasyon butonları — sahip olmayanlara göster */}
+                                {currentUserId !== problem.senderId && currentUserId !== 0 && (
+                                    <div className="flex gap-2 mb-4">
+                                        {canModResolveProblem && !isProblemResolved && (
+                                            <button
+                                                onClick={async () => {
+                                                    if (!window.confirm('Sorunu çözüldü olarak işaretlemek istediğinize emin misiniz?')) return;
+                                                    try {
+                                                        await (problemService as any).setResolved?.(problem.id);
+                                                        await loadData(problem.id);
+                                                    } catch { alert('İşlem gerçekleştirilemedi.'); }
+                                                }}
+                                                className="text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5"
+                                            >
+                                                ✅ Çözüldü İşaretle
+                                            </button>
+                                        )}
+                                        {canModHighlight && (
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        await (problemService as any).setHighlight?.(problem.id);
+                                                        await loadData(problem.id);
+                                                    } catch { alert('İşlem gerçekleştirilemedi.'); }
+                                                }}
+                                                className="text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5"
+                                            >
+                                                ⭐ Öne Çıkar
+                                            </button>
+                                        )}
+                                        {canModDeleteProblem && (
+                                            <button onClick={handleDeleteProblem} className="text-xs font-bold text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                Mod: Sil
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
                                 {enableReports && currentUserId !== problem.senderId && currentUserId !== 0 && (
                                     <button onClick={() => openReportModal('Problem', problem.id)} className="text-xs font-bold text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-100 px-4 py-2 rounded-xl transition flex items-center gap-1.5">
@@ -1188,6 +1240,7 @@ const ProblemDetail = () => {
                                                 <div className="flex justify-end mt-4 pt-4 border-t border-gray-100/60 gap-2">
                                                     {currentUserId === sol.senderId && (
                                                         <div className="flex gap-2">
+                                                            {canUpdateOwnSolution && (
                                                             <button
                                                                 onClick={() => {
                                                                     setEditingSolutionId(sol.id);
@@ -1200,11 +1253,19 @@ const ProblemDetail = () => {
                                                             >
                                                                 Düzenle
                                                             </button>
+                                                            )}
+                                                            {canDeleteOwnSolution && (
                                                             <button onClick={() => handleDeleteSolution(sol.id)} className="text-[10px] text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 border border-gray-200 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider transition">
                                                                 🗑️ Çözümü Sil
                                                             </button>
+                                                            )}
                                                         </div>
-
+                                                    )}
+                                                    {/* Moderatör çözüm silme butonu */}
+                                                    {canModDeleteSolution && currentUserId !== sol.senderId && (
+                                                        <button onClick={() => handleDeleteSolution(sol.id)} className="text-[10px] text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-100 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider transition">
+                                                            🛡️ Mod: Sil
+                                                        </button>
                                                     )}
                                                     {enableReports && currentUserId !== sol.senderId && currentUserId !== 0 && (
                                                         <button onClick={() => openReportModal('Solution', sol.id)} className="text-[10px] text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-100 px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider transition">
