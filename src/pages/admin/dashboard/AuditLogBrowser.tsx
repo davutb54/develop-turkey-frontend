@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { metricsService, type AuditLogEntry, type AuditLogFilter } from '../../../services/metricsService';
+import { fmtDateTimeSec } from '../../../utils/dateFormat';
 
 const PAGE_SIZE = 20;
 
@@ -74,8 +75,7 @@ export default function AuditLogBrowser() {
 
     const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-    const formatDate = (iso: string) =>
-        new Date(iso).toLocaleString('tr', { dateStyle: 'short', timeStyle: 'medium' });
+    const formatDate = fmtDateTimeSec;
 
     const actionBadge = (action: string) => {
         if (action === 'grant')  return 'bg-green-100 text-green-700';

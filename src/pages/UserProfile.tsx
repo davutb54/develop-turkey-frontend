@@ -9,6 +9,7 @@ import ReportModal from '../components/ReportModal';
 import { getProfileImageUrl } from '../utils/imageUtils';
 import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
 import { useAuth } from '../context/AuthContext';
+import { useCapability } from '../hooks/useCapability';
 
 const UserProfile = () => {
     const { id } = useParams<{ id: string }>(); // URL'den tıklanan kişinin ID'sini alıyoruz
@@ -22,6 +23,7 @@ const UserProfile = () => {
     const enableReports = useFeature<boolean>('Moderation.EnableReportSystem', true);
     const enableCustomHierarchy = useFeature<boolean>('Content.EnableCustomHierarchy', false);
     const { userId: currentUserId } = useAuth();
+    const canReportUser = useCapability('user.user_report');
     const institution = useInstitution();
     const terminology = useTerminology();
     const showJoinedDate = useFeature<boolean>('Profile.ShowJoinedDate', true);
@@ -162,7 +164,7 @@ const UserProfile = () => {
                                     <span className="font-medium">{new Date(user.registerDate).toLocaleDateString('tr-TR')}</span>
                                 </div>
                             )}
-                            {enableReports && currentUserId !== user.id && currentUserId !== 0 && (
+                            {enableReports && canReportUser && currentUserId !== user.id && currentUserId !== 0 && (
                                 <button
                                     onClick={() => setIsReportModalOpen(true)}
                                     className="ml-4 px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1"

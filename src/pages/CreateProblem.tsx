@@ -9,12 +9,14 @@ import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
 import Navbar from '../components/Navbar';
 import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
+import { useCapability } from '../hooks/useCapability';
 import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
 import MentionWrapper from '../components/MentionWrapper';
 
 const CreateProblem = () => {
     const navigate = useNavigate();
     const { userId } = useAuth();
+    const canCreateProblem = useCapability('user.problem_create');
     const terminology = useTerminology();
     const allowImageUpload = useFeature<boolean>('Content.AllowImageUpload', true);
     const maxTitleLength = useFeature<number>('Content.MaxTitleLength', 200);
@@ -71,6 +73,13 @@ const CreateProblem = () => {
             return;
         }
 
+        // Capability kontrolü — userId truthy (kullanıcı girmiş) ama capability yoksa
+        if (userId && !canCreateProblem) {
+            alert("Sorun paylaşma yetkiniz bulunmamaktadır.");
+            navigate('/');
+            return;
+        }
+
         const loadData = async () => {
             try {
                 const [cityRes, topicRes] = await Promise.all([
@@ -86,7 +95,7 @@ const CreateProblem = () => {
             }
         };
         loadData();
-    }, [userId, navigate]);
+    }, [userId, navigate, canCreateProblem]);
 
     // Koordinat seçildiyse şehri otomatik belirle ve kilitle
     useEffect(() => {

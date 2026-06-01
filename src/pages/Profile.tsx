@@ -10,6 +10,7 @@ import { constantService } from '../services/constantService';
 import SearchableSelect from '../components/SearchableSelect';
 import { topicService } from '../services/topicService';
 import { useAuth } from '../context/AuthContext';
+import { useCapability } from '../hooks/useCapability';
 import { getProfileImageUrl } from '../utils/imageUtils';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
@@ -19,6 +20,15 @@ import { actionService } from '../services/actionService';
 const Profile = () => {
     const { userId } = useAuth();
     const navigate = useNavigate();
+
+    // Capability guards
+    const canUpdateProfile      = useCapability('user.profile_update');
+    const canChangeAvatar       = useCapability('user.profile_avatar_change');
+    const canChangePassword     = useCapability('user.profile_password_change');
+    const canUpdateOwnProblem   = useCapability('user.problem_update_own');
+    const canDeleteOwnProblem   = useCapability('user.problem_delete_own');
+    const canUpdateOwnSolution  = useCapability('user.solution_update_own');
+    const canDeleteOwnSolution  = useCapability('user.solution_delete_own');
     const enableMapLocation = useFeature<boolean>('Content.EnableMapLocation', true);
     const [user, setUser] = useState<UserDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
@@ -416,19 +426,21 @@ const Profile = () => {
                                 )}
 
                                 {/* Overlay: Üzerine gelince "Değiştir" yazısı çıksın */}
-                                <label htmlFor="profile-upload" className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity duration-200">
-                                    <span className="text-white text-xs font-bold text-center px-2">
-                                        {uploading ? 'Yükleniyor...' : 'RESMİ DEĞİŞTİR'}
-                                    </span>
-                                    <input
-                                        id="profile-upload"
-                                        type="file"
-                                        className="hidden"
-                                        onChange={handleImageUpload}
-                                        accept="image/*"
-                                        disabled={uploading}
-                                    />
-                                </label>
+                                {canChangeAvatar && (
+                                    <label htmlFor="profile-upload" className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity duration-200">
+                                        <span className="text-white text-xs font-bold text-center px-2">
+                                            {uploading ? 'Yükleniyor...' : 'RESMİ DEĞİŞTİR'}
+                                        </span>
+                                        <input
+                                            id="profile-upload"
+                                            type="file"
+                                            className="hidden"
+                                            onChange={handleImageUpload}
+                                            accept="image/*"
+                                            disabled={uploading}
+                                        />
+                                    </label>
+                                )}
                             </div>
                         </div>
 
@@ -511,14 +523,14 @@ const Profile = () => {
                     <div className="flex border-b overflow-x-auto scrollbar-hide">
                         <button
                             onClick={() => setActiveTab('problems')}
-                            className={`flex-1 min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'problems' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
+                            className={`flex-1 min-w-[80px] sm:min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'problems' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
                                 }`}
                         >
                             Sorunlarım ({myProblems.length})
                         </button>
                         <button
                             onClick={() => setActiveTab('solutions')}
-                            className={`flex-1 min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'solutions' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
+                            className={`flex-1 min-w-[80px] sm:min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'solutions' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
                                 }`}
                         >
                             Çözümlerim ({mySolutions.length})
@@ -526,7 +538,7 @@ const Profile = () => {
                         {enableSavedSolutions && (
                             <button
                                 onClick={() => setActiveTab('saved')}
-                                className={`flex-1 min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'saved' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
+                                className={`flex-1 min-w-[80px] sm:min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase transition-colors ${activeTab === 'saved' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
                                     }`}
                             >
                                 Kaydedilenler ({savedSolutions.length})
@@ -534,7 +546,7 @@ const Profile = () => {
                         )}
                         <button
                             onClick={() => setActiveTab('settings')}
-                            className={`flex-1 min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase px-4 transition-colors ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
+                            className={`flex-1 min-w-[80px] sm:min-w-[120px] py-4 text-sm font-bold tracking-wider uppercase px-4 transition-colors ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:bg-gray-50'
                                 }`}
                         >
                             Ayarlar
@@ -754,32 +766,36 @@ const Profile = () => {
                                                     <div className="flex justify-between items-center border-t border-gray-100 pt-4">
                                                         <Link to={`/problem/${prob.id}`} className="text-blue-600 text-sm font-bold hover:text-blue-800 transition flex items-center gap-1">İncele <span className="text-lg leading-none">›</span></Link>
                                                         <div className="flex gap-2">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setEditingProblemId(prob.id);
-                                                                    setEditProblemData({ title: prob.title, description: prob.description });
-                                                                    setEditSelectedTopics(prob.topics ? prob.topics.map((t: any) => t.id) : []);
+                                                            {canUpdateOwnProblem && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingProblemId(prob.id);
+                                                                        setEditProblemData({ title: prob.title, description: prob.description });
+                                                                        setEditSelectedTopics(prob.topics ? prob.topics.map((t: any) => t.id) : []);
 
-                                                                    setEditAddress(prob.address || '');
-                                                                    setEditLatitude(prob.latitude ?? null);
-                                                                    setEditLongitude(prob.longitude ?? null);
-                                                                    setEditCityCode(prob.cityCode);
-                                                                    setEditCustomHierarchyId(prob.customHierarchyId ?? null);
-                                                                    setEditAutoCityName(null);
-                                                                    setEditClearLocation(false);
-                                                                    setEditImage(null);
-                                                                    setEditLocationError('');
-                                                                }}
-                                                                className="px-4 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-xs font-bold hover:bg-yellow-100 transition shadow-sm active:scale-95"
-                                                            >
-                                                                Düzenle
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDeleteProblem(prob)}
-                                                                className="px-4 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 transition shadow-sm active:scale-95"
-                                                            >
-                                                                Sil
-                                                            </button>
+                                                                        setEditAddress(prob.address || '');
+                                                                        setEditLatitude(prob.latitude ?? null);
+                                                                        setEditLongitude(prob.longitude ?? null);
+                                                                        setEditCityCode(prob.cityCode);
+                                                                        setEditCustomHierarchyId(prob.customHierarchyId ?? null);
+                                                                        setEditAutoCityName(null);
+                                                                        setEditClearLocation(false);
+                                                                        setEditImage(null);
+                                                                        setEditLocationError('');
+                                                                    }}
+                                                                    className="px-4 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-xs font-bold hover:bg-yellow-100 transition shadow-sm active:scale-95"
+                                                                >
+                                                                    Düzenle
+                                                                </button>
+                                                            )}
+                                                            {canDeleteOwnProblem && (
+                                                                <button
+                                                                    onClick={() => handleDeleteProblem(prob)}
+                                                                    className="px-4 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 transition shadow-sm active:scale-95"
+                                                                >
+                                                                    Sil
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -830,8 +846,12 @@ const Profile = () => {
                                                     <div className="flex justify-between items-center border-t border-gray-100 pt-4">
                                                         <Link to={`/problem/${sol.problemId}?solution=${sol.id}`} className="text-blue-600 text-sm font-bold hover:text-blue-800 transition flex items-center gap-1">Soruna Git <span className="text-lg leading-none">›</span></Link>
                                                         <div className="flex gap-2">
-                                                            <button onClick={() => { setEditingSolutionId(sol.id); setEditSolutionData({ title: sol.title, description: sol.description }); }} className="px-4 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-xs font-bold hover:bg-yellow-100 transition shadow-sm active:scale-95">Düzenle</button>
-                                                            <button onClick={() => handleDeleteSolution(sol)} className="px-4 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 transition shadow-sm active:scale-95">Sil</button>
+                                                            {canUpdateOwnSolution && (
+                                                                <button onClick={() => { setEditingSolutionId(sol.id); setEditSolutionData({ title: sol.title, description: sol.description }); }} className="px-4 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-xs font-bold hover:bg-yellow-100 transition shadow-sm active:scale-95">Düzenle</button>
+                                                            )}
+                                                            {canDeleteOwnSolution && (
+                                                                <button onClick={() => handleDeleteSolution(sol)} className="px-4 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 transition shadow-sm active:scale-95">Sil</button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -979,7 +999,7 @@ const Profile = () => {
                                             </div>
                                         )}
 
-                                        <button type="submit" disabled={isUpdating} className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-500/30 mt-6 disabled:bg-blue-400 active:scale-95 flex justify-center items-center gap-2">
+                                        <button type="submit" disabled={isUpdating || !canUpdateProfile} className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-500/30 mt-6 disabled:bg-blue-400 active:scale-95 flex justify-center items-center gap-2">
                                             {isUpdating ? (
                                                 <><svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Kaydediliyor...</>
                                             ) : 'Bilgileri Kaydet'}
@@ -1053,7 +1073,7 @@ const Profile = () => {
                                                 </div>
                                             )}
 
-                                            <button type="submit" disabled={isUpdating} className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl hover:bg-black transition shadow-md mt-4 disabled:bg-gray-400 active:scale-95">
+                                            <button type="submit" disabled={isUpdating || !canUpdateProfile} className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl hover:bg-black transition shadow-md mt-4 disabled:bg-gray-400 active:scale-95">
                                                 {isUpdating ? 'Kaydediliyor...' : 'Tercihleri Güncelle'}
                                             </button>
                                         </form>
@@ -1075,7 +1095,7 @@ const Profile = () => {
                                                 </div>
                                             )}
 
-                                            <button type="submit" disabled={isPassUpdating} className="w-full bg-gray-900 text-white font-bold py-3.5 rounded-xl hover:bg-black transition shadow-md mt-6 disabled:bg-gray-500 active:scale-95 flex justify-center items-center gap-2">
+                                            <button type="submit" disabled={isPassUpdating || !canChangePassword} className="w-full bg-gray-900 text-white font-bold py-3.5 rounded-xl hover:bg-black transition shadow-md mt-6 disabled:bg-gray-500 active:scale-95 flex justify-center items-center gap-2">
                                                 {isPassUpdating ? (
                                                     <><svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Güncelleniyor...</>
                                                 ) : (user?.authType === 'Google' && !user?.hasPassword ? 'Şifre Belirle' : 'Şifreyi Güncelle')}

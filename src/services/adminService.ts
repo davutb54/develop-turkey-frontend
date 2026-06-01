@@ -106,4 +106,5 @@ export const adminService = {
     activateAgreement: (id: number) => api.put(`/admin/agreements/activate/${id}`),
     deleteAgreement: (id: number) => api.delete(`/admin/agreements/${id}`),
     getAgreementStats: (id: number) => api.get(`/admin/agreements/${id}/stats`),
+    getKillSwitchState: () => api.get('/killswitch'),
 };

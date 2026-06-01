@@ -11,9 +11,29 @@ import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import CompleteProfile from './pages/CompleteProfile';
-import AdminDashboard from './pages/AdminDashboard';
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminOverview from './pages/admin/tabs/AdminOverview';
+import CommandCenter from './pages/admin/tabs/CommandCenter';
+import UsersTab from './pages/admin/tabs/UsersTab';
+import TopicsTab from './pages/admin/tabs/TopicsTab';
+import InstitutionsTab from './pages/admin/tabs/InstitutionsTab';
+import ProblemsTab from './pages/admin/tabs/ProblemsTab';
+import SolutionsTab from './pages/admin/tabs/SolutionsTab';
+import ExpertApprovalsTab from './pages/admin/tabs/ExpertApprovalsTab';
+import ReportsTab from './pages/admin/tabs/ReportsTab';
+import FeedbacksTab from './pages/admin/tabs/FeedbacksTab';
+import SystemLogsTab from './pages/admin/tabs/SystemLogsTab';
+import ActivityLogsTab from './pages/admin/tabs/ActivityLogsTab';
+import SettingsTab from './pages/admin/tabs/SettingsTab';
+import AgreementsTab from './pages/admin/tabs/AgreementsTab';
+import CorporateTab from './pages/admin/tabs/CorporateTab';
+import EmailTemplatesTab from './pages/admin/tabs/EmailTemplatesTab';
 import FeatureManager from './pages/admin/FeatureManager';
 import WorkflowBuilder from './pages/admin/WorkflowBuilder';
+import CapabilityManagementTab from './pages/admin/tabs/CapabilityManagementTab';
+import CapabilityTemplatesTab from './pages/admin/tabs/CapabilityTemplatesTab';
+import CapabilityAuditTab from './pages/admin/tabs/CapabilityAuditTab';
+import AnnouncementsTab from './pages/admin/tabs/AnnouncementsTab';
 import DashboardLayout from './pages/admin/dashboard/DashboardLayout';
 import Overview from './pages/admin/dashboard/Overview';
 import CapabilityMetrics from './pages/admin/dashboard/CapabilityMetrics';
@@ -21,6 +41,7 @@ import WorkflowMetricsPage from './pages/admin/dashboard/WorkflowMetrics';
 import UserMetricsPage from './pages/admin/dashboard/UserMetrics';
 import SystemHealthPage from './pages/admin/dashboard/SystemHealth';
 import AuditLogBrowser from './pages/admin/dashboard/AuditLogBrowser';
+import WorkflowDeadLetterTab from './pages/admin/tabs/WorkflowDeadLetterTab';
 import Maintenance from './pages/Maintenance';
 import NotFound from './pages/NotFound';
 import NotificationsPage from './pages/NotificationsPage';
@@ -34,7 +55,7 @@ import { useFeature } from './hooks/useFeature';
 import type { LegalAgreement } from './types';
 
 function App() {
-  const { userId, isAdmin, isMaintenance, isProfileIncomplete, hasPendingAgreement, checkAuth } = useAuth();
+  const { userId, hasCapability, isMaintenance, isProfileIncomplete, hasPendingAgreement, checkAuth } = useAuth();
   const location = useLocation();
   const [pendingAgreements, setPendingAgreements] = useState<LegalAgreement[]>([]);
 
@@ -86,7 +107,7 @@ function App() {
   const showFooter = !isAuthPage && !isMaintenancePage && !isAdminPage;
 
   // BAKIM MODU KONTROLÜ
-  if (isMaintenance && !isAdmin && !isPublicPage) {
+  if (isMaintenance && !hasCapability('admin.system_access') && !isPublicPage) {
     return <Navigate to="/maintenance" replace />;
   }
 
@@ -127,16 +148,40 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/complete-profile" element={userId ? <CompleteProfile /> : <Navigate to="/login" replace />} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/features" element={<FeatureManager />} />
-        <Route path="/admin/workflow" element={<WorkflowBuilder />} />
-        <Route path="/admin/dashboard" element={<DashboardLayout />}>
-          <Route index element={<Overview />} />
-          <Route path="capabilities" element={<CapabilityMetrics />} />
-          <Route path="workflow" element={<WorkflowMetricsPage />} />
-          <Route path="users" element={<UserMetricsPage />} />
-          <Route path="system" element={<SystemHealthPage />} />
-          <Route path="audit-log" element={<AuditLogBrowser />} />
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<Navigate to="overview" replace />} />
+          <Route path="overview" element={<AdminOverview />} />
+          <Route path="command-center" element={<CommandCenter />} />
+          <Route path="users" element={<UsersTab />} />
+          <Route path="topics" element={<TopicsTab />} />
+          <Route path="institutions" element={<InstitutionsTab />} />
+          <Route path="problems" element={<ProblemsTab />} />
+          <Route path="solutions" element={<SolutionsTab />} />
+          <Route path="expert-approvals" element={<ExpertApprovalsTab />} />
+          <Route path="reports" element={<ReportsTab />} />
+          <Route path="feedbacks" element={<FeedbacksTab />} />
+          <Route path="logs" element={<SystemLogsTab />} />
+          <Route path="activity-logs" element={<ActivityLogsTab />} />
+          <Route path="settings" element={<SettingsTab />} />
+          <Route path="agreements" element={<AgreementsTab />} />
+          <Route path="corporate" element={<CorporateTab />} />
+          <Route path="email-templates" element={<EmailTemplatesTab />} />
+          <Route path="workflow" element={<WorkflowBuilder />} />
+          <Route path="features" element={<FeatureManager />} />
+          <Route path="capabilities" element={<CapabilityManagementTab />} />
+          <Route path="capability-templates" element={<CapabilityTemplatesTab />} />
+          <Route path="capability-audit" element={<CapabilityAuditTab />} />
+          <Route path="announcements" element={<AnnouncementsTab />} />
+          <Route path="metrics" element={<DashboardLayout />}>
+            <Route index element={<Navigate to="overview" replace />} />
+            <Route path="overview" element={<Overview />} />
+            <Route path="capabilities" element={<CapabilityMetrics />} />
+            <Route path="workflow" element={<WorkflowMetricsPage />} />
+            <Route path="users" element={<UserMetricsPage />} />
+            <Route path="system" element={<SystemHealthPage />} />
+            <Route path="audit-log" element={<AuditLogBrowser />} />
+            <Route path="dead-letters" element={<WorkflowDeadLetterTab />} />
+          </Route>
         </Route>
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/maintenance" element={<Maintenance />} />

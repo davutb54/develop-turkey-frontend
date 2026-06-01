@@ -1,6 +1,7 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import { useWorkflowStore } from './useWorkflowStore';
+import { useAuth } from '../../context/AuthContext';
 
 export type ActionNodeData = {
   action?: string;
@@ -12,14 +13,28 @@ export type ActionNodeData = {
 function ActionNode({ id, data, selected }: NodeProps) {
   const nodeData = data as ActionNodeData;
   const actions = useWorkflowStore((s) => s.actions);
+  const availableCapabilities = useWorkflowStore((s) => s.availableCapabilities);
+  const availableTemplates = useWorkflowStore((s) => s.availableTemplates);
+  const { hasCapability } = useAuth();
   const { setNodes } = useReactFlow();
 
   const accent = nodeData.accentColor ?? '#7c3aed';
 
-  const actionDef = actions.find((a) => a.value === (nodeData.action ?? ''));
+  // Kullanıcının çalıştırma yetkisi olduğu action'lar.
+  // Mevcut seçili action yetkisizleşmiş olsa bile listede tutulur ki kullanıcı
+  // bunu görüp değiştirebilsin (sessiz veri kaybı önlenir).
+  const allowedActions = useMemo(() => {
+    return actions.filter(
+      (a) => hasCapability(`workflow.action.${a.value}`) || a.value === nodeData.action,
+    );
+  }, [actions, hasCapability, nodeData.action]);
+
+  const actionDef = allowedActions.find((a) => a.value === (nodeData.action ?? ''));
+  const selectedActionDenied =
+    !!nodeData.action && !hasCapability(`workflow.action.${nodeData.action}`);
 
   // Kategoriye göre grupla
-  const grouped = actions.reduce<Record<string, typeof actions>>((acc, a) => {
+  const grouped = allowedActions.reduce<Record<string, typeof allowedActions>>((acc, a) => {
     if (!acc[a.category]) acc[a.category] = [];
     acc[a.category].push(a);
     return acc;
@@ -98,11 +113,24 @@ function ActionNode({ id, data, selected }: NodeProps) {
             {items.map((a) => (
               <option key={a.value} value={a.value} style={{ color: '#000' }}>
                 {a.icon} {a.label}
+                {a.value === nodeData.action && selectedActionDenied ? ' ⚠ yetkisiz' : ''}
               </option>
             ))}
           </optgroup>
         ))}
       </select>
+
+      {/* Boş durum / yetkisiz seçim bilgilendirmesi */}
+      {allowedActions.length === 0 && (
+        <div style={{ marginTop: 8, fontSize: 10, color: '#fecaca', lineHeight: 1.4 }}>
+          ⚠ Bu kullanıcıda hiçbir <code>workflow.action.*</code> yetkisi yok.
+        </div>
+      )}
+      {selectedActionDenied && allowedActions.length > 0 && (
+        <div style={{ marginTop: 8, fontSize: 10, color: '#fecaca', lineHeight: 1.4 }}>
+          ⚠ Seçili aksiyon için <code>workflow.action.{nodeData.action}</code> yetkisi yok.
+        </div>
+      )}
 
       {/* Seçili aksiyonun parametreleri */}
       {actionDef && actionDef.parameters.length > 0 && (
@@ -115,7 +143,62 @@ function ActionNode({ id, data, selected }: NodeProps) {
               <label style={lbl}>
                 {p.label}{p.required && <span style={{ color: '#fca5a5' }}> *</span>}
               </label>
-              {p.type === 'select' && p.options ? (
+              {p.type === 'capability-select' ? (
+                <select
+                  value={nodeData.params?.[p.key] ?? p.defaultValue ?? ''}
+                  style={sel}
+                  className="nodrag"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNodes((nds) =>
+                      nds.map((n) => (
+                        n.id === id
+                          ? { ...n, data: { ...n.data, params: { ...(n.data as ActionNodeData).params, [p.key]: value } } }
+                          : n
+                      ))
+                    );
+                  }}
+                >
+                  <option value="" disabled style={{ color: '#000' }}>Yetki Seç...</option>
+                  {Object.entries(
+                    availableCapabilities.reduce<Record<string, typeof availableCapabilities>>((acc, c) => {
+                      const cat = c.category ?? 'Diğer';
+                      if (!acc[cat]) acc[cat] = [];
+                      acc[cat].push(c);
+                      return acc;
+                    }, {})
+                  ).map(([cat, caps]) => (
+                    <optgroup key={cat} label={cat} style={{ color: '#000' }}>
+                      {caps.map((c) => (
+                        <option key={c.code} value={c.code} style={{ color: '#000' }}>{c.code}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              ) : p.type === 'template-select' ? (
+                <select
+                  value={nodeData.params?.[p.key] ?? p.defaultValue ?? ''}
+                  style={sel}
+                  className="nodrag"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNodes((nds) =>
+                      nds.map((n) => (
+                        n.id === id
+                          ? { ...n, data: { ...n.data, params: { ...(n.data as ActionNodeData).params, [p.key]: value } } }
+                          : n
+                      ))
+                    );
+                  }}
+                >
+                  <option value="" disabled style={{ color: '#000' }}>Şablon Seç...</option>
+                  {availableTemplates.map((t) => (
+                    <option key={t.id} value={String(t.id)} style={{ color: '#000' }}>
+                      {t.name} (v{t.latestVersion?.version ?? '?'})
+                    </option>
+                  ))}
+                </select>
+              ) : p.type === 'select' && p.options ? (
                 <select
                   value={nodeData.params?.[p.key] ?? p.defaultValue ?? p.options[0] ?? ''}
                   style={sel}

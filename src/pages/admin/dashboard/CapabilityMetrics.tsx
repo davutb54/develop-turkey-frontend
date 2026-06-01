@@ -4,6 +4,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { metricsService, type CapabilityMetrics } from '../../../services/metricsService';
+import { fmtTime } from '../../../utils/dateFormat';
 
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6b7280'];
 
@@ -30,7 +31,7 @@ export default function CapabilityMetricsPage() {
                     { label: 'Toplam Entry', value: data.snapshotEntryCount.toLocaleString() },
                     { label: 'Benzersiz Kullanıcı', value: data.uniqueUsers.toLocaleString() },
                     { label: 'Ort. Yetki/Kullanıcı', value: data.avgCapsPerUser },
-                    { label: 'Snapshot', value: new Date(data.snapshotLoadedAt).toLocaleTimeString('tr') },
+                    { label: 'Snapshot', value: fmtTime(data.snapshotLoadedAt) },
                 ].map(c => (
                     <div key={c.label} className="bg-white border border-gray-200 rounded-2xl p-4">
                         <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{c.label}</div>
@@ -87,6 +88,7 @@ export default function CapabilityMetricsPage() {
             {/* Top Users */}
             <div className="bg-white border border-gray-100 rounded-2xl p-6">
                 <h2 className="text-lg font-black text-gray-800 mb-4">En Çok Yetkiye Sahip Kullanıcılar</h2>
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead><tr className="text-left text-gray-500 border-b">
                         <th className="pb-2">#</th>
@@ -103,6 +105,7 @@ export default function CapabilityMetricsPage() {
                         ))}
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
     );

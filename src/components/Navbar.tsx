@@ -12,7 +12,7 @@ import NotificationBell from './NotificationBell';
 import { getProfileImageUrl } from '../utils/imageUtils';
 
 const Navbar = () => {
-  const { userId, isAdmin } = useAuth();
+  const { userId, hasCapability } = useAuth();
   const terminology = useTerminology();
   const enableFeedbackInbox = useFeature<boolean>('Communication.EnableFeedbackInbox', true);
   const [user, setUser] = useState<UserDetailDto | null>(null);
@@ -170,7 +170,7 @@ const Navbar = () => {
                       <>
                         {/* --- MASAÜSTÜ MENÜ (Sadece lg ekranlarda görünür) --- */}
                         <div className="hidden lg:flex items-center gap-4">
-                          {enableFeedbackInbox && (
+                          {enableFeedbackInbox && hasCapability('user.feedback_send') && (
                             <button
                               onClick={() => setIsFeedbackOpen(true)}
                               className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition shadow-sm active:scale-95 ${isCustomTheme ? 'bg-white/10 text-white hover:bg-white/20 border border-white/20' : 'text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200'}`}
@@ -180,15 +180,17 @@ const Navbar = () => {
                             </button>
                           )}
 
-                          <Link to="/add-problem" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-white/20 text-white hover:bg-white/30 border border-white/20' : 'text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200'}`}>
-                            + {(terminology.problemLabel || 'Sorun')} Paylaş
-                          </Link>
+                          {hasCapability('user.problem_create') && (
+                            <Link to="/add-problem" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-white/20 text-white hover:bg-white/30 border border-white/20' : 'text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200'}`}>
+                              + {(terminology.problemLabel || 'Sorun')} Paylaş
+                            </Link>
+                          )}
 
                           <Link to="/about" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-white/10 text-white hover:bg-white/20 border border-white/20' : 'text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200'}`}>
                             Hakkımızda
                           </Link>
 
-                          {isAdmin && (
+                          {hasCapability('admin.system_access') && (
                             <Link to="/admin" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-red-500/80 text-white hover:bg-red-500 border border-red-400/50' : 'text-red-600 bg-red-50 hover:bg-red-100 border border-red-200'}`}>
                               Admin Paneli
                             </Link>
@@ -321,15 +323,17 @@ const Navbar = () => {
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                 Profilim
               </Link>
-              <Link to="/add-problem" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-3">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                {(terminology.problemLabel || 'Sorun')} Paylaş
-              </Link>
+              {hasCapability('user.problem_create') && (
+                <Link to="/add-problem" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-3">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  {(terminology.problemLabel || 'Sorun')} Paylaş
+                </Link>
+              )}
               <Link to="/about" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-3">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 Hakkımızda
               </Link>
-              {enableFeedbackInbox && (
+              {enableFeedbackInbox && hasCapability('user.feedback_send') && (
                 <button
                   onClick={() => { setIsFeedbackOpen(true); setIsMobileMenuOpen(false); }}
                   className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-amber-600 flex items-center gap-3"
@@ -342,7 +346,7 @@ const Navbar = () => {
               {/* Bildirimler (mobil) */}
               <NotificationBell mobile onClose={() => setIsMobileMenuOpen(false)} />
 
-              {isAdmin && (
+              {hasCapability('admin.system_access') && (
                 <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-red-600 flex items-center gap-3">
                   <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                   Admin Paneli

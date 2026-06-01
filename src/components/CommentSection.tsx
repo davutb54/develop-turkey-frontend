@@ -3,6 +3,7 @@ import { commentService } from '../services/commentService';
 import type { CommentDetailDto } from '../types';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCapability } from '../hooks/useCapability';
 import { useFeature } from '../hooks/useFeature';
 import MentionWrapper from './MentionWrapper';
 import MentionText from './MentionText';
@@ -27,6 +28,11 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
 
     const { userId } = useAuth();
     const currentUserId = userId || 0;
+
+    // Capability guards
+    const canCreateComment      = useCapability('user.comment_create');
+    const canUpdateOwnComment   = useCapability('user.comment_update_own');
+    const canDeleteOwnComment   = useCapability('user.comment_delete_own');
 
     // Düzenleme (Edit) state'leri
     const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
@@ -181,10 +187,10 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
                                             </div>
 
                                             {/* KULLANICI KENDİ ANA YORUMUYSA İŞLEM BUTONLARI */}
-                                            {comment.senderId === currentUserId && editingCommentId !== comment.id && (
+                                            {comment.senderId === currentUserId && editingCommentId !== comment.id && (canUpdateOwnComment || canDeleteOwnComment) && (
                                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity">
-                                                    <button onClick={() => startEditing(comment.id, comment.text)} className="text-[10px] font-bold uppercase tracking-wider text-indigo-500 hover:text-indigo-700 transition">Düzenle</button>
-                                                    <button onClick={() => handleDeleteComment(comment.id)} className="text-[10px] font-bold uppercase tracking-wider text-rose-500 hover:text-rose-700 transition">Sil</button>
+                                                    {canUpdateOwnComment && <button onClick={() => startEditing(comment.id, comment.text)} className="text-[10px] font-bold uppercase tracking-wider text-indigo-500 hover:text-indigo-700 transition">Düzenle</button>}
+                                                    {canDeleteOwnComment && <button onClick={() => handleDeleteComment(comment.id)} className="text-[10px] font-bold uppercase tracking-wider text-rose-500 hover:text-rose-700 transition">Sil</button>}
                                                 </div>
                                             )}
                                         </div>
@@ -224,12 +230,14 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
                                                 />
 
                                                 {/* YANITLA BUTONU (Ana yorumlar için) */}
-                                                <button
-                                                    onClick={() => { setReplyingTo(replyingTo === comment.id ? null : comment.id); setEditingCommentId(null); }}
-                                                    className="text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-indigo-600 transition ml-9"
-                                                >
-                                                    {replyingTo === comment.id ? 'İptal' : 'Yanıtla'}
-                                                </button>
+                                                {canCreateComment && (
+                                                    <button
+                                                        onClick={() => { setReplyingTo(replyingTo === comment.id ? null : comment.id); setEditingCommentId(null); }}
+                                                        className="text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-indigo-600 transition ml-9"
+                                                    >
+                                                        {replyingTo === comment.id ? 'İptal' : 'Yanıtla'}
+                                                    </button>
+                                                )}
                                             </div>
                                         )}
 
@@ -281,10 +289,10 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
                                                         </div>
 
                                                         {/* KULLANICI KENDİ ALT YORUMUYSA İŞLEM BUTONLARI */}
-                                                        {sub.senderId === currentUserId && editingCommentId !== sub.id && (
+                                                        {sub.senderId === currentUserId && editingCommentId !== sub.id && (canUpdateOwnComment || canDeleteOwnComment) && (
                                                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity">
-                                                                <button onClick={() => startEditing(sub.id, sub.text)} className="text-[9px] font-bold uppercase tracking-wider text-indigo-500 hover:text-indigo-700 transition">Düzenle</button>
-                                                                <button onClick={() => handleDeleteComment(sub.id)} className="text-[9px] font-bold uppercase tracking-wider text-rose-500 hover:text-rose-700 transition">Sil</button>
+                                                                {canUpdateOwnComment && <button onClick={() => startEditing(sub.id, sub.text)} className="text-[9px] font-bold uppercase tracking-wider text-indigo-500 hover:text-indigo-700 transition">Düzenle</button>}
+                                                                {canDeleteOwnComment && <button onClick={() => handleDeleteComment(sub.id)} className="text-[9px] font-bold uppercase tracking-wider text-rose-500 hover:text-rose-700 transition">Sil</button>}
                                                             </div>
                                                         )}
                                                     </div>
@@ -332,7 +340,11 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
                         </div>
                     )}
 
-                    {/* ANA YORUM YAZMA FORMU */}
+                    {/* ANA YORUM YAZMA FORMU — sadece yetki varsa */}
+                    {!canCreateComment && currentUserId !== 0 && (
+                        <p className="text-xs text-slate-400 font-medium text-center py-2">Yorum yapma yetkiniz bulunmamaktadır.</p>
+                    )}
+                    {(canCreateComment || currentUserId === 0) && (
                     <form onSubmit={(e) => handleSendComment(e, null)} className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
                         <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 ml-1">
                             {/* Giriş yapmamışsa varsayılan ikon, yapmışsa baş harfi */}
@@ -361,6 +373,7 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
                             Gönder
                         </button>
                     </form>
+                    )}
                 </div>
             )}
         </div>

@@ -9,11 +9,23 @@ import { constantService } from '../services/constantService';
 import type { ProblemDetailDto, Topic, City } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
+import { useCapability } from '../hooks/useCapability';
 import { getProfileImageUrl } from '../utils/imageUtils';
 import { actionService } from '../services/actionService';
-import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature'; // Assuming useFeature hook exports these or I should import from context
+import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
 import MentionText from '../components/MentionText';
 import SocialShare from '../components/SocialShare';
+import api from '../services/api';
+import type { IDataResult } from '../types';
+
+interface AnnouncementDto {
+    id: number;
+    title: string;
+    content: string;
+    targetGroup: string;
+    link?: string;
+    expiresAt?: string;
+}
 
 const Home = () => {
     const infiniteScrollEnabled = useFeature<boolean>('UX.InfiniteScrollEnabled', true);
@@ -23,6 +35,10 @@ const Home = () => {
     const { cityLabel } = useTerminology();
     const institution = useInstitution();
     const enableSharing = useFeature<boolean>('Social.EnableSharing', true);
+
+    // --- DUYURULAR ---
+    const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
+    const [dismissedAnnouncements, setDismissedAnnouncements] = useState<Set<number>>(new Set());
 
     // --- VERİ STATE'LERİ (SAYFALAMA İÇİN) ---
     const [feedProblems, setFeedProblems] = useState<ProblemDetailDto[]>([]);
@@ -52,10 +68,18 @@ const Home = () => {
     const { userId } = useAuth();
     const currentUserId = userId || 0;
 
+    // Capability guards
+    const canFollowTopic        = useCapability('user.topic_follow');
+    const canDeleteOwnProblem   = useCapability('user.problem_delete_own');
+    const canReportContent      = useCapability('user.content_report');
+
 
     // SAYFA İLK YÜKLENDİĞİNDE SABİT VERİLERİ (VİTRİN, KATEGORİ) ÇEK
     useEffect(() => {
         loadInitialData();
+        api.get<IDataResult<AnnouncementDto[]>>('/announcements')
+            .then(r => { if (r.data?.success) setAnnouncements(r.data.data ?? []); })
+            .catch(() => {});
     }, []);
 
     // KATEGORİ VEYA ŞEHİR DEĞİŞTİĞİNDE SAYFAYI 1'E ÇEKİP LİSTEYİ YENİLE
@@ -222,6 +246,32 @@ const Home = () => {
 
             <Navbar />
 
+            {/* DUYURU BANNER'LARI */}
+            {announcements
+                .filter(a => !dismissedAnnouncements.has(a.id))
+                .map(a => (
+                    <div key={a.id} className="bg-indigo-600 text-white px-4 py-3 flex items-start gap-3">
+                        <span className="text-lg flex-shrink-0">📢</span>
+                        <div className="flex-1 min-w-0">
+                            <span className="font-semibold mr-2">{a.title}</span>
+                            <span className="text-indigo-100 text-sm">{a.content}</span>
+                            {a.link && (
+                                <a href={a.link} className="ml-2 underline text-indigo-200 text-sm" target="_blank" rel="noreferrer">
+                                    Detay →
+                                </a>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setDismissedAnnouncements(prev => new Set([...prev, a.id]))}
+                            className="flex-shrink-0 text-indigo-200 hover:text-white text-lg leading-none"
+                            aria-label="Kapat"
+                        >
+                            ×
+                        </button>
+                    </div>
+                ))
+            }
+
             {/* ÜST VİTRİN (SLIDER) */}
             <div className="bg-[#0B1120] py-8 border-b border-indigo-900/50 overflow-hidden relative shadow-2xl">
                 <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/15 rounded-full blur-3xl pointer-events-none"></div>
@@ -258,7 +308,7 @@ const Home = () => {
                                     to={item._type === 'Problem' ? `/problem/${item.id}` : `/problem/${item.problemId}?solution=${item.id}`}
                                     key={`slide-${item.id}-${idx}`}
                                     onClick={() => item._type === 'Problem' && handleProblemClick(item.id)}
-                                    className="w-[300px] shrink-0 bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 hover:border-blue-400/30 rounded-3xl p-5 transition-all duration-300 group flex flex-col h-[170px] shadow-xl hover:shadow-blue-900/20"
+                                    className="w-[260px] sm:w-[300px] shrink-0 bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 hover:border-blue-400/30 rounded-3xl p-5 transition-all duration-300 group flex flex-col h-[160px] sm:h-[170px] shadow-xl hover:shadow-blue-900/20"
                                 >
                                     <div className="flex justify-between items-start mb-3">
                                         <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg tracking-wider ${item._type === 'Problem' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/20' : 'bg-green-500/20 text-green-400 border border-green-500/20'}`}>
@@ -305,7 +355,7 @@ const Home = () => {
                             >
                                 {t.name}
                             </button>
-                            {enableFollowSystem && (
+                            {enableFollowSystem && canFollowTopic && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleToggleTopicFollow(t.id); }}
                                     className={`pr-4 pl-2 py-2.5 text-sm outline-none hover:scale-110 transition-transform ${activeCategory === t.id ? 'text-white' : ''}`}
@@ -319,14 +369,14 @@ const Home = () => {
                 </div>
 
                 {/* DETAYLI FİLTRE & BAŞLIK */}
-                <div className="flex justify-between items-center mb-6">
-                    <h1 className="text-3xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-                        <span className="bg-blue-100 text-blue-600 p-2 rounded-xl"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg></span>
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
+                    <h1 className="text-xl sm:text-3xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                        <span className="bg-blue-100 text-blue-600 p-2 rounded-xl"><svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg></span>
                         Güncel Akış
                     </h1>
                     <button
                         onClick={() => setIsFilterOpen(!isFilterOpen)}
-                        className={`flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-sm ${isFilterOpen ? 'bg-indigo-900 text-white shadow-indigo-900/20' : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100'}`}
+                        className={`flex items-center gap-2 text-sm font-bold px-4 sm:px-5 py-2.5 rounded-xl transition-all shadow-sm ${isFilterOpen ? 'bg-indigo-900 text-white shadow-indigo-900/20' : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100'}`}
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
                         {isFilterOpen ? 'Filtreleri Kapat' : 'Detaylı Ara'}
@@ -433,7 +483,7 @@ const Home = () => {
                                         </div>
 
                                         {/* ÜÇ NOKTA MENÜSÜ - İşlem yetkisi varsa VEYA paylaşım aktifse göster */}
-                                        {((enableReports && currentUserId !== prob.senderId && currentUserId !== 0) || (prob.senderId === currentUserId) || enableSharing) && (
+                                        {((enableReports && canReportContent && currentUserId !== prob.senderId && currentUserId !== 0) || (prob.senderId === currentUserId && canDeleteOwnProblem) || enableSharing) && (
                                             <div className="relative">
                                                 <button onClick={() => setOpenMenuId(openMenuId === prob.id ? null : prob.id)} className="p-2 text-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition">
                                                     <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
@@ -443,7 +493,7 @@ const Home = () => {
                                                         <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)}></div>
                                                         <div className="relative z-50">
                                                             {/* BAŞKASININ SORUNUYSA: ŞİKAYET ET */}
-                                                            {enableReports && currentUserId !== prob.senderId && currentUserId !== 0 && (
+                                                            {enableReports && canReportContent && currentUserId !== prob.senderId && currentUserId !== 0 && (
                                                                 <button onClick={() => { setReportTarget({ type: 'Problem', id: prob.id }); setOpenMenuId(null); }} className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors">
                                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                                                                     Şikayet Et
@@ -453,17 +503,21 @@ const Home = () => {
                                                             {/* KENDİ SORUNUYSA: DÜZENLE/SİL */}
                                                             {prob.senderId === currentUserId && (
                                                                 <>
-                                                                    <Link
-                                                                        to="/profile"
-                                                                        className="block w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2"
-                                                                    >
-                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                                                        Düzenle
-                                                                    </Link>
-                                                                    <button onClick={() => handleDeleteOwnProblem(prob.id)} className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors">
-                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                                        Sorunu Sil
-                                                                    </button>
+                                                                    {canDeleteOwnProblem && (
+                                                                        <Link
+                                                                            to="/profile"
+                                                                            className="block w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2"
+                                                                        >
+                                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                                            Düzenle
+                                                                        </Link>
+                                                                    )}
+                                                                    {canDeleteOwnProblem && (
+                                                                        <button onClick={() => handleDeleteOwnProblem(prob.id)} className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors">
+                                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                                            Sorunu Sil
+                                                                        </button>
+                                                                    )}
                                                                 </>
                                                             )}
 
@@ -488,7 +542,7 @@ const Home = () => {
                                                 prob.topics.map((t: { id: number, name: string }) => (
                                                     <span key={t.id} className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shadow-sm flex items-center gap-1">
                                                         {t.name}
-                                                        {enableFollowSystem && (
+                                                        {enableFollowSystem && canFollowTopic && (
                                                             <button
                                                                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleTopicFollow(t.id); }}
                                                                 className="hover:scale-110 transition-transform focus:outline-none"

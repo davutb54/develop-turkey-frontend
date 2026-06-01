@@ -1203,7 +1203,7 @@ const ProblemDetail = () => {
                                                                         <div 
                                                                             key={idx} 
                                                                             onClick={() => openLightbox(sol.imageUrls!.map((u: string) => `/uploads/solutions/${u}`), idx)}
-                                                                            className="h-40 w-60 flex-shrink-0 rounded-xl overflow-hidden border shadow-sm group cursor-zoom-in"
+                                                                            className="h-32 w-44 sm:h-40 sm:w-60 flex-shrink-0 rounded-xl overflow-hidden border shadow-sm group cursor-zoom-in"
                                                                         >
                                                                             <img src={`/uploads/solutions/${url}`} alt={`Çözüm ${idx + 1}`} className="w-full h-full object-cover transition hover:scale-105" />
                                                                         </div>

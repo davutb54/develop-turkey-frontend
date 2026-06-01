@@ -11,6 +11,7 @@ import type {
   WorkflowTriggerDto,
 } from '../../types';
 import { workflowService } from '../../services/workflowService';
+import { capabilityService, type CapabilityDto, type CapabilityTemplateDto } from '../../services/capabilityService';
 
 export type {
   ActionDefinition,
@@ -23,14 +24,14 @@ export type {
 // ─── Varsayılan Veriler ───────────────────────────────────────────────────────
 
 const defaultTriggers: TriggerDefinition[] = [
-  { id: 't1', value: 'user_registered', label: 'Kullanıcı Kayıt Oldu', description: 'Yeni bir kullanıcı sisteme kayıt olduğunda', icon: '👤', category: 'Kullanıcı', isBuiltIn: true },
-  { id: 't2', value: 'user_login', label: 'Kullanıcı Giriş Yaptı', description: 'Kullanıcı sisteme giriş yaptığında', icon: '🔑', category: 'Kullanıcı', isBuiltIn: true },
-  { id: 't3', value: 'user_banned', label: 'Kullanıcı Yasaklandı', description: 'Bir kullanıcı yasaklandığında', icon: '🚫', category: 'Kullanıcı', isBuiltIn: true },
-  { id: 't4', value: 'problem_created', label: 'Problem Oluşturuldu', description: 'Yeni bir problem eklendiğinde', icon: '📝', category: 'Problem', isBuiltIn: true },
+  { id: 't1', value: 'user_registered', label: 'Kullanıcı Kayıt Oldu', description: 'Yeni bir kullanıcı sisteme kayıt olduğunda', icon: 'g���', category: 'Kullanıcı', isBuiltIn: true },
+  { id: 't2', value: 'user_login', label: 'Kullanıcı Giriş Yaptı', description: 'Kullanıcı sisteme giriş yaptığında', icon: 'g���', category: 'Kullanıcı', isBuiltIn: true },
+  { id: 't3', value: 'user_banned', label: 'Kullanıcı Yasaklandı', description: 'Bir kullanıcı yasaklandığında', icon: 'g���', category: 'Kullanıcı', isBuiltIn: true },
+  { id: 't4', value: 'problem_created', label: 'Problem Oluşturuldu', description: 'Yeni bir problem eklendiğinde', icon: 'g���', category: 'Problem', isBuiltIn: true },
   { id: 't5', value: 'problem_solved', label: 'Problem Çözüldü', description: 'Bir problem çözüldü olarak işaretlendiğinde', icon: '✅', category: 'Problem', isBuiltIn: true },
-  { id: 't6', value: 'problem_reported', label: 'Problem Şikayet Edildi', description: 'Bir problem şikayet edildiğinde', icon: '🚩', category: 'Problem', isBuiltIn: true },
-  { id: 't7', value: 'comment_added', label: 'Yorum Eklendi', description: 'Bir probleme yorum eklendiğinde', icon: '💬', category: 'İçerik', isBuiltIn: true },
-  { id: 't8', value: 'badge_earned', label: 'Rozet Kazanıldı', description: 'Kullanıcı rozet kazandığında', icon: '🏅', category: 'Gamification', isBuiltIn: true },
+  { id: 't6', value: 'problem_reported', label: 'Problem Şikayet Edildi', description: 'Bir problem şikayet edildiğinde', icon: 'g���', category: 'Problem', isBuiltIn: true },
+  { id: 't7', value: 'comment_added', label: 'Yorum Eklendi', description: 'Bir probleme yorum eklendiğinde', icon: 'g���', category: 'İçerik', isBuiltIn: true },
+  { id: 't8', value: 'badge_earned', label: 'Rozet Kazanıldı', description: 'Kullanıcı rozet kazandığında', icon: 'g���', category: 'Gamification', isBuiltIn: true },
   { id: 't9', value: 'score_changed', label: 'Puan Değişti', description: 'Kullanıcı puanı değiştiğinde', icon: '⭐', category: 'Gamification', isBuiltIn: true },
 ];
 
@@ -60,215 +61,6 @@ const defaultOperators: OperatorDefinition[] = [
   { id: 'op10', value: 'in', label: '∈ Listede', applicableTo: ['string', 'enum'] },
 ];
 
-const defaultActions: ActionDefinition[] = [
-  // ── İletişim ──────────────────────────────────────────────────────────────────
-  {
-    id: 'a1', value: 'send_email', label: 'E-posta Gönder',
-    description: 'Sisteme kayıtlı e-posta şablonunu kullanarak veya özel içerikle e-posta gönderir',
-    icon: '📧', category: 'İletişim', isBuiltIn: true,
-    parameters: [
-      { key: 'recipient',   label: 'Alıcı Tipi',                    type: 'select',  options: ['context_user', 'target_user', 'custom'], required: true,  defaultValue: 'context_user' },
-      { key: 'customTo',    label: 'Özel E-posta (recipient=custom)', type: 'text',    required: false, defaultValue: '' },
-      { key: 'templateKey', label: 'E-posta Şablonu Anahtarı',       type: 'text',    required: false, defaultValue: '' },
-      { key: 'subject',     label: 'Konu (şablon seçilmemişse)',      type: 'text',    required: false, defaultValue: '' },
-      { key: 'body',        label: 'İçerik (şablon seçilmemişse)',    type: 'text',    required: false, defaultValue: '' },
-      { key: 'cc',          label: 'CC Adresleri (virgülle ayır)',     type: 'text',    required: false, defaultValue: '' },
-    ],
-  },
-  {
-    id: 'a2', value: 'send_notification', label: 'Bildirim Gönder',
-    description: 'Kullanıcıya uygulama içi bildirim gönderir; isteğe bağlı yönlendirme bağlantısı eklenebilir',
-    icon: '🔔', category: 'İletişim', isBuiltIn: true,
-    parameters: [
-      { key: 'recipientType',  label: 'Alıcı Tipi',                       type: 'select',  options: ['context_user', 'target_user', 'custom'], required: true,  defaultValue: 'context_user' },
-      { key: 'customUserId',   label: 'Kullanıcı ID (recipientType=custom)', type: 'text',  required: false, defaultValue: '' },
-      { key: 'title',          label: 'Başlık',                            type: 'text',    required: true,  defaultValue: '' },
-      { key: 'message',        label: 'Mesaj',                             type: 'text',    required: true,  defaultValue: '' },
-      { key: 'type',           label: 'Tür',                               type: 'select',  options: ['info', 'success', 'warning', 'error'], required: true, defaultValue: 'info' },
-      { key: 'referenceLink',  label: 'Yönlendirme Bağlantısı (opsiyonel)', type: 'text',  required: false, defaultValue: '' },
-    ],
-  },
-  {
-    id: 'a3', value: 'send_bulk_notification', label: 'Toplu Bildirim Gönder',
-    description: 'Kurumdaki tüm kullanıcılara veya belirli bir role sahip kullanıcılara toplu bildirim gönderir',
-    icon: '📣', category: 'İletişim', isBuiltIn: true,
-    parameters: [
-      { key: 'targetGroup', label: 'Hedef Grup',                         type: 'select', options: ['institution', 'role'], required: true,  defaultValue: 'institution' },
-      { key: 'role',        label: 'Rol (targetGroup=role ise)',          type: 'select', options: ['User', 'Admin', 'Expert', 'Official'], required: false, defaultValue: 'User' },
-      { key: 'title',       label: 'Başlık',                             type: 'text',   required: true,  defaultValue: '' },
-      { key: 'message',     label: 'Mesaj',                              type: 'text',   required: true,  defaultValue: '' },
-      { key: 'type',        label: 'Tür',                                type: 'select', options: ['info', 'success', 'warning', 'error'], required: true, defaultValue: 'info' },
-    ],
-  },
-
-  // ── Kullanıcı Yönetimi ─────────────────────────────────────────────────────────
-  {
-    id: 'a4', value: 'ban_user', label: 'Kullanıcıyı Yasakla',
-    description: 'Kullanıcı hesabını belirlenen süre boyunca veya kalıcı olarak askıya alır, isteğe bağlı bildirim gönderir',
-    icon: '🚫', category: 'Kullanıcı Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'userTarget',    label: 'Hedef Kullanıcı',                type: 'select',  options: ['context_user', 'target_user', 'custom'], required: true,  defaultValue: 'target_user' },
-      { key: 'customUserId',  label: 'Kullanıcı ID (userTarget=custom)', type: 'text',  required: false, defaultValue: '' },
-      { key: 'durationDays',  label: 'Süre (gün, 0=kalıcı)',           type: 'number',  required: true,  defaultValue: '7' },
-      { key: 'reason',        label: 'Sebep',                          type: 'text',    required: false, defaultValue: '' },
-      { key: 'notifyUser',    label: 'Kullanıcıyı Bildir',             type: 'boolean', required: false, defaultValue: 'true' },
-    ],
-  },
-  {
-    id: 'a5', value: 'unban_user', label: 'Yasağı Kaldır',
-    description: "Askıya alınmış kullanıcının yasağını kaldırır ve isteğe bağlı bildirim gönderir",
-    icon: '✅', category: 'Kullanıcı Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'userTarget',   label: 'Hedef Kullanıcı',                 type: 'select',  options: ['context_user', 'target_user', 'custom'], required: true,  defaultValue: 'target_user' },
-      { key: 'customUserId', label: 'Kullanıcı ID (userTarget=custom)', type: 'text',   required: false, defaultValue: '' },
-      { key: 'notifyUser',   label: 'Kullanıcıyı Bildir',              type: 'boolean', required: false, defaultValue: 'true' },
-    ],
-  },
-  {
-    id: 'a6', value: 'warn_user', label: 'Kullanıcıyı Uyar',
-    description: 'Kullanıcıya resmi uyarı kaydı oluşturur ve bildirim gönderir; ağırlık düzeyi belirlenebilir',
-    icon: '⚠️', category: 'Kullanıcı Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'userTarget',   label: 'Hedef Kullanıcı',                 type: 'select',  options: ['context_user', 'target_user', 'custom'], required: true,  defaultValue: 'target_user' },
-      { key: 'customUserId', label: 'Kullanıcı ID (userTarget=custom)', type: 'text',   required: false, defaultValue: '' },
-      { key: 'title',        label: 'Uyarı Başlığı',                   type: 'text',    required: true,  defaultValue: 'Kural İhlali' },
-      { key: 'message',      label: 'Uyarı Mesajı',                    type: 'text',    required: true,  defaultValue: '' },
-      { key: 'severity',     label: 'Ağırlık',                         type: 'select',  options: ['low', 'medium', 'high'], required: true, defaultValue: 'medium' },
-    ],
-  },
-  {
-    id: 'a7', value: 'change_user_role', label: 'Kullanıcı Rolünü Değiştir',
-    description: 'Admin / Uzman / Resmi rollerini kullanıcıya ekler veya kaldırır',
-    icon: '🎖️', category: 'Kullanıcı Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'userTarget',   label: 'Hedef Kullanıcı',                 type: 'select',  options: ['context_user', 'target_user', 'custom'], required: true,  defaultValue: 'target_user' },
-      { key: 'customUserId', label: 'Kullanıcı ID (userTarget=custom)', type: 'text',   required: false, defaultValue: '' },
-      { key: 'role',         label: 'Rol',                             type: 'select',  options: ['Admin', 'Expert', 'Official'], required: true, defaultValue: 'Expert' },
-      { key: 'action',       label: 'İşlem',                           type: 'select',  options: ['grant', 'revoke'], required: true, defaultValue: 'grant' },
-    ],
-  },
-
-  // ── Problem Yönetimi ──────────────────────────────────────────────────────────
-  {
-    id: 'a8', value: 'resolve_problem', label: 'Problemi Çöz',
-    description: 'Problemi çözüldü olarak işaretler; isteğe bağlı olarak problem sahibine bildirim gönderilir',
-    icon: '✔️', category: 'Problem Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'problemTarget',    label: 'Hedef Problem',                    type: 'select',  options: ['context_problem', 'custom'], required: true,  defaultValue: 'context_problem' },
-      { key: 'customProblemId',  label: 'Problem ID (problemTarget=custom)', type: 'text',   required: false, defaultValue: '' },
-      { key: 'notifyOwner',      label: 'Sahibini Bildir',                  type: 'boolean', required: false, defaultValue: 'true' },
-    ],
-  },
-  {
-    id: 'a9', value: 'highlight_problem', label: 'Problemi Öne Çıkar',
-    description: "Problemin öne çıkarma durumunu açar/kapatır (toggle)",
-    icon: '⭐', category: 'Problem Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'problemTarget',   label: 'Hedef Problem',                    type: 'select', options: ['context_problem', 'custom'], required: true,  defaultValue: 'context_problem' },
-      { key: 'customProblemId', label: 'Problem ID (problemTarget=custom)', type: 'text',  required: false, defaultValue: '' },
-    ],
-  },
-  {
-    id: 'a10', value: 'delete_problem', label: 'Problemi Sil',
-    description: 'Problemi sistemden kalıcı olarak kaldırır; isteğe bağlı sebep ve sahip bildirimi eklenebilir',
-    icon: '🗑️', category: 'Problem Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'problemTarget',   label: 'Hedef Problem',                    type: 'select',  options: ['context_problem', 'custom'], required: true,  defaultValue: 'context_problem' },
-      { key: 'customProblemId', label: 'Problem ID (problemTarget=custom)', type: 'text',   required: false, defaultValue: '' },
-      { key: 'reason',          label: 'Silme Sebebi',                     type: 'text',    required: false, defaultValue: '' },
-      { key: 'notifyOwner',     label: 'Sahibini Bildir',                  type: 'boolean', required: false, defaultValue: 'true' },
-    ],
-  },
-  {
-    id: 'a11', value: 'report_problem', label: 'Problemi Raporla',
-    description: 'Problemi moderasyon incelemesi için raporlar',
-    icon: '🚩', category: 'Problem Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'problemTarget',   label: 'Hedef Problem',                    type: 'select', options: ['context_problem', 'custom'], required: true,  defaultValue: 'context_problem' },
-      { key: 'customProblemId', label: 'Problem ID (problemTarget=custom)', type: 'text',  required: false, defaultValue: '' },
-    ],
-  },
-
-  // ── Çözüm Yönetimi ────────────────────────────────────────────────────────────
-  {
-    id: 'a12', value: 'approve_solution', label: 'Çözümü Onayla',
-    description: 'Uzman onayı bekleyen çözümü onaylar ve yazara bildirim gönderir',
-    icon: '✅', category: 'Çözüm Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'solutionTarget',    label: 'Hedef Çözüm',                      type: 'select',  options: ['context_solution', 'custom'], required: true,  defaultValue: 'context_solution' },
-      { key: 'customSolutionId',  label: 'Çözüm ID (solutionTarget=custom)',  type: 'text',   required: false, defaultValue: '' },
-      { key: 'notifyAuthor',      label: 'Yazarı Bildir',                     type: 'boolean', required: false, defaultValue: 'true' },
-    ],
-  },
-  {
-    id: 'a13', value: 'reject_solution', label: 'Çözümü Reddet',
-    description: "Uzman incelemesinden geçemeyen çözümü reddeder; yazara sebep bildirilir",
-    icon: '❌', category: 'Çözüm Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'solutionTarget',   label: 'Hedef Çözüm',                     type: 'select',  options: ['context_solution', 'custom'], required: true,  defaultValue: 'context_solution' },
-      { key: 'customSolutionId', label: 'Çözüm ID (solutionTarget=custom)', type: 'text',   required: false, defaultValue: '' },
-      { key: 'reason',           label: 'Reddetme Sebebi',                  type: 'text',    required: false, defaultValue: '' },
-      { key: 'notifyAuthor',     label: 'Yazarı Bildir',                    type: 'boolean', required: false, defaultValue: 'true' },
-    ],
-  },
-  {
-    id: 'a14', value: 'highlight_solution', label: 'Çözümü Öne Çıkar',
-    description: "Çözümün öne çıkarma durumunu açar/kapatır (toggle)",
-    icon: '💡', category: 'Çözüm Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'solutionTarget',   label: 'Hedef Çözüm',                     type: 'select', options: ['context_solution', 'custom'], required: true,  defaultValue: 'context_solution' },
-      { key: 'customSolutionId', label: 'Çözüm ID (solutionTarget=custom)', type: 'text',  required: false, defaultValue: '' },
-    ],
-  },
-  {
-    id: 'a15', value: 'delete_solution', label: 'Çözümü Sil',
-    description: 'Çözümü sistemden kaldırır; isteğe bağlı sebep ve yazar bildirimi eklenebilir',
-    icon: '🗑️', category: 'Çözüm Yönetimi', isBuiltIn: true,
-    parameters: [
-      { key: 'solutionTarget',   label: 'Hedef Çözüm',                     type: 'select',  options: ['context_solution', 'custom'], required: true,  defaultValue: 'context_solution' },
-      { key: 'customSolutionId', label: 'Çözüm ID (solutionTarget=custom)', type: 'text',   required: false, defaultValue: '' },
-      { key: 'reason',           label: 'Silme Sebebi',                     type: 'text',    required: false, defaultValue: '' },
-      { key: 'notifyAuthor',     label: 'Yazarı Bildir',                    type: 'boolean', required: false, defaultValue: 'true' },
-    ],
-  },
-
-  // ── Moderasyon ────────────────────────────────────────────────────────────────
-  {
-    id: 'a16', value: 'delete_comment', label: 'Yorumu Sil',
-    description: 'Belirtilen yorumu moderasyon gerekçesiyle siler',
-    icon: '🧹', category: 'Moderasyon', isBuiltIn: true,
-    parameters: [
-      { key: 'commentTarget',   label: 'Hedef Yorum',                      type: 'select', options: ['context_comment', 'custom'], required: true,  defaultValue: 'context_comment' },
-      { key: 'customCommentId', label: 'Yorum ID (commentTarget=custom)',   type: 'text',  required: false, defaultValue: '' },
-      { key: 'reason',          label: 'Silme Sebebi',                     type: 'text',  required: false, defaultValue: '' },
-    ],
-  },
-
-  // ── Sistem ────────────────────────────────────────────────────────────────────
-  {
-    id: 'a17', value: 'log_event', label: 'Olay Kaydet',
-    description: 'Audit log tablosuna özelleştirilebilir kategori ve seviyede kayıt ekler',
-    icon: '📝', category: 'Sistem', isBuiltIn: true,
-    parameters: [
-      { key: 'category', label: 'Kategori',  type: 'text',   required: false, defaultValue: 'Workflow' },
-      { key: 'action',   label: 'Eylem',     type: 'text',   required: false, defaultValue: '' },
-      { key: 'message',  label: 'Mesaj',     type: 'text',   required: true,  defaultValue: '' },
-      { key: 'details',  label: 'Detaylar',  type: 'text',   required: false, defaultValue: '' },
-      { key: 'severity', label: 'Seviye',    type: 'select', options: ['Info', 'Warning', 'Error', 'Critical'], required: true, defaultValue: 'Info' },
-    ],
-  },
-  {
-    id: 'a18', value: 'webhook', label: 'Webhook Tetikle',
-    description: "Dış servise HTTP isteği gönderir; payload boş bırakılırsa tetikleyici context'i otomatik eklenir",
-    icon: '🌐', category: 'Sistem', isBuiltIn: true,
-    parameters: [
-      { key: 'url',        label: 'Webhook URL',                  type: 'text',   required: true,  defaultValue: 'https://' },
-      { key: 'method',     label: 'HTTP Metodu',                  type: 'select', options: ['POST', 'GET', 'PUT', 'PATCH'], required: true, defaultValue: 'POST' },
-      { key: 'payload',    label: 'Payload JSON (boş=otomatik)',  type: 'text',   required: false, defaultValue: '' },
-      { key: 'authHeader', label: 'Authorization Header',         type: 'text',   required: false, defaultValue: '' },
-    ],
-  },
-];
 
 // ─── Trigger → Context Field Mapping ────────────────────────────────────────
 // Her trigger event'i için RuleContext'te hangi fieldlar dolu gelir?
@@ -573,9 +365,9 @@ const mapActionDefinition = (action: WorkflowActionDto): ActionDefinition => ({
   id: String(action.id),
   value: action.actionCode,
   label: action.name,
-  description: '',
-  icon: '⚙️',
-  category: 'Sistem',
+  description: action.description ?? '',
+  icon: action.icon ?? '⚙️',
+  category: action.category ?? 'Sistem',
   parameters: parseActionParameters(action.parametersSchemaJson),
   isBuiltIn: true,
 });
@@ -587,6 +379,13 @@ type WorkflowStore = {
   fields: FieldDefinition[];
   operators: OperatorDefinition[];
   actions: ActionDefinition[];
+
+  /** Tüm aktif capability listesi — capability-select parametrelerinde kullanılır. */
+  availableCapabilities: CapabilityDto[];
+  /** Tüm aktif şablon listesi — template-select parametrelerinde kullanılır. */
+  availableTemplates: CapabilityTemplateDto[];
+  /** Capability ve template listelerini API'den yükler. WorkflowBuilder mount'ta çağırır. */
+  loadWorkflowMeta: () => Promise<void>;
 
   /** Kanvasta seçili trigger event'i (ConditionNode'ların field filtrelemesi için). */
   activeTrigger: string;
@@ -621,9 +420,25 @@ export const useWorkflowStore = create<WorkflowStore>()(
       triggers: defaultTriggers,
       fields: defaultFields,
       operators: defaultOperators,
-      actions: defaultActions,
+      actions: [],  // DB'den yüklenir (syncStore), burada boş başlar
+      availableCapabilities: [],
+      availableTemplates: [],
       activeTrigger: '',
       setActiveTrigger: (trigger) => set({ activeTrigger: trigger }),
+
+      loadWorkflowMeta: async () => {
+        const [capResult, tmplResult] = await Promise.allSettled([
+          capabilityService.getAll(),
+          capabilityService.getTemplates(),
+        ]);
+        if (capResult.status === 'fulfilled' && capResult.value.data?.success) {
+          set({ availableCapabilities: capResult.value.data.data ?? [] });
+        }
+        if (tmplResult.status === 'fulfilled' && tmplResult.value.data?.success) {
+          const all = tmplResult.value.data.data ?? [];
+          set({ availableTemplates: all.filter((t) => t.isActive && t.latestVersion) });
+        }
+      },
 
       syncStore: async () => {
         const [triggersResult, fieldsResult, actionsResult] = await Promise.allSettled([
@@ -643,8 +458,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
         }
 
         if (actionsResult.status === 'fulfilled' && actionsResult.value.data?.success) {
-          const actions = actionsResult.value.data.data ?? [];
-          set({ actions: actions.map(mapActionDefinition) });
+          // DB tek kaynak: seeder tüm action'ları yönetir, frontend sadece render eder.
+          const actions = (actionsResult.value.data.data ?? []).map(mapActionDefinition);
+          set(() => ({ actions }));
         }
       },
 
@@ -674,11 +490,12 @@ export const useWorkflowStore = create<WorkflowStore>()(
     }),
     {
       name: 'workflow-definitions',
+      // Action'lar DB'den gelir (syncStore), localStorage'a yazılmaz.
+      // Triggers/fields/operators persist edilmeye devam eder.
       partialize: (state) => ({
         triggers: state.triggers,
         fields: state.fields,
         operators: state.operators,
-        actions: state.actions,
       }),
     }
   )

@@ -23,7 +23,7 @@ function persistCapabilities(caps: Set<string>) {
 // null = yükleniyor, false = giriş yok, number = kullanıcı id'si
 interface AuthContextType {
     userId: number | null | false;
-    /** @deprecated Capability sistemine geçildi. hasCapability("admin.system_access") kullanın. */
+    /** @deprecated hasCapability("admin.system_access") kullanın — capabilities'den türetilir. */
     isAdmin: boolean;
     isMaintenance: boolean;
     isProfileIncomplete: boolean;
@@ -32,7 +32,6 @@ interface AuthContextType {
     hasCapability: (code: string) => boolean;
     setCapabilities: (caps: Set<string>) => void;
     setUserId: (id: number | false) => void;
-    setIsAdmin: (isAdmin: boolean) => void;
     setIsMaintenance: (isMain: boolean) => void;
     setHasPendingAgreement: (val: boolean) => void;
     checkAuth: () => Promise<void>;
@@ -48,7 +47,6 @@ const AuthContext = createContext<AuthContextType>({
     hasCapability: () => false,
     setCapabilities: () => {},
     setUserId: () => {},
-    setIsAdmin: () => {},
     setIsMaintenance: () => {},
     setHasPendingAgreement: () => {},
     checkAuth: async () => {},
@@ -56,16 +54,17 @@ const AuthContext = createContext<AuthContextType>({
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [userId, setUserId] = useState<number | null | false>(null);
-    const [isAdmin, setIsAdmin] = useState<boolean>(false);
     const [isMaintenance, setIsMaintenance] = useState<boolean>(false);
     const [isProfileIncomplete, setIsProfileIncomplete] = useState<boolean>(false);
     const [hasPendingAgreement, setHasPendingAgreement] = useState<boolean>(false);
     const [capabilities, setCapabilitiesState] = useState<Set<string>>(loadStoredCapabilities);
 
+    // isAdmin → capabilities'den türetilen computed değer; ayrı state tutulmaz.
+    const isAdmin = capabilities.has('admin.system_access');
+
     const setCapabilities = useCallback((caps: Set<string>) => {
         setCapabilitiesState(caps);
         persistCapabilities(caps);
-        setIsAdmin(caps.has('admin.system_access'));
     }, []);
 
     const hasCapability = useCallback((code: string) => capabilities.has(code), [capabilities]);
@@ -106,7 +105,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     } catch { /* ignore */ }
 
                     setUserId(false);
-                    setIsAdmin(false);
                     setCapabilities(new Set());
                     setIsProfileIncomplete(false);
                     setHasPendingAgreement(false);
@@ -140,7 +138,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             } else {
                 setUserId(false);
-                setIsAdmin(false);
                 setCapabilities(new Set());
                 setIsProfileIncomplete(false);
                 setHasPendingAgreement(false);
@@ -150,7 +147,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setIsMaintenance(true);
             }
             setUserId(false);
-            setIsAdmin(false);
             setCapabilities(new Set());
             setHasPendingAgreement(false);
         }
@@ -164,7 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         <AuthContext.Provider value={{
             userId, isAdmin, isMaintenance, isProfileIncomplete, hasPendingAgreement,
             capabilities, hasCapability, setCapabilities,
-            setUserId, setIsAdmin, setIsMaintenance, setHasPendingAgreement, checkAuth,
+            setUserId, setIsMaintenance, setHasPendingAgreement, checkAuth,
         }}>
             {children}
         </AuthContext.Provider>

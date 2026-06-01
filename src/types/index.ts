@@ -504,6 +504,9 @@ export interface WorkflowActionDto {
     id: number;
     name: string;
     actionCode: string;
+    category?: string;
+    icon?: string;
+    description?: string;
     parametersSchemaJson: string;
     isActive: boolean;
 }
@@ -531,6 +534,22 @@ export interface SaveWorkflowDto {
     priority: number;
     description: string;
     isActive: boolean;
+}
+
+export interface TestRunRequestDto {
+    triggerEvent?: string;
+    sampleProblemId?: number;
+    sampleUserId?: number;
+}
+
+export interface WorkflowTestRunResult {
+    success: boolean;
+    message: string;
+    runId?: string;
+    isDryRun: boolean;
+    startedAt?: string;
+    triggerEvent?: string;
+    ruleName?: string;
 }
 
 export interface WorkflowLog {
@@ -605,7 +624,7 @@ export type ActionDefinition = {
 export type ActionParameter = {
     key: string;
     label: string;
-    type: 'text' | 'number' | 'boolean' | 'select';
+    type: 'text' | 'number' | 'boolean' | 'select' | 'capability-select' | 'template-select';
     options?: string[];
     required: boolean;
     defaultValue?: string;

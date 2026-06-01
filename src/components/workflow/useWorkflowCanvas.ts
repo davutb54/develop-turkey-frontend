@@ -39,6 +39,8 @@ export function useWorkflowCanvas() {
     ruleName,
     currentRuleId,
     clipboard,
+    historyIndex,
+    history,
     setRuleName,
     setCurrentRuleId,
     setClipboard,
@@ -47,7 +49,17 @@ export function useWorkflowCanvas() {
     closeMenus,
     resetCanvas,
     setView,
+    pushHistory,
+    resetHistory,
+    undo: historyUndo,
+    redo: historyRedo,
   } = useWorkflowCanvasStore();
+
+  // Çağrıldığı anda güncel nodes/edges'i history'ye ekler.
+  // setTimeout(0) ile ReactFlow'un state güncellemesinin bitmesi beklenir.
+  const pushSnapshot = useCallback(() => {
+    setTimeout(() => pushHistory(getNodes(), getEdges()), 0);
+  }, [pushHistory, getNodes, getEdges]);
 
   // ── Definitions store ──
   const actions = useWorkflowStore((s) => s.actions);
@@ -58,11 +70,11 @@ export function useWorkflowCanvas() {
   // ─────────────────────────────────────────────────────────────────
 
   const onConnect = useCallback(
-    (params: Connection) =>
-      setEdges((eds) =>
-        addEdge({ ...params, animated: true, style: { stroke: '#6366f1', strokeWidth: 2 } }, eds)
-      ),
-    [setEdges]
+    (params: Connection) => {
+      setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: '#6366f1', strokeWidth: 2 } }, eds));
+      pushSnapshot();
+    },
+    [setEdges, pushSnapshot]
   );
 
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
@@ -81,9 +93,14 @@ export function useWorkflowCanvas() {
         y: event.clientY - bounds.top,
       });
       setNodes((nds) => nds.concat({ id: getNewNodeId(), type, position, data: { label: type } }));
+      pushSnapshot();
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, pushSnapshot]
   );
+
+  const onNodeDragStop = useCallback(() => {
+    pushHistory(getNodes(), getEdges());
+  }, [pushHistory, getNodes, getEdges]);
 
   // ─────────────────────────────────────────────────────────────────
   // Context menus
@@ -125,19 +142,22 @@ export function useWorkflowCanvas() {
   // ─────────────────────────────────────────────────────────────────
 
   const handleAddNode = useCallback(
-    (type: string, x: number, y: number) =>
-      setNodes((nds) =>
-        nds.concat({ id: getNewNodeId(), type, position: { x, y }, data: { label: type } })
-      ),
-    [setNodes]
+    (type: string, x: number, y: number) => {
+      setNodes((nds) => nds.concat({ id: getNewNodeId(), type, position: { x, y }, data: { label: type } }));
+      pushSnapshot();
+    },
+    [setNodes, pushSnapshot]
   );
 
   const handleDeleteNode = useCallback(
     (id: string) => {
-      setNodes((nds) => nds.filter((n) => n.id !== id));
-      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+      const newNodes = getNodes().filter((n) => n.id !== id);
+      const newEdges = getEdges().filter((e) => e.source !== id && e.target !== id);
+      setNodes(newNodes);
+      setEdges(newEdges);
+      pushHistory(newNodes, newEdges);
     },
-    [setNodes, setEdges]
+    [getNodes, getEdges, setNodes, setEdges, pushHistory]
   );
 
   const handleDuplicateNode = useCallback(
@@ -145,41 +165,37 @@ export function useWorkflowCanvas() {
       const node = getNodes().find((n) => n.id === id);
       if (!node) return;
       setClipboard(node);
-      setNodes((nds) =>
-        nds.concat({
-          ...node,
-          id: getNewNodeId(),
-          position: { x: node.position.x + 40, y: node.position.y + 40 },
-          selected: false,
-        })
-      );
+      const clone = { ...node, id: getNewNodeId(), position: { x: node.position.x + 40, y: node.position.y + 40 }, selected: false };
+      const newNodes = [...getNodes(), clone];
+      setNodes(newNodes);
+      pushHistory(newNodes, getEdges());
     },
-    [getNodes, setClipboard, setNodes]
+    [getNodes, getEdges, setClipboard, setNodes, pushHistory]
   );
 
   const handlePaste = useCallback(() => {
     if (!clipboard) return;
-    setNodes((nds) =>
-      nds.concat({
-        ...clipboard,
-        id: getNewNodeId(),
-        position: { x: clipboard.position.x + 60, y: clipboard.position.y + 60 },
-        selected: false,
-      })
-    );
-  }, [clipboard, setNodes]);
+    const clone = { ...clipboard, id: getNewNodeId(), position: { x: clipboard.position.x + 60, y: clipboard.position.y + 60 }, selected: false };
+    const newNodes = [...getNodes(), clone];
+    setNodes(newNodes);
+    pushHistory(newNodes, getEdges());
+  }, [clipboard, getNodes, getEdges, setNodes, pushHistory]);
 
   const handleDisconnect = useCallback(
-    (id: string) => setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id)),
-    [setEdges]
+    (id: string) => {
+      const newEdges = getEdges().filter((e) => e.source !== id && e.target !== id);
+      setEdges(newEdges);
+      pushHistory(getNodes(), newEdges);
+    },
+    [getNodes, getEdges, setEdges, pushHistory]
   );
 
   const handleSetColor = useCallback(
-    (id: string, color: string) =>
-      setNodes((nds) =>
-        nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, accentColor: color } } : n))
-      ),
-    [setNodes]
+    (id: string, color: string) => {
+      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, accentColor: color } } : n)));
+      pushSnapshot();
+    },
+    [setNodes, pushSnapshot]
   );
 
   const handleOpenDetail = useCallback(
@@ -203,7 +219,8 @@ export function useWorkflowCanvas() {
     setNodes([]);
     setEdges([]);
     setActiveTrigger('');
-  }, [setNodes, setEdges, setActiveTrigger]);
+    pushHistory([], []);
+  }, [setNodes, setEdges, setActiveTrigger, pushHistory]);
 
   // ─────────────────────────────────────────────────────────────────
   // Rule load / new
@@ -213,16 +230,21 @@ export function useWorkflowCanvas() {
     (rule: DynamicRule) => {
       try {
         const parsed = JSON.parse(rule.flowJson) as { nodes?: Node[]; edges?: Edge[] };
-        setNodes(parsed.nodes ?? []);
-        setEdges(parsed.edges ?? []);
+        const loadedNodes = parsed.nodes ?? [];
+        const loadedEdges = parsed.edges ?? [];
+        setNodes(loadedNodes);
+        setEdges(loadedEdges);
         setRuleName(rule.name);
         setCurrentRuleId(rule.id);
         setView('builder');
 
         const triggerEvent =
-          (parsed.nodes?.find((n) => n.type === 'triggerNode')?.data as { trigger?: string } | undefined)
+          (loadedNodes.find((n) => n.type === 'triggerNode')?.data as { trigger?: string } | undefined)
             ?.trigger ?? '';
         setActiveTrigger(triggerEvent);
+
+        resetHistory();
+        pushHistory(loadedNodes, loadedEdges);
 
         setTimeout(() => fitView({ duration: 400 }), 120);
         toast.success(`"${rule.name}" editöre yüklendi.`);
@@ -230,7 +252,7 @@ export function useWorkflowCanvas() {
         toast.error('Workflow yüklenemedi, JSON geçersiz.');
       }
     },
-    [setNodes, setEdges, setRuleName, setCurrentRuleId, setView, setActiveTrigger, fitView]
+    [setNodes, setEdges, setRuleName, setCurrentRuleId, setView, setActiveTrigger, fitView, resetHistory, pushHistory]
   );
 
   const handleNewRule = useCallback(() => {
@@ -239,7 +261,9 @@ export function useWorkflowCanvas() {
     resetCanvas();
     setView('builder');
     setActiveTrigger('');
-  }, [setNodes, setEdges, resetCanvas, setView, setActiveTrigger]);
+    resetHistory();
+    pushHistory(INITIAL_NODES, []);
+  }, [setNodes, setEdges, resetCanvas, setView, setActiveTrigger, resetHistory, pushHistory]);
 
   // ─────────────────────────────────────────────────────────────────
   // Pre-save validation v1
@@ -318,6 +342,24 @@ export function useWorkflowCanvas() {
   }, [validateCanvas, getNodes, getEdges, currentRuleId, ruleName, setCurrentRuleId]);
 
   // ─────────────────────────────────────────────────────────────────
+  // Undo / Redo
+  // ─────────────────────────────────────────────────────────────────
+
+  const handleUndo = useCallback(() => {
+    const entry = historyUndo();
+    if (!entry) return;
+    setNodes(entry.nodes);
+    setEdges(entry.edges);
+  }, [historyUndo, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    const entry = historyRedo();
+    if (!entry) return;
+    setNodes(entry.nodes);
+    setEdges(entry.edges);
+  }, [historyRedo, setNodes, setEdges]);
+
+  // ─────────────────────────────────────────────────────────────────
   // Derived state — Kaydet butonu disabling
   // ─────────────────────────────────────────────────────────────────
 
@@ -328,18 +370,24 @@ export function useWorkflowCanvas() {
   /** true → Kaydet butonu disabled + greyed-out */
   const isSaveDisabled = !hasTriggerNode || !triggerHasEvent;
 
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
   return {
     reactFlowWrapper,
     // ReactFlow state
     nodes, edges, onNodesChange, onEdgesChange,
+    setNodes,
     // Event handlers
-    onConnect, onDragOver, onDrop,
+    onConnect, onDragOver, onDrop, onNodeDragStop,
     onPaneContextMenu, onNodeContextMenu, onPaneClick,
     // Node handlers
     handleAddNode, handleDeleteNode, handleDuplicateNode, handlePaste,
     handleDisconnect, handleSetColor, handleOpenDetail, handleSelectAll,
     // Canvas handlers
     handleClearAll, handleEditRule, handleNewRule, handleSave,
+    // Undo / Redo
+    handleUndo, handleRedo, canUndo, canRedo,
     // Derived
     isSaveDisabled,
     fitView,

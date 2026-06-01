@@ -8,6 +8,8 @@ import type {
   WorkflowTriggerDto,
   WorkflowLog,
   WorkflowLogFilterDto,
+  TestRunRequestDto,
+  WorkflowTestRunResult,
 } from '../types';
 
 export const workflowService = {
@@ -31,4 +33,6 @@ export const workflowService = {
     api.get<IDataResult<number>>('/workflowlog/count', { params: filter }),
   getLogById: (id: number) =>
     api.get<IDataResult<WorkflowLog>>(`/workflowlog/${id}`),
+  testRun: (id: number, dto: TestRunRequestDto) =>
+    api.post<WorkflowTestRunResult>(`/dynamicrule/${id}/test-run`, dto),
 };

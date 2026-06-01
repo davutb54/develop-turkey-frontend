@@ -4,6 +4,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { metricsService, type WorkflowMetrics } from '../../../services/metricsService';
+import { fmtDateTime } from '../../../utils/dateFormat';
 
 const STATUS_COLORS: Record<string, string> = {
     success: '#10b981',
@@ -124,7 +125,7 @@ export default function WorkflowMetricsPage() {
                                         </td>
                                         <td className="py-2 text-gray-500">{r.durationMs}ms</td>
                                         <td className="py-2 text-red-500 text-xs max-w-xs truncate">{r.errorMessage}</td>
-                                        <td className="py-2 text-gray-400 text-xs">{new Date(r.executedAt).toLocaleString('tr')}</td>
+                                        <td className="py-2 text-gray-400 text-xs">{fmtDateTime(r.executedAt)}</td>
                                     </tr>
                                 ))}
                             </tbody>

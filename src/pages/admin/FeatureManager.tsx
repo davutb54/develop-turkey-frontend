@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { featureService } from '../../services/featureService';
 import type { FeatureGroup, FeatureDefinition } from '../../types';
-import Navbar from '../../components/Navbar';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Can } from '../../components/Can';
@@ -9,7 +8,7 @@ import InstitutionFeaturePanel from './InstitutionFeaturePanel';
 import { institutionService } from '../../services/institutionService';
 
 const FeatureManager = () => {
-    const { isAdmin } = useAuth();
+    const { hasCapability } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [groups, setGroups] = useState<FeatureGroup[]>([]);
@@ -31,12 +30,12 @@ const FeatureManager = () => {
     const [defDefaultValue, setDefDefaultValue] = useState('');
 
     useEffect(() => {
-        if (!isAdmin) {
+        if (!hasCapability('admin.feature_group_manage')) {
             navigate('/');
             return;
         }
         loadData();
-    }, [isAdmin]);
+    }, [hasCapability]);
 
     const loadData = async () => {
         setLoading(true);
@@ -133,7 +132,6 @@ const FeatureManager = () => {
 
     return (
         <div className="min-h-screen bg-slate-50">
-            <Navbar />
             <div className="max-w-7xl mx-auto p-6">
                 <div className="flex justify-between items-center mb-8">
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight">Özellik Yönetimi</h1>
@@ -288,7 +286,7 @@ const FeatureManager = () => {
                             </p>
                         </div>
                         
-                        <div className="min-w-[300px]">
+                        <div className="w-full sm:min-w-[300px] sm:w-auto">
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Yönetilecek Kurumu Seçin</label>
                             <select 
                                 value={selectedInstId} 
