@@ -3,8 +3,10 @@ import { adminService } from '../../../services/adminService';
 import { institutionService } from '../../../services/institutionService';
 import type { Log, LogFilterDto, Institution } from '../../../types';
 import { fmtDate, fmtTime } from '../../../utils/dateFormat';
+import { useCapability } from '../../../hooks/useCapability';
 
 export default function SystemLogsTab() {
+    const canView = useCapability('admin.audit_read');
     const [logs, setLogs] = useState<Log[]>([]);
     const [institutions, setInstitutions] = useState<Institution[]>([]);
     const [logFilter, setLogFilter] = useState<LogFilterDto>({});
@@ -130,6 +132,8 @@ export default function SystemLogsTab() {
             return <pre className="whitespace-pre-wrap font-mono text-xs text-slate-600 bg-slate-50 p-4 rounded-xl border">{detailsString}</pre>;
         }
     };
+
+    if (!canView) return <div className="p-10 text-center text-slate-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
 
     return (
         <div className="p-6 md:p-10 animate-fade-in flex flex-col h-full">

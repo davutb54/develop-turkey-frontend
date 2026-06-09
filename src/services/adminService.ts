@@ -107,4 +107,8 @@ export const adminService = {
     deleteAgreement: (id: number) => api.delete(`/admin/agreements/${id}`),
     getAgreementStats: (id: number) => api.get(`/admin/agreements/${id}/stats`),
     getKillSwitchState: () => api.get('/killswitch'),
+    setKillSwitchSoft: (reason?: string) => api.post('/killswitch/soft', { reason }),
+    setKillSwitchHard: (reason?: string) => api.post('/killswitch/hard', { reason }),
+    setKillSwitchEmergency: (reason?: string) => api.post('/killswitch/emergency', { reason }),
+    deactivateKillSwitch: (reason?: string) => api.post('/killswitch/deactivate', { reason }),
 };

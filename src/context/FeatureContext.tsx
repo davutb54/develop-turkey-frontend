@@ -57,16 +57,43 @@ export const FeatureProvider: React.FC<{ children: React.ReactNode }> = ({ child
       try {
         let instId = 1;
 
-        // 1. Resolve by Domain (Kritik: Login olmayan kullanıcılar için izolasyon)
+        // 1. Resolve by Subdomain/Domain (Login olmayan kullanıcılar için izolasyon)
+        // kurum1.developturkey.com → slug="kurum1" → getBySubdomain
+        // developturkey.com (apex) → getByDomain fallback
         const hostname = window.location.hostname;
         if (hostname !== 'localhost' && !hostname.startsWith('127.0.0.')) {
-            try {
-                const domainRes = await institutionService.getByDomain(hostname);
-                if (domainRes.data?.success && domainRes.data.data?.id) {
-                    instId = domainRes.data.data.id;
+            const parts = hostname.split('.');
+            const isWww = parts[0] === 'www';
+            if (parts.length >= 3 && !isWww) {
+                // gerçek subdomain var: kurum1.developturkey.com
+                const slug = parts[0];
+                try {
+                    const subRes = await institutionService.getBySubdomain(slug);
+                    if (subRes.data?.success && subRes.data.data?.id) {
+                        instId = subRes.data.data.id;
+                    }
+                } catch {
+                    // subdomain kayıtlı değil — apex domain ile dene
+                    try {
+                        const domainRes = await institutionService.getByDomain(hostname);
+                        if (domainRes.data?.success && domainRes.data.data?.id) {
+                            instId = domainRes.data.data.id;
+                        }
+                    } catch {
+                        // kayıtlı kurum yok, varsayılan instId=1 kullanılır
+                    }
                 }
-            } catch (err) {
-                console.error("Domain tabanlı kurum tespiti başarısız", err);
+            } else {
+                // apex domain veya www.domain.com — www. prefix'ini soyarak dene
+                const apexDomain = isWww ? parts.slice(1).join('.') : hostname;
+                try {
+                    const domainRes = await institutionService.getByDomain(apexDomain);
+                    if (domainRes.data?.success && domainRes.data.data?.id) {
+                        instId = domainRes.data.data.id;
+                    }
+                } catch {
+                    // kayıtlı kurum yok, varsayılan instId=1 kullanılır
+                }
             }
         }
 

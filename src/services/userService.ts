@@ -36,6 +36,9 @@ export const userService = {
         roleFilter?: string;
         emailStatus?: string;
         institutionId?: number;
+        isReported?: boolean;
+        registeredAfter?: string;
+        sortBy?: string;
     }) => {
         const query = new URLSearchParams();
         if (params.page) query.append('page', params.page.toString());
@@ -44,6 +47,9 @@ export const userService = {
         if (params.roleFilter) query.append('roleFilter', params.roleFilter);
         if (params.emailStatus) query.append('emailStatus', params.emailStatus);
         if (params.institutionId) query.append('institutionId', params.institutionId.toString());
+        if (params.isReported !== undefined) query.append('isReported', params.isReported.toString());
+        if (params.registeredAfter) query.append('registeredAfter', params.registeredAfter);
+        if (params.sortBy) query.append('sortBy', params.sortBy);
         return api.get(`/user/getallpaged?${query.toString()}`);
     },
 

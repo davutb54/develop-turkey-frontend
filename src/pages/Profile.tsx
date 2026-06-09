@@ -764,7 +764,7 @@ const Profile = () => {
                                                     </div>
                                                     <p className="text-sm text-gray-600 line-clamp-2 mb-5 leading-relaxed">{prob.description}</p>
                                                     <div className="flex justify-between items-center border-t border-gray-100 pt-4">
-                                                        <Link to={`/problem/${prob.id}`} className="text-blue-600 text-sm font-bold hover:text-blue-800 transition flex items-center gap-1">İncele <span className="text-lg leading-none">›</span></Link>
+                                                        <Link to={`/problem/${prob.publicId || prob.id}`} className="text-blue-600 text-sm font-bold hover:text-blue-800 transition flex items-center gap-1">İncele <span className="text-lg leading-none">›</span></Link>
                                                         <div className="flex gap-2">
                                                             {canUpdateOwnProblem && (
                                                                 <button
@@ -844,7 +844,7 @@ const Profile = () => {
                                                     </div>
                                                     <p className="text-sm text-gray-600 line-clamp-2 mb-5 leading-relaxed">{sol.description}</p>
                                                     <div className="flex justify-between items-center border-t border-gray-100 pt-4">
-                                                        <Link to={`/problem/${sol.problemId}?solution=${sol.id}`} className="text-blue-600 text-sm font-bold hover:text-blue-800 transition flex items-center gap-1">Soruna Git <span className="text-lg leading-none">›</span></Link>
+                                                        <Link to={`/problem/${sol.problemPublicId || sol.problemId}?solution=${sol.publicId || sol.id}`} className="text-blue-600 text-sm font-bold hover:text-blue-800 transition flex items-center gap-1">Soruna Git <span className="text-lg leading-none">›</span></Link>
                                                         <div className="flex gap-2">
                                                             {canUpdateOwnSolution && (
                                                                 <button onClick={() => { setEditingSolutionId(sol.id); setEditSolutionData({ title: sol.title, description: sol.description }); }} className="px-4 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-xs font-bold hover:bg-yellow-100 transition shadow-sm active:scale-95">Düzenle</button>
@@ -893,7 +893,7 @@ const Profile = () => {
                                                     <span className="text-xs font-bold text-gray-700">@{sol.senderUsername}</span>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <Link to={`/problem/${sol.problemId}?solution=${sol.id}`} className="px-4 py-1.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-xs font-bold hover:bg-blue-100 transition shadow-sm active:scale-95">İncele</Link>
+                                                    <Link to={`/problem/${sol.problemPublicId || sol.problemId}?solution=${sol.publicId || sol.id}`} className="px-4 py-1.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-xs font-bold hover:bg-blue-100 transition shadow-sm active:scale-95">İncele</Link>
                                                     <button 
                                                         onClick={async () => {
                                                             try {

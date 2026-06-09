@@ -6,7 +6,19 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   esbuild: {
-    pure: ["console.log", "console.info", "console.debug"],
+    pure: ["console.log", "console.info", "console.debug", "console.error", "console.warn"],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          editor: ['@tiptap/react', '@tiptap/starter-kit', '@uiw/react-md-editor'],
+          map: ['leaflet', 'react-leaflet', 'turkey-map-react'],
+          charts: ['recharts']
+        }
+      }
+    }
   },
   server: {
     port: 3000,

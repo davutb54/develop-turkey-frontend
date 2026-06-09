@@ -6,6 +6,7 @@ import type { SystemHealthDto, Log, LogFilterDto } from '../../../types';
 import { fmtTime } from '../../../utils/dateFormat';
 import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import TurkeyMap from 'turkey-map-react';
+import { useCapability } from '../../../hooks/useCapability';
 
 interface KillSwitchData {
     mode: number;
@@ -44,6 +45,7 @@ function ksLabel(mode: number, label: string): string {
 }
 
 export default function CommandCenter() {
+    const canView = useCapability('admin.system_monitor');
     const [systemHealth, setSystemHealth] = useState<SystemHealthDto | null>(null);
     const [killSwitch, setKillSwitch] = useState<KillSwitchData | null>(null);
     const [uptimeHours, setUptimeHours] = useState<number>(0);
@@ -139,6 +141,8 @@ export default function CommandCenter() {
             </div>
         );
     }
+
+    if (!canView) return <div className="p-10 text-center text-slate-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
 
     return (
         <div className="p-6 md:p-10 animate-fade-in space-y-8">

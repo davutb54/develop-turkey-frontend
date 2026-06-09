@@ -202,7 +202,7 @@ export default function ReportsTab() {
                                     {targetProblem ? (
                                         <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                             <div>
-                                                <Link to={`/problem/${targetProblem.id}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-indigo-600 transition">{targetProblem.title}</Link>
+                                                <Link to={`/problem/${targetProblem.publicId || targetProblem.id}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-indigo-600 transition">{targetProblem.title}</Link>
                                             </div>
                                             <div className="flex gap-2 shrink-0">
                                                 {canResolve && <button onClick={() => handleResolveReport(report.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 shadow-sm transition">Kapat</button>}
@@ -275,7 +275,7 @@ export default function ReportsTab() {
                                     </div>
                                     {targetUser ? (
                                         <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                            <Link to={`/user/${targetUser.id}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-purple-600 transition">@{targetUser.userName}</Link>
+                                            <Link to={`/user/${targetUser.userName}`} target="_blank" className="font-black text-lg text-slate-800 hover:text-purple-600 transition">@{targetUser.userName}</Link>
                                             <div className="flex gap-2 shrink-0">
                                                 {canResolve && <button onClick={() => handleResolveReport(report.id)} className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 shadow-sm transition">Kapat</button>}
                                                 {canBanUser && <button

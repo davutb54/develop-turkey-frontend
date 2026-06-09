@@ -1,5 +1,5 @@
 import api from './api';
-import type { IDataResult, IResult, ProblemDetailDto, ProblemAddDto, ProblemFilterDto } from '../types';
+import type { IDataResult, IResult, ProblemDetailDto, ProblemAddDto, ProblemFilterDto, ProblemViewerDto, ProblemUpvoterDto, ProblemParticipantDto } from '../types';
 
 export const problemService = {
 
@@ -26,6 +26,11 @@ export const problemService = {
     // ID'ye göre tek bir sorun getir
     getById: async (id: number) => {
         return api.get<IDataResult<ProblemDetailDto>>(`/problem/getbyid?id=${id}`);
+    },
+
+    // Public ID (Sqids) ile sorun getir — URL'de kullanılan opak string
+    getByPublicId: async (publicId: string) => {
+        return api.get<IDataResult<ProblemDetailDto>>(`/problem/getbypublicid/${encodeURIComponent(publicId)}`);
     },
 
     // Yeni sorun ekle
@@ -140,5 +145,35 @@ export const problemService = {
     // Tıklanma / Görüntülenme sayısını artırır
     incrementView: async (id: number) => {
         return api.post(`/problem/incrementview?id=${id}`);
+    },
+
+    // Görüntüleyenler listesi
+    getViewers: async (id: number) => {
+        return api.get<IDataResult<ProblemViewerDto[]>>(`/problem/${id}/viewers`);
+    },
+
+    // Upvote yapanlar listesi
+    getUpvoters: async (id: number) => {
+        return api.get<IDataResult<ProblemUpvoterDto[]>>(`/problem/${id}/upvoters`);
+    },
+
+    // Katılımcılar listesi
+    getParticipants: async (id: number) => {
+        return api.get<IDataResult<ProblemParticipantDto[]>>(`/problem/${id}/participants`);
+    },
+
+    // Sorunu kapat
+    closeProblem: async (id: number, reason?: string) => {
+        return api.post<IResult>(`/problem/${id}/close`, { reason });
+    },
+
+    // Sorunu yeniden aç
+    reopenProblem: async (id: number) => {
+        return api.post<IResult>(`/problem/${id}/reopen`);
+    },
+
+    // Sorunu gizle / göster
+    toggleHide: async (id: number) => {
+        return api.post<IResult>(`/problem/${id}/togglehide`);
     },
 };

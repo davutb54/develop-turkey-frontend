@@ -305,7 +305,7 @@ const Home = () => {
                         <div className="flex gap-5 animate-scroll whitespace-nowrap px-4 py-2">
                             {infiniteSliderItems.map((item: any, idx: number) => (
                                 <Link
-                                    to={item._type === 'Problem' ? `/problem/${item.id}` : `/problem/${item.problemId}?solution=${item.id}`}
+                                    to={item._type === 'Problem' ? `/problem/${item.publicId || item.id}` : `/problem/${item.problemPublicId || item.problemId}?solution=${item.publicId || item.id}`}
                                     key={`slide-${item.id}-${idx}`}
                                     onClick={() => item._type === 'Problem' && handleProblemClick(item.id)}
                                     className="w-[260px] sm:w-[300px] shrink-0 bg-white/5 hover:bg-white/10 backdrop-blur-xl border border-white/10 hover:border-blue-400/30 rounded-3xl p-5 transition-all duration-300 group flex flex-col h-[160px] sm:h-[170px] shadow-xl hover:shadow-blue-900/20"
@@ -449,7 +449,7 @@ const Home = () => {
                                         <div className="flex items-center gap-4">
 
                                             {/* PROFIL FOTOĞRAFI VEYA HARF */}
-                                            <Link to={`/user/${prob.senderId}`} className="h-14 w-14 rounded-full overflow-hidden bg-gradient-to-tr from-indigo-100 to-blue-50 flex items-center justify-center font-black text-indigo-700 text-xl shadow-inner border border-indigo-200/50 shrink-0 ring-2 ring-white hover:ring-indigo-300 transition">
+                                            <Link to={`/user/${prob.senderUsername}`} className="h-14 w-14 rounded-full overflow-hidden bg-gradient-to-tr from-indigo-100 to-blue-50 flex items-center justify-center font-black text-indigo-700 text-xl shadow-inner border border-indigo-200/50 shrink-0 ring-2 ring-white hover:ring-indigo-300 transition">
                                                 {prob.senderImageUrl ? (
                                                     <img
                                                         src={getProfileImageUrl(prob.senderImageUrl)}
@@ -463,7 +463,7 @@ const Home = () => {
                                             </Link>
 
                                             <div>
-                                                <Link to={`/user/${prob.senderId}`} className="font-bold text-gray-900 text-base hover:text-indigo-600 transition">@{prob.senderUsername}</Link>
+                                                <Link to={`/user/${prob.senderUsername}`} className="font-bold text-gray-900 text-base hover:text-indigo-600 transition">@{prob.senderUsername}</Link>
                                                 <div className="text-xs font-medium text-gray-500 mt-1 flex items-center gap-1.5">
                                                     <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                                                     {new Date(prob.sendDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
@@ -524,7 +524,7 @@ const Home = () => {
                                                             {enableSharing && (
                                                                 <SocialShare
                                                                     variant="menuItem"
-                                                                    url={`/problem/${prob.id}`}
+                                                                    url={`/problem/${prob.publicId || prob.id}`}
                                                                     title={prob.title}
                                                                 />
                                                             )}
@@ -559,7 +559,7 @@ const Home = () => {
                                                 </span>
                                             )}
                                         </div>
-                                        <Link to={`/problem/${prob.id}`} onClick={() => handleProblemClick(prob.id)} className="block group mb-3">
+                                        <Link to={`/problem/${prob.publicId || prob.id}`} onClick={() => handleProblemClick(prob.id)} className="block group mb-3">
                                             <h3 className="text-xl sm:text-2xl font-black text-gray-900 group-hover:text-indigo-600 transition duration-300 break-words line-clamp-2 sm:line-clamp-none">{prob.title}</h3>
                                         </Link>
 
@@ -568,7 +568,7 @@ const Home = () => {
                                             className="text-gray-600 text-sm leading-relaxed mb-6 line-clamp-3 block"
                                         />
 
-                                        <Link to={`/problem/${prob.id}`} onClick={() => handleProblemClick(prob.id)} className="block group">
+                                        <Link to={`/problem/${prob.publicId || prob.id}`} onClick={() => handleProblemClick(prob.id)} className="block group">
                                             {prob.imageUrl && (
                                                 <div className="w-full h-[250px] sm:h-[320px] bg-indigo-50/50 rounded-2xl overflow-hidden mb-6 border border-indigo-100/50 shadow-inner">
                                                     <img src={`/uploads/problems/${prob.imageUrl}`} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-700" />
@@ -589,7 +589,7 @@ const Home = () => {
                                                 {prob.solutionCount || 0}
                                             </div>
                                         </div>
-                                        <Link to={`/problem/${prob.id}`} onClick={() => handleProblemClick(prob.id)} className={`font-bold text-sm px-5 sm:px-6 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 ${isResolved ? 'bg-green-600 text-white hover:bg-green-700 shadow-green-600/20' : 'bg-white border border-indigo-100 text-indigo-700 hover:bg-indigo-600 hover:text-white hover:border-indigo-600'}`}>
+                                        <Link to={`/problem/${prob.publicId || prob.id}`} onClick={() => handleProblemClick(prob.id)} className={`font-bold text-sm px-5 sm:px-6 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 ${isResolved ? 'bg-green-600 text-white hover:bg-green-700 shadow-green-600/20' : 'bg-white border border-indigo-100 text-indigo-700 hover:bg-indigo-600 hover:text-white hover:border-indigo-600'}`}>
                                             Detaylar
                                             <svg className="w-4 h-4 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
                                         </Link>

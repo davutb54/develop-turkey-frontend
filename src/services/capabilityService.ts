@@ -8,6 +8,8 @@ export interface CapabilityDto {
     code: string;
     description: string;
     category?: string;
+    groupKey?: string;
+    pageScope: string;
     isSystem: boolean;
     isActive: boolean;
     createdAt: string;
@@ -47,7 +49,10 @@ export interface RevokeCapabilityDto {
 export interface CapabilityTemplateDto {
     id: number;
     name: string;
+    slug?: string;
     description?: string;
+    /** 0 = Rol, 1 = Paket */
+    kind: number;
     isActive: boolean;
     createdAt: string;
     latestVersion?: TemplateVersionDto;
@@ -71,6 +76,8 @@ export interface TemplateItemDto {
 export interface CreateTemplateDto {
     name: string;
     description?: string;
+    /** 0 = Rol, 1 = Paket */
+    kind: number;
     capabilityCodes: string[];
 }
 
@@ -84,6 +91,18 @@ export interface ApplyTemplateDto {
     userIds: number[];
     institutionId?: number;
     expiresAt?: string;
+    reason: string;
+}
+
+export interface RevokeBulkDto {
+    capabilityCodes: string[];
+    institutionId?: number;
+    reason: string;
+}
+
+export interface RevokeAppliedTemplateDto {
+    userId: number;
+    institutionId?: number;
     reason: string;
 }
 
@@ -113,6 +132,9 @@ export const capabilityService = {
     revoke: (userId: number, dto: RevokeCapabilityDto) =>
         api.post<IResult>(`/users/${userId}/capabilities/revoke`, dto),
 
+    revokeBulk: (userId: number, dto: RevokeBulkDto) =>
+        api.post<IResult>(`/users/${userId}/capabilities/revoke-bulk`, dto),
+
     // Template yönetimi
     getTemplates: () =>
         api.get<IDataResult<CapabilityTemplateDto[]>>('/capability-templates'),
@@ -134,4 +156,7 @@ export const capabilityService = {
 
     deactivateTemplate: (id: number) =>
         api.put<IResult>(`/capability-templates/${id}/deactivate`),
+
+    revokeApplied: (templateId: number, dto: RevokeAppliedTemplateDto) =>
+        api.post<IResult>(`/capability-templates/${templateId}/revoke`, dto),
 };

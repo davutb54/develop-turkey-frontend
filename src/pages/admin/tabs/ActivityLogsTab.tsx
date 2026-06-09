@@ -3,8 +3,10 @@ import { adminService } from '../../../services/adminService';
 import { institutionService } from '../../../services/institutionService';
 import type { Log, Institution } from '../../../types';
 import { fmtDateTime } from '../../../utils/dateFormat';
+import { useCapability } from '../../../hooks/useCapability';
 
 export default function ActivityLogsTab() {
+    const canView = useCapability('admin.audit_read');
     const [activityLogs, setActivityLogs] = useState<Log[]>([]);
     const [activityLogPage, setActivityLogPage] = useState(1);
     const [hasMoreActivityLogs, setHasMoreActivityLogs] = useState(true);
@@ -60,6 +62,8 @@ export default function ActivityLogsTab() {
             setActivityLogLoading(false);
         }
     };
+
+    if (!canView) return <div className="p-10 text-center text-slate-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
 
     return (
         <div className="p-6 md:p-10 animate-fade-in relative max-w-5xl mx-auto pb-20">

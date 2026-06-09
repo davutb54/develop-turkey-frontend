@@ -1,26 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { userService } from '../services/userService';
 import { authService } from '../services/authService';
-import { institutionService } from '../services/institutionService';
 import { feedbackService } from '../services/feedbackService';
-import type { UserDetailDto, Institution } from '../types';
+import type { UserDetailDto } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useFeature } from '../hooks/useFeature';
-import { useTerminology } from '../context/FeatureContext';
+import { useTerminology, useInstitution } from '../context/FeatureContext';
 import NotificationBell from './NotificationBell';
 import { getProfileImageUrl } from '../utils/imageUtils';
+import SupportWidget from './chat/SupportWidget';
 
 const Navbar = () => {
   const { userId, hasCapability } = useAuth();
   const terminology = useTerminology();
-  const enableFeedbackInbox = useFeature<boolean>('Communication.EnableFeedbackInbox', true);
+  const institution = useInstitution();
+  const enableFeedbackInbox   = useFeature<boolean>('Communication.EnableFeedbackInbox', true);
+  const enableSupportChat     = useFeature<boolean>('Communication.EnableSupportChat', false);
+  const enableChat            = useFeature<boolean>('Communication.EnableChat', false);
   const [user, setUser] = useState<UserDetailDto | null>(null);
-  const [institution, setInstitution] = useState<Institution | null>(null);
   const [loading, setLoading] = useState(true);
 
   // --- MOBİL MENÜ STATE'İ ---
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // --- DESTEK WIDGET DROPDOWN STATE'İ ---
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const supportRef = useRef<HTMLDivElement>(null);
+
+  // Dışarı tıklamada destek dropdown'ı kapat
+  useEffect(() => {
+    const fn = (e: MouseEvent) => {
+      if (supportRef.current && !supportRef.current.contains(e.target as Node))
+        setIsSupportOpen(false);
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, []);
 
   // --- GERİ BİLDİRİM (FEEDBACK) STATE'LERİ ---
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -29,37 +45,30 @@ const Navbar = () => {
   const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   useEffect(() => {
-    const fetchUserAndTheme = async () => {
+    if (institution?.primaryColor) {
+      document.documentElement.style.setProperty('--theme-color', institution.primaryColor);
+    } else {
+      document.documentElement.style.setProperty('--theme-color', '#ffffff');
+    }
+  }, [institution]);
+
+  useEffect(() => {
+    const fetchUser = async () => {
       try {
         if (userId) {
           const response = await userService.getMe();
           if (response.data.success) {
-            const userData = response.data.data;
-            setUser(userData);
-
-            if (userData.institutionId) {
-              const instRes = await institutionService.getById(userData.institutionId);
-              if (instRes.data.success) {
-                setInstitution(instRes.data.data);
-                document.documentElement.style.setProperty('--theme-color', instRes.data.data.primaryColor || '#ffffff');
-              }
-            }
-          }
-        } else {
-          const instRes = await institutionService.getById(1);
-          if (instRes.data.success) {
-            setInstitution(instRes.data.data);
-            document.documentElement.style.setProperty('--theme-color', instRes.data.data.primaryColor || '#ffffff');
+            setUser(response.data.data);
           }
         }
       } catch (error: any) {
-        console.error("Bilgiler çekilemedi:", error);
+        console.error("Kullanıcı bilgisi çekilemedi:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUserAndTheme();
+    fetchUser();
   }, [userId]);
 
   const handleLogout = async () => {
@@ -142,13 +151,13 @@ const Navbar = () => {
                       </div>
                     ) : (
                       <div className={`h-10 w-10 rounded-xl flex items-center justify-center p-1.5 shadow-sm overflow-hidden group-hover:scale-105 transition ${isCustomTheme ? 'bg-white/20' : 'bg-gradient-to-br from-blue-500 to-indigo-600'}`}>
-                        <span className={`text-xl font-black text-white`}>DT</span>
+                        <span className={`text-xl font-black text-white`}>7</span>
                       </div>
                     )}
 
                     <div className="flex flex-col">
                       <span className={`font-bold ${textColor}`}>
-                        {institution?.name || 'Develop Turkey'}
+                        {institution?.name || 'SÖ7LE'}
                       </span>
                       {institution?.subtitle && (
                         <span className={`text-[9px] font-black uppercase tracking-widest opacity-80 ${textColor}`}>
@@ -194,6 +203,31 @@ const Navbar = () => {
                             <Link to="/admin" className={`text-sm font-bold px-3 py-1.5 rounded-md transition shadow-sm ${isCustomTheme ? 'bg-red-500/80 text-white hover:bg-red-500 border border-red-400/50' : 'text-red-600 bg-red-50 hover:bg-red-100 border border-red-200'}`}>
                               Admin Paneli
                             </Link>
+                          )}
+
+                          {/* Destek Talebi Butonu (masaüstü) */}
+                          {(enableSupportChat || enableChat) && (hasCapability('chat.support_request') || hasCapability('chat.escalate') || hasCapability('chat.contact_admin') || hasCapability('chat.contact_global_admin')) && (
+                            <div ref={supportRef} className="relative">
+                              <button
+                                onClick={() => setIsSupportOpen(p => !p)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition shadow-sm active:scale-95 ${isCustomTheme ? 'bg-white/10 text-white hover:bg-white/20 border border-white/20' : 'text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-200'}`}
+                                title="Destek Talebi"
+                              >
+                                <span>💬</span>
+                                Destek
+                              </button>
+                              {isSupportOpen && (
+                                <div className="absolute right-0 top-full mt-2 w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-[90] animate-fade-in-down">
+                                  <div className="px-4 py-3 border-b border-white/10">
+                                    <p className="text-xs font-bold text-white uppercase tracking-wider">Destek Talebi</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">Size en uygun kanalı seçin</p>
+                                  </div>
+                                  <div className="p-2">
+                                    <SupportWidget compact onClose={() => setIsSupportOpen(false)} />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           )}
 
                           {/* Bildirim Zili */}
@@ -341,6 +375,14 @@ const Navbar = () => {
                   <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
                   Yönetime İstek / Öneri
                 </button>
+              )}
+
+              {/* Destek Talebi (mobil) */}
+              {(enableSupportChat || enableChat) && (hasCapability('chat.support_request') || hasCapability('chat.escalate') || hasCapability('chat.contact_admin') || hasCapability('chat.contact_global_admin')) && (
+                <div className="px-2 py-1 border-t border-gray-100">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 px-3 py-1.5 font-bold">Destek Talebi</p>
+                  <SupportWidget compact onClose={() => setIsMobileMenuOpen(false)} />
+                </div>
               )}
 
               {/* Bildirimler (mobil) */}

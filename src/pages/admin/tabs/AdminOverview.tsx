@@ -6,6 +6,7 @@ import { reportService } from '../../../services/reportService';
 import { feedbackService } from '../../../services/feedbackService';
 import { metricsService, type OverviewMetrics } from '../../../services/metricsService';
 import type { AdminDashboardDto, DashboardAnalyticsDto, Institution, ProblemDetailDto } from '../../../types';
+import { useCapability } from '../../../hooks/useCapability';
 import { LineChart, Line, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 
 function formatUptime(hours: number): string {
@@ -26,6 +27,7 @@ function snapshotAge(loadedAt: string): string {
 const CHART_COLORS = ['#3b82f6', '#10b981', '#a855f7', '#f97316', '#14b8a6', '#f43f5e'];
 
 export default function AdminOverview() {
+    const canView = useCapability('admin.dashboard_view');
     const [stats, setStats] = useState<AdminDashboardDto | null>(null);
     const [analytics, setAnalytics] = useState<DashboardAnalyticsDto | null>(null);
     const [overview, setOverview] = useState<OverviewMetrics | null>(null);
@@ -92,6 +94,7 @@ export default function AdminOverview() {
         </div>
     );
 
+    if (!canView) return <div className="p-10 text-center text-slate-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
     if (!stats) return null;
 
     return (

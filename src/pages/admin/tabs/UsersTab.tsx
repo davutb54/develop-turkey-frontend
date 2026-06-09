@@ -1,27 +1,40 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { adminService } from '../../../services/adminService';
 import { userService } from '../../../services/userService';
 import { institutionService } from '../../../services/institutionService';
-import type { UserDetailDto, Institution } from '../../../types';
+import { capabilityService, type CapabilityTemplateDto } from '../../../services/capabilityService';
+import type { UserDetailDto, Institution, UserTitleDto } from '../../../types';
 import { getProfileImageUrl } from '../../../utils/imageUtils';
 import { useCapability } from '../../../hooks/useCapability';
-import { fmtDateTime } from '../../../utils/dateFormat';
+import { fmtDateTime, fmtDate } from '../../../utils/dateFormat';
+import { userTitleService } from '../../../services/userTitleService';
 
 export default function UsersTab() {
-    const canBan        = useCapability('admin.user_ban');
-    const canUnban      = useCapability('admin.user_unban');
-    const canWarn       = useCapability('moderation.user_warn');
-    const canImpersonate = useCapability('admin.user_impersonate');
-    const canWarnRead   = useCapability('moderation.user_warn_read');
-    const canWarnRevoke = useCapability('moderation.user_warn_revoke');
+    const canBan               = useCapability('admin.user_ban');
+    const canUnban             = useCapability('admin.user_unban');
+    const canWarn              = useCapability('moderation.user_warn');
+    const canImpersonate       = useCapability('admin.user_impersonate');
+    const canWarnRead          = useCapability('admin.user_warning_read_all');
+    const canWarnRevoke        = useCapability('moderation.user_warn_revoke');
+    const canChangeInstitution = useCapability('admin.user_institution_change');
+    const canTitleAssign       = useCapability('admin.user_title_assign');
+    const canCapabilityApply   = useCapability('admin.capability_template_apply');
     const [users, setUsers] = useState<UserDetailDto[]>([]);
     const [institutions, setInstitutions] = useState<Institution[]>([]);
     const [userSearch, setUserSearch] = useState('');
     const [userRoleFilter, setUserRoleFilter] = useState('');
     const [userEmailFilter, setUserEmailFilter] = useState('');
     const [userInstitutionFilter, setUserInstitutionFilter] = useState('');
+    const [isReportedFilter, setIsReportedFilter] = useState(false);
+    const [registeredAfterDays, setRegisteredAfterDays] = useState<number | null>(null);
+    const [sortBy, setSortBy] = useState('registerDate_desc');
     const [userPage, setUserPage] = useState(1);
+
+    // Dropdown aksiyon menüsü
+    const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+    const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
     const [userTotalPages, setUserTotalPages] = useState(1);
     const [userTotalCount, setUserTotalCount] = useState(0);
     const [userLoading, setUserLoading] = useState(false);
@@ -39,6 +52,33 @@ export default function UsersTab() {
     const [warningHistory, setWarningHistory] = useState<any[]>([]);
     const [warningHistoryLoading, setWarningHistoryLoading] = useState(false);
 
+    // Kurum Değiştir modal state
+    const [changeInstUserId, setChangeInstUserId] = useState<number | null>(null);
+    const [changeInstTarget, setChangeInstTarget] = useState('');
+    const [changeInstLoading, setChangeInstLoading] = useState(false);
+
+    // Unvan yönetimi modal state
+    const [titleUserId, setTitleUserId] = useState<number | null>(null);
+    const [titleUserName, setTitleUserName] = useState('');
+    const [userTitles, setUserTitles] = useState<UserTitleDto[]>([]);
+    const [titlesLoading, setTitlesLoading] = useState(false);
+    const [newTitleLabel, setNewTitleLabel] = useState('');
+    const [newTitleKind, setNewTitleKind] = useState<'official' | 'expert' | 'custom'>('custom');
+    const [newTitleColor, setNewTitleColor] = useState('');
+    const [newTitleIcon, setNewTitleIcon] = useState('');
+    const [titleSubmitting, setTitleSubmitting] = useState(false);
+
+    // Yetenek Paketleri modal state
+    const [packageUserId, setPackageUserId] = useState<number | null>(null);
+    const [packageUserName, setPackageUserName] = useState('');
+    const [packageTemplates, setPackageTemplates] = useState<CapabilityTemplateDto[]>([]);
+    const [userCapCodes, setUserCapCodes] = useState<Set<string>>(new Set());
+    const [packageLoading, setPackageLoading] = useState(false);
+    // { templateId, action: 'apply'|'revoke' } — hangi toggle bekliyor gerekçe
+    const [pendingToggle, setPendingToggle] = useState<{ templateId: number; action: 'apply' | 'revoke' } | null>(null);
+    const [toggleReason, setToggleReason] = useState('');
+    const [toggleLoading, setToggleLoading] = useState(false);
+
     useEffect(() => {
         institutionService.getAll().then(res => { if (res.data.success) setInstitutions(res.data.data); });
         fetchUsers(1);
@@ -47,6 +87,9 @@ export default function UsersTab() {
     const fetchUsers = async (page: number = 1) => {
         setUserLoading(true);
         try {
+            const registeredAfter = registeredAfterDays
+                ? new Date(Date.now() - registeredAfterDays * 86400000).toISOString()
+                : undefined;
             const res = await userService.getAllPaged({
                 page,
                 pageSize: USER_PAGE_SIZE,
@@ -54,6 +97,9 @@ export default function UsersTab() {
                 roleFilter: userRoleFilter || undefined,
                 emailStatus: userEmailFilter || undefined,
                 institutionId: userInstitutionFilter ? parseInt(userInstitutionFilter) : undefined,
+                isReported: isReportedFilter || undefined,
+                registeredAfter,
+                sortBy: sortBy !== 'registerDate_desc' ? sortBy : undefined,
             });
             if (res.data.success) {
                 setUsers(res.data.data);
@@ -63,6 +109,12 @@ export default function UsersTab() {
             }
         } catch (err) { console.error('Kullanıcılar yüklenemedi', err); }
         finally { setUserLoading(false); }
+    };
+
+    const handleOpenMenu = (userId: number, e: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        setMenuPosition({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+        setOpenMenuId(userId);
     };
 
     const handleBanToggle = async (userId: number, isBanned: boolean) => {
@@ -105,6 +157,122 @@ export default function UsersTab() {
         } catch { alert('Uyarı geri alınamadı.'); }
     };
 
+    const handleChangeInstitution = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!changeInstUserId || !changeInstTarget) return;
+        setChangeInstLoading(true);
+        try {
+            await institutionService.changeUserInstitution(changeInstUserId, parseInt(changeInstTarget));
+            setChangeInstUserId(null);
+            setChangeInstTarget('');
+            fetchUsers(userPage);
+        } catch { alert('Kurum değiştirilemedi.'); }
+        finally { setChangeInstLoading(false); }
+    };
+
+    const handleOpenTitleModal = async (userId: number, userName: string) => {
+        setTitleUserId(userId);
+        setTitleUserName(userName);
+        setUserTitles([]);
+        setTitlesLoading(true);
+        try {
+            const res = await userTitleService.getByUser(userId);
+            if (res.data.success) setUserTitles(res.data.data);
+        } catch { /* sessizce geç */ }
+        finally { setTitlesLoading(false); }
+    };
+
+    const handleAssignTitle = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!titleUserId || !newTitleLabel.trim()) return;
+        setTitleSubmitting(true);
+        try {
+            await userTitleService.assign({
+                userId: titleUserId,
+                label: newTitleLabel.trim(),
+                kind: newTitleKind,
+                color: newTitleColor || null,
+                icon: newTitleIcon || null,
+            });
+            setNewTitleLabel(''); setNewTitleColor(''); setNewTitleIcon(''); setNewTitleKind('custom');
+            const res = await userTitleService.getByUser(titleUserId);
+            if (res.data.success) setUserTitles(res.data.data);
+        } catch { alert('Unvan atanamadı.'); }
+        finally { setTitleSubmitting(false); }
+    };
+
+    const handleRemoveTitle = async (titleId: number) => {
+        if (!titleUserId) return;
+        try {
+            await userTitleService.remove(titleId);
+            setUserTitles(prev => prev.filter(t => t.id !== titleId));
+        } catch { alert('Unvan kaldırılamadı.'); }
+    };
+
+    const handleOpenPackages = async (userId: number, userName: string) => {
+        setPackageUserId(userId);
+        setPackageUserName(userName);
+        setPendingToggle(null);
+        setToggleReason('');
+        setPackageLoading(true);
+        try {
+            const [tmplRes, capRes] = await Promise.all([
+                capabilityService.getTemplates(),
+                capabilityService.getByUser(userId),
+            ]);
+            const packages = (tmplRes.data.data ?? []).filter((t: CapabilityTemplateDto) => (t.kind ?? 0) === 1 && t.isActive);
+            setPackageTemplates(packages);
+            const activeCodes = new Set<string>(
+                (capRes.data.data ?? [])
+                    .filter((c: any) => !c.revokedAt)
+                    .map((c: any) => c.capabilityCode as string)
+            );
+            setUserCapCodes(activeCodes);
+        } catch { /* sessizce geç */ }
+        finally { setPackageLoading(false); }
+    };
+
+    const isPackageActive = (tmpl: CapabilityTemplateDto): boolean => {
+        const codes = tmpl.latestVersion?.items.map(i => i.capabilityCode) ?? [];
+        return codes.length > 0 && codes.every(code => userCapCodes.has(code));
+    };
+
+    const handleTogglePackage = (tmpl: CapabilityTemplateDto) => {
+        const action = isPackageActive(tmpl) ? 'revoke' : 'apply';
+        setPendingToggle({ templateId: tmpl.id, action });
+        setToggleReason('');
+    };
+
+    const handleConfirmToggle = async () => {
+        if (!pendingToggle || !toggleReason.trim() || !packageUserId) return;
+        const tmpl = packageTemplates.find(t => t.id === pendingToggle.templateId);
+        if (!tmpl?.latestVersion) return;
+        setToggleLoading(true);
+        try {
+            if (pendingToggle.action === 'apply') {
+                await capabilityService.applyTemplate(tmpl.id, {
+                    templateVersionId: tmpl.latestVersion.id,
+                    userIds: [packageUserId],
+                    reason: toggleReason,
+                });
+                const newCodes = new Set(userCapCodes);
+                tmpl.latestVersion.items.forEach(i => newCodes.add(i.capabilityCode));
+                setUserCapCodes(newCodes);
+            } else {
+                await capabilityService.revokeApplied(tmpl.id, {
+                    userId: packageUserId,
+                    reason: toggleReason,
+                });
+                const newCodes = new Set(userCapCodes);
+                tmpl.latestVersion.items.forEach(i => newCodes.delete(i.capabilityCode));
+                setUserCapCodes(newCodes);
+            }
+            setPendingToggle(null);
+            setToggleReason('');
+        } catch { alert('İşlem başarısız.'); }
+        finally { setToggleLoading(false); }
+    };
+
     return (
         <div className="p-6 md:p-10 animate-fade-in">
             <div className="mb-6">
@@ -113,36 +281,71 @@ export default function UsersTab() {
             <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 md:p-8 border border-slate-100">
                 <div className="flex flex-col h-full">
                     {/* FİLTRE BÖLÜMÜ */}
-                    <div className="flex flex-wrap gap-3 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                        <input
-                            type="text"
-                            placeholder="İsim, Kullanıcı Adı veya E-Posta Ara..."
-                            className="flex-1 min-w-[140px] sm:min-w-[200px] border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition bg-white"
-                            value={userSearch}
-                            onChange={e => setUserSearch(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') fetchUsers(1); }}
-                        />
-                        <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={userRoleFilter} onChange={e => { setUserRoleFilter(e.target.value); fetchUsers(1); }}>
-                            <option value="">Tüm Roller</option>
-                            <option value="admin">Admin</option>
-                            <option value="expert">Uzman</option>
-                            <option value="official">Resmi Makam</option>
-                            <option value="banned">Banlı</option>
-                        </select>
-                        <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={userEmailFilter} onChange={e => { setUserEmailFilter(e.target.value); fetchUsers(1); }}>
-                            <option value="">E-Posta Durumu (Tümü)</option>
-                            <option value="verified">Doğrulanmış</option>
-                            <option value="unverified">Doğrulanmamış</option>
-                        </select>
-                        <select className="border border-slate-200 shadow-sm p-3.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={userInstitutionFilter} onChange={e => { setUserInstitutionFilter(e.target.value); fetchUsers(1); }}>
-                            <option value="">Tüm Kurumlar</option>
-                            {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                        </select>
-                        <button onClick={() => fetchUsers(1)} className="px-5 py-3 bg-slate-800 text-white font-bold rounded-xl text-sm shadow-md hover:bg-black transition">Ara</button>
-                        {(userSearch || userRoleFilter || userEmailFilter || userInstitutionFilter) && (
-                            <button onClick={() => { setUserSearch(''); setUserRoleFilter(''); setUserEmailFilter(''); setUserInstitutionFilter(''); setTimeout(() => fetchUsers(1), 50); }} className="px-4 py-3 bg-white border border-slate-300 text-slate-600 font-bold rounded-xl text-sm shadow-sm hover:bg-slate-50">Temizle</button>
-                        )}
-                        <span className="self-center text-xs font-bold text-slate-500 ml-auto">{userTotalCount} kullanıcı bulundu</span>
+                    <div className="mb-5 space-y-3">
+                        {/* Hızlı Filtreler */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">Hızlı:</span>
+                            {[
+                                { label: 'Banlı', active: userRoleFilter === 'banned', onClick: () => { const v = userRoleFilter === 'banned' ? '' : 'banned'; setUserRoleFilter(v); setTimeout(() => fetchUsers(1), 50); } },
+                                { label: 'E-Posta Doğrulanmamış', active: userEmailFilter === 'unverified', onClick: () => { const v = userEmailFilter === 'unverified' ? '' : 'unverified'; setUserEmailFilter(v); setTimeout(() => fetchUsers(1), 50); } },
+                                { label: 'Şikayet Edilmiş', active: isReportedFilter, onClick: () => { setIsReportedFilter(p => !p); setTimeout(() => fetchUsers(1), 50); } },
+                                { label: 'Son 7 Gün', active: registeredAfterDays === 7, onClick: () => { setRegisteredAfterDays(p => p === 7 ? null : 7); setTimeout(() => fetchUsers(1), 50); } },
+                                { label: 'Son 30 Gün', active: registeredAfterDays === 30, onClick: () => { setRegisteredAfterDays(p => p === 30 ? null : 30); setTimeout(() => fetchUsers(1), 50); } },
+                            ].map(chip => (
+                                <button
+                                    key={chip.label}
+                                    onClick={chip.onClick}
+                                    className={`px-3 py-1.5 rounded-full text-[11px] font-black border transition ${chip.active ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                                >
+                                    {chip.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Ana Filtre Satırı */}
+                        <div className="flex flex-wrap gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                            <input
+                                type="text"
+                                placeholder="İsim, Kullanıcı Adı veya E-Posta..."
+                                className="flex-1 min-w-[140px] sm:min-w-[200px] border border-slate-200 shadow-sm px-3.5 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition bg-white"
+                                value={userSearch}
+                                onChange={e => setUserSearch(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') fetchUsers(1); }}
+                            />
+                            <select className="border border-slate-200 shadow-sm px-3 py-2.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={userRoleFilter} onChange={e => { setUserRoleFilter(e.target.value); fetchUsers(1); }}>
+                                <option value="">Tüm Roller</option>
+                                <option value="admin">Admin</option>
+                                <option value="expert">Uzman</option>
+                                <option value="official">Resmi Makam</option>
+                                <option value="banned">Banlı</option>
+                            </select>
+                            <select className="border border-slate-200 shadow-sm px-3 py-2.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={userEmailFilter} onChange={e => { setUserEmailFilter(e.target.value); fetchUsers(1); }}>
+                                <option value="">E-Posta (Tümü)</option>
+                                <option value="verified">Doğrulanmış</option>
+                                <option value="unverified">Doğrulanmamış</option>
+                            </select>
+                            <select className="border border-slate-200 shadow-sm px-3 py-2.5 rounded-xl text-sm bg-white font-medium text-slate-700" value={userInstitutionFilter} onChange={e => { setUserInstitutionFilter(e.target.value); fetchUsers(1); }}>
+                                <option value="">Tüm Kurumlar</option>
+                                {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                            </select>
+                            <select
+                                className="border border-slate-200 shadow-sm px-3 py-2.5 rounded-xl text-sm bg-white font-medium text-slate-700"
+                                value={sortBy}
+                                onChange={e => { setSortBy(e.target.value); setTimeout(() => fetchUsers(1), 50); }}
+                            >
+                                <option value="registerDate_desc">Kayıt: Yeni → Eski</option>
+                                <option value="registerDate_asc">Kayıt: Eski → Yeni</option>
+                                <option value="name_asc">İsim: A → Z</option>
+                                <option value="id_desc">ID: Büyük → Küçük</option>
+                            </select>
+                            <div className="flex gap-2 ml-auto">
+                                <button onClick={() => fetchUsers(1)} className="px-4 py-2.5 bg-slate-800 text-white font-bold rounded-xl text-sm shadow-md hover:bg-black transition">Ara</button>
+                                {(userSearch || userRoleFilter || userEmailFilter || userInstitutionFilter || isReportedFilter || registeredAfterDays) && (
+                                    <button onClick={() => { setUserSearch(''); setUserRoleFilter(''); setUserEmailFilter(''); setUserInstitutionFilter(''); setIsReportedFilter(false); setRegisteredAfterDays(null); setTimeout(() => fetchUsers(1), 50); }} className="px-3 py-2.5 bg-white border border-slate-300 text-slate-600 font-bold rounded-xl text-sm shadow-sm hover:bg-slate-50">✕</button>
+                                )}
+                            </div>
+                            <span className="self-center text-xs font-bold text-slate-400">{userTotalCount} kullanıcı</span>
+                        </div>
                     </div>
 
                     {/* TABLO */}
@@ -156,8 +359,8 @@ export default function UsersTab() {
                                 <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
                                     <tr>
                                         <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Kullanıcı Bilgileri</th>
-                                        <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">E-Posta</th>
-                                        <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Roller & Durum</th>
+                                        <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">İletişim & Konum</th>
+                                        <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest text-[10px]">Durum</th>
                                         <th className="px-6 py-4 text-right font-black text-slate-500 uppercase tracking-widest text-[10px]">Yetki Yönetimi</th>
                                     </tr>
                                 </thead>
@@ -167,42 +370,61 @@ export default function UsersTab() {
                                     ) : users.map(u => (
                                         <tr key={u.id} className="hover:bg-indigo-50/30 transition">
                                             <td className="px-6 py-4">
-                                                <Link to={`/user/${u.id}`} target="_blank" className="flex items-center gap-3 group">
+                                                <Link to={`/user/${u.userName}`} target="_blank" className="flex items-center gap-3 group">
                                                     <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white group-hover:ring-indigo-200 transition">
                                                         {u.profileImageUrl ? <img src={getProfileImageUrl(u.profileImageUrl)} className="w-full h-full object-cover" /> : u.userName[0].toUpperCase()}
                                                     </div>
                                                     <div>
                                                         <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition">@{u.userName}</div>
                                                         <div className="text-xs text-slate-500 font-medium">{u.name} {u.surname}</div>
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">#{u.id}</span>
+                                                            {u.registerDate && (
+                                                                <span className="text-[10px] text-slate-400">• {fmtDate(u.registerDate)}</span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </Link>
                                             </td>
-                                            <td className="px-6 py-4 text-slate-600 font-medium">{u.email}</td>
-                                            <td className="px-6 py-4 flex gap-1.5 flex-wrap">
-                                                {u.isBanned
-                                                    ? <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded text-[10px] font-black border border-red-200 tracking-wider uppercase">Banlı</span>
-                                                    : <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black border border-green-200 tracking-wider uppercase">Aktif</span>}
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <div className="flex justify-end gap-2 flex-wrap items-center">
-                                                    {(u.isBanned ? canUnban : canBan) && (
-                                                    <button onClick={() => handleBanToggle(u.id, u.isBanned)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 ${u.isBanned ? 'bg-slate-800 text-white border-slate-900 hover:bg-black' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
-                                                        {u.isBanned ? 'Ban Kaldır' : 'Banla'}
-                                                    </button>
+                                            <td className="px-6 py-4">
+                                                <div className="text-sm text-slate-700 font-medium">{u.email}</div>
+                                                {u.cityName && (
+                                                    <div className="text-xs text-slate-400 mt-0.5">📍 {u.cityName}</div>
                                                 )}
-                                                    <div className="w-px h-5 bg-slate-200 mx-1" />
-                                                    {canWarn && (
-                                                    <button onClick={() => { setWarningTargetUserId(u.id); setWarningTitle(''); setWarningMessage(''); setWarningSeverity('Warning'); }} className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100">⚠️ Uyar</button>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex gap-1.5 flex-wrap">
+                                                    {u.isBanned
+                                                        ? <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded text-[10px] font-black border border-red-200 tracking-wider uppercase">Banlı</span>
+                                                        : <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black border border-green-200 tracking-wider uppercase">Aktif</span>}
+                                                    {u.isEmailVerified
+                                                        ? <span className="px-2.5 py-1 bg-blue-50 text-blue-600 rounded text-[10px] font-black border border-blue-200 tracking-wider uppercase">✓ E-Posta</span>
+                                                        : <span className="px-2.5 py-1 bg-yellow-50 text-yellow-600 rounded text-[10px] font-black border border-yellow-200 tracking-wider uppercase">! E-Posta</span>}
+                                                    {u.isReported && (
+                                                        <span className="px-2.5 py-1 bg-orange-100 text-orange-700 rounded text-[10px] font-black border border-orange-200 tracking-wider uppercase">Şikayet</span>
                                                     )}
-                                                    {canWarnRead && (
-                                                    <button onClick={() => handleOpenWarningHistory(u.id)} className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200">📋 Geçmiş</button>
+                                                    {!u.isProfilePublic && (
+                                                        <span className="px-2.5 py-1 bg-slate-100 text-slate-500 rounded text-[10px] font-black border border-slate-200 tracking-wider uppercase">Gizli</span>
                                                     )}
-                                                    <div className="w-px h-5 bg-slate-200 mx-1" />
-                                                    {canImpersonate && (
-                                                    <button onClick={() => { setImpersonatingUser(u.id); setImpersonatePassword(''); }} className="px-3 py-1.5 bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-200 rounded-lg shadow-sm text-[10px] font-black uppercase tracking-wider transition active:scale-95">
-                                                        Sudo Geçiş
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 text-right">
+                                                <div className="flex justify-end items-center gap-2">
+                                                    {(u.isBanned ? canUnban : canBan) && (
+                                                        <button
+                                                            onClick={() => handleBanToggle(u.id, u.isBanned)}
+                                                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition shadow-sm active:scale-95 ${u.isBanned ? 'bg-slate-800 text-white border-slate-900 hover:bg-black' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}
+                                                        >
+                                                            {u.isBanned ? 'Ban Kaldır' : 'Banla'}
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={(e) => handleOpenMenu(u.id, e)}
+                                                        className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 hover:border-slate-300 transition text-base font-black leading-none"
+                                                        title="Diğer işlemler"
+                                                    >
+                                                        ⋯
                                                     </button>
-                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -220,6 +442,59 @@ export default function UsersTab() {
                     </div>
                 </div>
             </div>
+
+            {/* DROPDOWN AKSIYON MENÜSÜ (portal) */}
+            {openMenuId !== null && menuPosition && (() => {
+                const u = users.find(x => x.id === openMenuId);
+                if (!u) return null;
+                return createPortal(
+                    <>
+                        <div className="fixed inset-0 z-[9998]" onClick={() => setOpenMenuId(null)} />
+                        <div
+                            className="fixed z-[9999] bg-white border border-slate-200 rounded-2xl shadow-2xl shadow-slate-300/40 py-1.5 min-w-[185px] animate-fade-in"
+                            style={{ top: menuPosition.top, right: menuPosition.right }}
+                        >
+                            {canWarn && (
+                                <button onClick={() => { setOpenMenuId(null); setWarningTargetUserId(u.id); setWarningTitle(''); setWarningMessage(''); setWarningSeverity('Warning'); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold text-orange-600 hover:bg-orange-50 transition flex items-center gap-2.5">
+                                    <span>⚠️</span> Uyarı Ver
+                                </button>
+                            )}
+                            {canWarnRead && (
+                                <button onClick={() => { setOpenMenuId(null); handleOpenWarningHistory(u.id); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition flex items-center gap-2.5">
+                                    <span>📋</span> Uyarı Geçmişi
+                                </button>
+                            )}
+                            {(canWarn || canWarnRead) && (canImpersonate || canChangeInstitution || canTitleAssign || canCapabilityApply) && (
+                                <div className="h-px bg-slate-100 my-1 mx-2" />
+                            )}
+                            {canImpersonate && (
+                                <button onClick={() => { setOpenMenuId(null); setImpersonatingUser(u.id); setImpersonatePassword(''); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold text-amber-600 hover:bg-amber-50 transition flex items-center gap-2.5">
+                                    <span>🔑</span> Sudo Geçiş
+                                </button>
+                            )}
+                            {canChangeInstitution && (
+                                <button onClick={() => { setOpenMenuId(null); setChangeInstUserId(u.id); setChangeInstTarget(''); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold text-sky-600 hover:bg-sky-50 transition flex items-center gap-2.5">
+                                    <span>🏛️</span> Kurum Değiştir
+                                </button>
+                            )}
+                            {(canImpersonate || canChangeInstitution) && (canTitleAssign || canCapabilityApply) && (
+                                <div className="h-px bg-slate-100 my-1 mx-2" />
+                            )}
+                            {canTitleAssign && (
+                                <button onClick={() => { setOpenMenuId(null); handleOpenTitleModal(u.id, u.userName); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold text-violet-600 hover:bg-violet-50 transition flex items-center gap-2.5">
+                                    <span>🏷️</span> Unvan Yönetimi
+                                </button>
+                            )}
+                            {canCapabilityApply && (
+                                <button onClick={() => { setOpenMenuId(null); handleOpenPackages(u.id, u.userName); }} className="w-full text-left px-4 py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50 transition flex items-center gap-2.5">
+                                    <span>📦</span> Yetenek Paketleri
+                                </button>
+                            )}
+                        </div>
+                    </>,
+                    document.body
+                );
+            })()}
 
             {/* IMPERSONATION MODAL */}
             {impersonatingUser !== null && (
@@ -247,6 +522,43 @@ export default function UsersTab() {
                             <div className="flex gap-3 pt-2">
                                 <button type="button" onClick={() => setImpersonatingUser(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm">İptal</button>
                                 <button type="submit" className="flex-1 px-4 py-3 bg-amber-500 text-white font-bold rounded-xl shadow-md hover:bg-amber-600 transition active:scale-95">Kimliğe Bürü</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* KURUM DEĞİŞTİR MODAL */}
+            {changeInstUserId !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm animate-fade-in-down border-2 border-sky-200">
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="w-12 h-12 bg-sky-100 text-sky-600 flex items-center justify-center rounded-2xl shadow-inner shrink-0 text-2xl">🏛️</div>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-800">Kurum Değiştir</h3>
+                                <p className="text-xs text-slate-500">Kullanıcı ID: {changeInstUserId}</p>
+                            </div>
+                        </div>
+                        <form onSubmit={handleChangeInstitution} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Yeni Kurum</label>
+                                <select
+                                    required
+                                    value={changeInstTarget}
+                                    onChange={e => setChangeInstTarget(e.target.value)}
+                                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-sky-400 outline-none bg-slate-50"
+                                >
+                                    <option value="">— Kurum seçin —</option>
+                                    {institutions.map(i => (
+                                        <option key={i.id} value={i.id}>{i.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => setChangeInstUserId(null)} className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm">İptal</button>
+                                <button type="submit" disabled={changeInstLoading || !changeInstTarget} className="flex-1 px-4 py-3 bg-sky-600 text-white font-bold rounded-xl shadow-md hover:bg-sky-700 transition active:scale-95 disabled:opacity-50">
+                                    {changeInstLoading ? 'Değiştiriliyor...' : 'Uygula'}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -323,6 +635,201 @@ export default function UsersTab() {
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* UNVAN YÖNETİMİ MODAL */}
+            {titleUserId !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md animate-fade-in-down border-2 border-violet-200">
+                        <div className="flex items-center justify-between mb-5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-violet-100 text-violet-600 flex items-center justify-center rounded-2xl shadow-inner shrink-0 text-2xl">🏷️</div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-800">Unvan Yönetimi</h3>
+                                    <p className="text-xs text-slate-500">@{titleUserName}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setTitleUserId(null)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+                        </div>
+
+                        {/* Mevcut unvanlar */}
+                        <div className="mb-5">
+                            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Mevcut Unvanlar</label>
+                            {titlesLoading ? (
+                                <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-6 w-6 border-t-2 border-violet-500" /></div>
+                            ) : userTitles.length === 0 ? (
+                                <p className="text-xs text-slate-400 font-medium py-2">Henüz unvan atanmamış.</p>
+                            ) : (
+                                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                                    {userTitles.map(t => (
+                                        <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                                            <div className="flex items-center gap-2">
+                                                {t.icon && <span>{t.icon}</span>}
+                                                <span
+                                                    className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded"
+                                                    style={t.color ? { backgroundColor: `${t.color}22`, color: t.color } : undefined}
+                                                >
+                                                    {t.label}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 font-medium">{t.kind}</span>
+                                            </div>
+                                            <button onClick={() => handleRemoveTitle(t.id)} className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition">Kaldır</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Yeni unvan ekle */}
+                        <form onSubmit={handleAssignTitle} className="space-y-3 border-t border-slate-100 pt-4">
+                            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">Yeni Unvan Ekle</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Unvan adı..."
+                                    value={newTitleLabel}
+                                    onChange={e => setNewTitleLabel(e.target.value)}
+                                    className="flex-1 border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 outline-none bg-slate-50"
+                                />
+                                <select
+                                    value={newTitleKind}
+                                    onChange={e => setNewTitleKind(e.target.value as 'official' | 'expert' | 'custom')}
+                                    className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 outline-none bg-slate-50"
+                                >
+                                    <option value="custom">Özel</option>
+                                    <option value="expert">Uzman</option>
+                                    <option value="official">Yetkili</option>
+                                </select>
+                            </div>
+                            <div className="flex gap-2">
+                                <div className="flex items-center gap-2 flex-1">
+                                    <label className="text-xs font-bold text-slate-500">Renk:</label>
+                                    <input type="color" value={newTitleColor || '#6d28d9'} onChange={e => setNewTitleColor(e.target.value)} className="h-8 w-12 rounded cursor-pointer border border-slate-200" />
+                                    {newTitleColor && <button type="button" onClick={() => setNewTitleColor('')} className="text-[10px] text-slate-400 hover:text-slate-600">Temizle</button>}
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="İkon (emoji)"
+                                    value={newTitleIcon}
+                                    onChange={e => setNewTitleIcon(e.target.value)}
+                                    className="w-28 border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 outline-none bg-slate-50"
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-1">
+                                <button type="button" onClick={() => setTitleUserId(null)} className="flex-1 px-4 py-2.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition text-sm">Kapat</button>
+                                <button type="submit" disabled={titleSubmitting || !newTitleLabel.trim()} className="flex-1 px-4 py-2.5 bg-violet-600 text-white font-black rounded-xl shadow-md hover:bg-violet-700 transition active:scale-95 disabled:opacity-50 text-sm">
+                                    {titleSubmitting ? 'Ekleniyor...' : 'Ekle'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+            {/* YETENEK PAKETLERİ MODAL */}
+            {packageUserId !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg animate-fade-in-down border-2 border-teal-200 flex flex-col max-h-[90vh]">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-teal-100 text-teal-600 flex items-center justify-center rounded-2xl shadow-inner shrink-0 text-2xl">📦</div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-800">Yetenek Paketleri</h3>
+                                    <p className="text-xs text-slate-500">@{packageUserName}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setPackageUserId(null)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="flex-1 overflow-y-auto px-6 py-5">
+                            {packageLoading ? (
+                                <div className="flex justify-center py-10">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-teal-500" />
+                                </div>
+                            ) : packageTemplates.length === 0 ? (
+                                <p className="text-center text-slate-400 font-medium py-8">Henüz yetenek paketi tanımlanmamış.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {packageTemplates.map(tmpl => {
+                                        const active = isPackageActive(tmpl);
+                                        const isPending = pendingToggle?.templateId === tmpl.id;
+                                        return (
+                                            <div key={tmpl.id} className={`rounded-2xl border p-4 transition ${active ? 'bg-teal-50 border-teal-200' : 'bg-slate-50 border-slate-200'}`}>
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="font-black text-slate-800 text-sm">{tmpl.name}</span>
+                                                            {tmpl.latestVersion && (
+                                                                <span className="text-[9px] text-slate-400 font-mono">{tmpl.latestVersion.items.length} yetki</span>
+                                                            )}
+                                                        </div>
+                                                        {tmpl.description && (
+                                                            <p className="text-xs text-slate-500 mt-0.5 truncate">{tmpl.description}</p>
+                                                        )}
+                                                    </div>
+                                                    {/* Toggle switch */}
+                                                    <button
+                                                        onClick={() => !isPending && handleTogglePackage(tmpl)}
+                                                        className={`relative shrink-0 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${active ? 'bg-teal-500' : 'bg-slate-300'}`}
+                                                        title={active ? 'Paketi kaldır' : 'Paketi uygula'}
+                                                    >
+                                                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${active ? 'translate-x-6' : 'translate-x-0'}`} />
+                                                    </button>
+                                                </div>
+
+                                                {/* Inline reason dialog */}
+                                                {isPending && (
+                                                    <div className="mt-3 pt-3 border-t border-slate-200 space-y-2">
+                                                        <p className="text-xs font-bold text-slate-600">
+                                                            {pendingToggle!.action === 'apply' ? '✅ Paketi ekle — gerekçe girin:' : '❌ Paketi kaldır — gerekçe girin:'}
+                                                        </p>
+                                                        <input
+                                                            type="text"
+                                                            autoFocus
+                                                            value={toggleReason}
+                                                            onChange={e => setToggleReason(e.target.value)}
+                                                            placeholder="Gerekçe..."
+                                                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-teal-400 outline-none"
+                                                        />
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPendingToggle(null)}
+                                                                className="flex-1 px-3 py-1.5 text-[10px] font-black uppercase bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition"
+                                                            >
+                                                                İptal
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleConfirmToggle}
+                                                                disabled={toggleLoading || !toggleReason.trim()}
+                                                                className={`flex-1 px-3 py-1.5 text-[10px] font-black uppercase rounded-xl transition disabled:opacity-50 ${pendingToggle!.action === 'apply' ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-rose-600 text-white hover:bg-rose-700'}`}
+                                                            >
+                                                                {toggleLoading ? '...' : pendingToggle!.action === 'apply' ? 'Uygula' : 'Kaldır'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-4 border-t border-slate-100 shrink-0">
+                            <button
+                                onClick={() => setPackageUserId(null)}
+                                className="w-full px-4 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition text-sm"
+                            >
+                                Kapat
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

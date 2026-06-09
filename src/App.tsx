@@ -42,6 +42,9 @@ import UserMetricsPage from './pages/admin/dashboard/UserMetrics';
 import SystemHealthPage from './pages/admin/dashboard/SystemHealth';
 import AuditLogBrowser from './pages/admin/dashboard/AuditLogBrowser';
 import WorkflowDeadLetterTab from './pages/admin/tabs/WorkflowDeadLetterTab';
+import KillSwitchTab from './pages/admin/tabs/KillSwitchTab';
+import SecurityTab from './pages/admin/tabs/SecurityTab';
+import ChatManagementTab from './pages/admin/tabs/ChatManagementTab';
 import Maintenance from './pages/Maintenance';
 import NotFound from './pages/NotFound';
 import NotificationsPage from './pages/NotificationsPage';
@@ -49,6 +52,7 @@ import LegalAgreementDetail from './pages/LegalAgreementDetail';
 import About from './pages/About';
 import Footer from './components/Footer';
 import AgreementModal from './components/AgreementModal';
+import FloatingChatWidget from './components/chat/FloatingChatWidget';
 import { useAuth } from './context/AuthContext';
 import { legalAgreementService } from './services/legalAgreementService';
 import { useFeature } from './hooks/useFeature';
@@ -172,6 +176,9 @@ function App() {
           <Route path="capability-templates" element={<CapabilityTemplatesTab />} />
           <Route path="capability-audit" element={<CapabilityAuditTab />} />
           <Route path="announcements" element={<AnnouncementsTab />} />
+          <Route path="kill-switch" element={<KillSwitchTab />} />
+          <Route path="security" element={<SecurityTab />} />
+          <Route path="chat" element={<ChatManagementTab />} />
           <Route path="metrics" element={<DashboardLayout />}>
             <Route index element={<Navigate to="overview" replace />} />
             <Route path="overview" element={<Overview />} />
@@ -187,9 +194,13 @@ function App() {
         <Route path="/maintenance" element={<Maintenance />} />
         <Route path="/about" element={<About />} />
         <Route path="/legal/:type" element={<LegalAgreementDetail />} />
+        <Route path="/404" element={<NotFound />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       {showFooter && <Footer />}
+
+      {/* ── GLOBAL YÜZEN SOHBET WİDGETI (admin olmayan kullanıcılar için) ── */}
+      <FloatingChatWidget />
 
       {/* ── GLOBAL ZORUNLU SÖZLEŞME ONAY MODALI ── */}
       {hasPendingAgreement && userId && pendingAgreements.length > 0 && (

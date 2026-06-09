@@ -74,16 +74,45 @@ export interface Topic {
     status: boolean;
 }
 
+// Kullanıcı Unvan (Epic D)
+export interface UserTitleDto {
+    id: number;
+    userId: number;
+    label: string;
+    kind: 'official' | 'expert' | 'custom';
+    color?: string | null;
+    icon?: string | null;
+    isVisible: boolean;
+    assignedAt: string;
+}
+
+// Resmi Yanıt (Epic D)
+export interface OfficialResponseDto {
+    id: number;
+    problemId: number;
+    authorUserId: number;
+    authorUsername: string;
+    authorImageUrl?: string | null;
+    body: string;
+    status: 'acknowledged' | 'in_progress' | 'info' | 'closed';
+    createdAt: string;
+    updatedAt?: string | null;
+    authorTitles: UserTitleDto[];
+}
+
 // Sorun Detayları (Entities/DTOs/ProblemDetailDto.cs)
 export interface ProblemDetailDto {
     institutionId: number;
     isResolved: boolean;
     id: number;
+    publicId?: string | null;
     senderId: number;
     topicName: string;
     senderUsername: string;
     senderIsExpert: boolean;
     senderIsOfficial: boolean;
+    senderTitles?: UserTitleDto[];
+    officialResponses?: OfficialResponseDto[];
     title: string;
     description: string;
     topics: TopicDto[];
@@ -98,6 +127,7 @@ export interface ProblemDetailDto {
     isDeleted: boolean;
     sendDate: string;
     imageUrls?: string[] | null;
+    videoUrls?: string[] | null;
     isResolvedByExpert: boolean;
     solutionCount: number;
     viewCount: number;
@@ -105,6 +135,17 @@ export interface ProblemDetailDto {
     upvoteCount: number;
     followerCount: number;
     customHierarchyId?: number | null;
+    // Görünürlük seviyeleri (closed / public / admin_only / admin_and_owner / owner_only)
+    viewersVisibility?: string;
+    upvotersVisibility?: string;
+    participantsVisibility?: string;
+    solutionVotersVisibility?: string;
+    // Kapatma & gizleme
+    isClosed?: boolean;
+    closedAt?: string | null;
+    closedByUserId?: number | null;
+    closeReason?: string | null;
+    isHidden?: boolean;
 }
 
 export interface TopicDto {
@@ -115,13 +156,16 @@ export interface TopicDto {
 // Çözüm Detayları (Entities/DTOs/SolutionDetailDto.cs)
 export interface SolutionDetailDto {
     id: number;
+    publicId?: string | null;
     senderId: number;
     problemId: number;
+    problemPublicId?: string | null;
     title: string;
     description: string;
     senderUsername: string;
     senderIsExpert: boolean;
     senderIsOfficial: boolean;
+    senderTitles?: UserTitleDto[];
     problemName: string;
     isHighlighted: boolean;
     isReported: boolean;
@@ -131,6 +175,7 @@ export interface SolutionDetailDto {
     expertApprovalStatus: number;
     senderImageUrl?: string | null;
     imageUrls?: string[] | null;
+    videoUrls?: string[] | null;
 }
 
 // Yorum Detayları (Entities/DTOs/CommentDetailDto.cs)
@@ -143,6 +188,7 @@ export interface CommentDetailDto {
     senderUsername: string;
     senderIsExpert: boolean;
     senderIsOfficial: boolean;
+    senderTitles?: UserTitleDto[];
     sendDate: string;
 }
 
@@ -370,6 +416,7 @@ export interface Institution {
     name: string;
     subtitle?: string | null;
     domain: string;
+    subdomain?: string | null;
     logoUrl?: string | null;
     primaryColor?: string | null;
     featuresJson?: string;
@@ -471,6 +518,7 @@ export interface FeatureDefinition {
     optionsJson?: string | null;
     isSystemLevel: boolean;
     orderIndex: number;
+    scope: string; // "Global" | "Institution"
 }
 export interface EmailTemplate {
     id: number;
@@ -629,3 +677,82 @@ export type ActionParameter = {
     required: boolean;
     defaultValue?: string;
 };
+
+// ── Epic E — Sohbet Sistemi ──────────────────────────────────────────────────
+
+export interface ConversationParticipant {
+    userId: number;
+    username: string;
+    role: string;
+    lastReadMessageId?: number | null;
+    joinedAt: string;
+}
+
+export interface MessageDto {
+    id: number;
+    conversationId: number;
+    senderUserId: number;
+    senderUsername: string;
+    body: string;
+    createdAt: string;
+    isDeleted: boolean;
+}
+
+export interface ConversationSummary {
+    id: number;
+    type: 'direct' | 'group' | 'support';
+    scope: 'institution' | 'global';
+    institutionId?: number | null;
+    title?: string | null;
+    createdByUserId: number;
+    createdAt: string;
+    participantCount: number;
+    unreadCount: number;
+    lastMessage?: MessageDto | null;
+    // destek alanları
+    status: 'active' | 'pending' | 'closed';
+    supportCategory?: 'general' | 'official' | 'expert' | 'moderator' | 'admin' | null;
+    assignedToUserId?: number | null;
+    assignedToUsername?: string | null;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+    participants: ConversationParticipant[];
+}
+
+export interface MessagePage {
+    items: MessageDto[];
+    hasMore: boolean;
+}
+
+// Görüntüleme / oy takip DTO'ları
+export interface ProblemViewerDto {
+    userId?: number | null;
+    username?: string | null;
+    profileImageUrl?: string | null;
+    viewedAt: string;
+}
+
+export interface ProblemUpvoterDto {
+    userId: number;
+    username: string;
+    profileImageUrl?: string | null;
+    createdAt: string;
+}
+
+export interface ProblemParticipantDto {
+    userId: number;
+    username: string;
+    profileImageUrl?: string | null;
+    role: 'solution_author' | 'commenter' | 'upvoter';
+}
+
+export interface SolutionVoterDto {
+    userId: number;
+    username: string;
+    profileImageUrl?: string | null;
+    isUpvote: boolean;
+    voteDate: string;
+}
+
+export type VisibilityLevel = 'closed' | 'public' | 'admin_only' | 'admin_and_owner' | 'owner_only';

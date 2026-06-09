@@ -32,7 +32,7 @@ const ACTION_BADGE: Record<string, string> = {
 const PAGE_SIZE = 20;
 
 export default function CapabilityAuditTab() {
-    const canRead = useCapability('admin.audit_read');
+    const canRead = useCapability('admin.capability_audit_read');
     const availableCapabilities = useWorkflowStore(s => s.availableCapabilities);
 
     const [filter, setFilter] = useState<AuditLogFilter>({ page: 1, pageSize: PAGE_SIZE });

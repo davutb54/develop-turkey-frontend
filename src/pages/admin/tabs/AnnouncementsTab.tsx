@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../../services/api';
+import { institutionService } from '../../../services/institutionService';
 import { useCapability } from '../../../hooks/useCapability';
 import type { IDataResult, IResult } from '../../../types';
 import { fmtDateTime } from '../../../utils/dateFormat';
@@ -47,6 +48,7 @@ export default function AnnouncementsTab() {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [actionLoading, setActionLoading] = useState<number | null>(null);
+    const [institutions, setInstitutions] = useState<{ id: number; name: string }[]>([]);
 
     // Form state
     const [title, setTitle] = useState('');
@@ -57,6 +59,14 @@ export default function AnnouncementsTab() {
     const [expiresAt, setExpiresAt] = useState('');
     const [createLoading, setCreateLoading] = useState(false);
     const [createError, setCreateError] = useState('');
+
+    useEffect(() => {
+        if (canCreate) {
+            institutionService.getAll()
+                .then(res => { if (res.data?.success) setInstitutions(res.data.data ?? []); })
+                .catch(() => {/* yetkisiz ise sessizce geç */});
+        }
+    }, [canCreate]);
 
     const load = async () => {
         setLoading(true);
@@ -175,12 +185,17 @@ export default function AnnouncementsTab() {
                         </div>
                         {targetGroup === 'institution' && (
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kurum ID</label>
-                                <input
-                                    type="number" value={institutionId} onChange={e => setInstitutionId(e.target.value)}
-                                    placeholder="Kurum ID"
-                                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                />
+                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kurum</label>
+                                <select
+                                    value={institutionId}
+                                    onChange={e => setInstitutionId(e.target.value)}
+                                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="">— Kurum seçin —</option>
+                                    {institutions.map(i => (
+                                        <option key={i.id} value={i.id}>{i.name}</option>
+                                    ))}
+                                </select>
                             </div>
                         )}
                         <div>

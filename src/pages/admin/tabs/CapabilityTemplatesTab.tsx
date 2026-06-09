@@ -1,13 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     capabilityService,
     type CapabilityDto,
     type CapabilityTemplateDto,
     type TemplateVersionDto,
+    type RevokeAppliedTemplateDto,
 } from '../../../services/capabilityService';
+import { institutionService } from '../../../services/institutionService';
+import { userService } from '../../../services/userService';
 import { useCapability } from '../../../hooks/useCapability';
 import UserSearchInput from '../../../components/admin/UserSearchInput';
 import type { UserDetailDto } from '../../../types';
+
+interface InstitutionDto {
+    id: number;
+    name: string;
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
     admin: 'Yönetim',
@@ -25,14 +33,19 @@ export default function CapabilityTemplatesTab() {
 
     const [templates, setTemplates] = useState<CapabilityTemplateDto[]>([]);
     const [catalog, setCatalog] = useState<CapabilityDto[]>([]);
+    const [institutions, setInstitutions] = useState<InstitutionDto[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Aktif görünüm: 'list' | 'create'
     const [view, setView] = useState<'list' | 'create'>('list');
 
+    // Kind tab filtresi: 0 = Rol, 1 = Paket
+    const [kindTab, setKindTab] = useState<0 | 1>(0);
+
     // Yeni şablon formu
     const [newName, setNewName] = useState('');
     const [newDesc, setNewDesc] = useState('');
+    const [newKind, setNewKind] = useState<0 | 1>(0);
     const [newCodes, setNewCodes] = useState<string[]>([]);
     const [createLoading, setCreateLoading] = useState(false);
 
@@ -46,7 +59,13 @@ export default function CapabilityTemplatesTab() {
     const [applyTemplate, setApplyTemplate] = useState<CapabilityTemplateDto | null>(null);
     const [applyVersions, setApplyVersions] = useState<TemplateVersionDto[]>([]);
     const [applyVersionId, setApplyVersionId] = useState<number | null>(null);
-    const [applyUserIds, setApplyUserIds] = useState('');
+    const [applySelectedUsers, setApplySelectedUsers] = useState<UserDetailDto[]>([]);
+    const [applyUserQuery, setApplyUserQuery] = useState('');
+    const [applyUserResults, setApplyUserResults] = useState<UserDetailDto[]>([]);
+    const [applyUserDropOpen, setApplyUserDropOpen] = useState(false);
+    const [applyUserSearchLoading, setApplyUserSearchLoading] = useState(false);
+    const applyUserSearchRef = useRef<HTMLDivElement>(null);
+    const [applyInstitutionId, setApplyInstitutionId] = useState('');
     const [applyExpiresAt, setApplyExpiresAt] = useState('');
     const [applyReason, setApplyReason] = useState('');
     const [applyLoading, setApplyLoading] = useState(false);
@@ -56,9 +75,16 @@ export default function CapabilityTemplatesTab() {
     const [singleApplyVersions, setSingleApplyVersions] = useState<TemplateVersionDto[]>([]);
     const [singleApplyVersionId, setSingleApplyVersionId] = useState<number | null>(null);
     const [singleApplyUser, setSingleApplyUser] = useState<UserDetailDto | null>(null);
+    const [singleApplyInstitutionId, setSingleApplyInstitutionId] = useState('');
     const [singleApplyExpiresAt, setSingleApplyExpiresAt] = useState('');
     const [singleApplyReason, setSingleApplyReason] = useState('');
     const [singleApplyLoading, setSingleApplyLoading] = useState(false);
+
+    // Revoke applied modal
+    const [revokeTemplate, setRevokeTemplate] = useState<CapabilityTemplateDto | null>(null);
+    const [revokeUser, setRevokeUser] = useState<UserDetailDto | null>(null);
+    const [revokeReason, setRevokeReason] = useState('');
+    const [revokeLoading, setRevokeLoading] = useState(false);
 
     // Versions drawer
     const [viewVersionsId, setViewVersionsId] = useState<number | null>(null);
@@ -74,17 +100,47 @@ export default function CapabilityTemplatesTab() {
     const load = async () => {
         setLoading(true);
         try {
-            const [tmplRes, catRes] = await Promise.all([
+            const [tmplRes, catRes, instRes] = await Promise.all([
                 capabilityService.getTemplates(),
                 capabilityService.getAll(),
+                institutionService.getAll(),
             ]);
             if (tmplRes.data.success) setTemplates(tmplRes.data.data);
             if (catRes.data.success) setCatalog(catRes.data.data);
+            const instData = instRes.data?.data ?? instRes.data;
+            if (Array.isArray(instData)) setInstitutions(instData);
         } catch { }
         finally { setLoading(false); }
     };
 
     useEffect(() => { if (canRead) load(); }, [canRead]);
+
+    // Apply modal — kullanıcı arama
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (applyUserSearchRef.current && !applyUserSearchRef.current.contains(e.target as Node))
+                setApplyUserDropOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    useEffect(() => {
+        if (applyUserQuery.length < 2) { setApplyUserResults([]); return; }
+        const timer = setTimeout(async () => {
+            setApplyUserSearchLoading(true);
+            try {
+                const res = await userService.getAllPaged({ searchText: applyUserQuery, pageSize: 8 });
+                if (res.data.success) {
+                    const data = res.data.data.items ?? res.data.data;
+                    setApplyUserResults(data.filter((u: UserDetailDto) => !applySelectedUsers.some(s => s.id === u.id)));
+                    setApplyUserDropOpen(true);
+                }
+            } catch { setApplyUserResults([]); }
+            finally { setApplyUserSearchLoading(false); }
+        }, 350);
+        return () => clearTimeout(timer);
+    }, [applyUserQuery, applySelectedUsers]);
 
     const toggleCode = (code: string, list: string[], setter: (v: string[]) => void) => {
         setter(list.includes(code) ? list.filter(c => c !== code) : [...list, code]);
@@ -99,11 +155,12 @@ export default function CapabilityTemplatesTab() {
             const res = await capabilityService.createTemplate({
                 name: newName,
                 description: newDesc,
+                kind: newKind,
                 capabilityCodes: newCodes,
             });
             if (res.data.success) {
                 setView('list');
-                setNewName(''); setNewDesc(''); setNewCodes([]);
+                setNewName(''); setNewDesc(''); setNewKind(0); setNewCodes([]);
                 load();
             } else {
                 alert(res.data.message || 'Oluşturma başarısız.');
@@ -143,7 +200,11 @@ export default function CapabilityTemplatesTab() {
     const openApply = async (template: CapabilityTemplateDto) => {
         setApplyTemplate(template);
         setApplyVersionId(null);
-        setApplyUserIds('');
+        setApplySelectedUsers([]);
+        setApplyUserQuery('');
+        setApplyUserResults([]);
+        setApplyUserDropOpen(false);
+        setApplyInstitutionId('');
         setApplyExpiresAt('');
         setApplyReason('');
         try {
@@ -158,18 +219,18 @@ export default function CapabilityTemplatesTab() {
 
     const handleApply = async () => {
         if (!applyTemplate || !applyVersionId || !applyReason.trim()) return;
-        const ids = applyUserIds.split(/[\s,;]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-        if (ids.length === 0) { alert('En az bir geçerli kullanıcı ID\'si girilmeli.'); return; }
+        if (applySelectedUsers.length === 0) { alert('En az bir kullanıcı seçilmeli.'); return; }
         setApplyLoading(true);
         try {
             const res = await capabilityService.applyTemplate(applyTemplate.id, {
                 templateVersionId: applyVersionId,
-                userIds: ids,
+                userIds: applySelectedUsers.map(u => u.id),
+                institutionId: applyInstitutionId ? parseInt(applyInstitutionId) : undefined,
                 expiresAt: applyExpiresAt || undefined,
                 reason: applyReason,
             });
             if (res.data.success) {
-                alert(`Şablon ${ids.length} kullanıcıya uygulandı.`);
+                alert(`Şablon ${applySelectedUsers.length} kullanıcıya uygulandı.`);
                 setApplyTemplate(null);
             } else {
                 alert(res.data.message || 'Uygulama başarısız.');
@@ -183,6 +244,7 @@ export default function CapabilityTemplatesTab() {
         setSingleApplyTemplate(template);
         setSingleApplyUser(null);
         setSingleApplyVersionId(null);
+        setSingleApplyInstitutionId('');
         setSingleApplyExpiresAt('');
         setSingleApplyReason('');
         try {
@@ -202,6 +264,7 @@ export default function CapabilityTemplatesTab() {
             const res = await capabilityService.applyTemplate(singleApplyTemplate.id, {
                 templateVersionId: singleApplyVersionId,
                 userIds: [singleApplyUser.id],
+                institutionId: singleApplyInstitutionId ? parseInt(singleApplyInstitutionId) : undefined,
                 expiresAt: singleApplyExpiresAt || undefined,
                 reason: singleApplyReason,
             });
@@ -213,6 +276,29 @@ export default function CapabilityTemplatesTab() {
             }
         } catch { alert('Hata oluştu.'); }
         finally { setSingleApplyLoading(false); }
+    };
+
+    // ── REVOKE APPLIED ───────────────────────────────────────────────────────
+    const openRevoke = (template: CapabilityTemplateDto) => {
+        setRevokeTemplate(template);
+        setRevokeUser(null);
+        setRevokeReason('');
+    };
+
+    const handleRevokeApplied = async () => {
+        if (!revokeTemplate || !revokeUser || !revokeReason.trim()) return;
+        setRevokeLoading(true);
+        try {
+            const dto: RevokeAppliedTemplateDto = { userId: revokeUser.id, reason: revokeReason };
+            const res = await capabilityService.revokeApplied(revokeTemplate.id, dto);
+            if (res.data.success) {
+                alert(`Şablon "${revokeTemplate.name}" → ${revokeUser.userName} kullanıcısından kaldırıldı.`);
+                setRevokeTemplate(null);
+            } else {
+                alert(res.data.message || 'Kaldırma başarısız.');
+            }
+        } catch { alert('Hata oluştu.'); }
+        finally { setRevokeLoading(false); }
     };
 
     // ── VERSIONS ─────────────────────────────────────────────────────────────
@@ -264,6 +350,30 @@ export default function CapabilityTemplatesTab() {
             {view === 'create' && (
                 <form onSubmit={handleCreate} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
                     <h2 className="text-base font-black text-slate-700">Yeni Şablon Oluştur</h2>
+
+                    {/* Kind seçici */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Tür *</label>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setNewKind(0)}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl border transition ${newKind === 0 ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                            >
+                                🎭 Rol Şablonu
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setNewKind(1)}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl border transition ${newKind === 1 ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'}`}
+                            >
+                                📦 Yetenek Paketi
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                            {newKind === 0 ? 'Tam rol tanımı — kullanıcının temel yetki seti.' : 'Modüler eklenti — mevcut role üstüne toggle ile eklenir.'}
+                        </p>
+                    </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -333,29 +443,54 @@ export default function CapabilityTemplatesTab() {
 
             {/* ── ŞABLON LİSTESİ ───────────────────────────────────────── */}
             {view === 'list' && (
-                loading ? (
+                <>
+                {/* Kind sekme seçici */}
+                <div className="flex gap-2 mb-5">
+                    <button
+                        onClick={() => setKindTab(0)}
+                        className={`flex items-center gap-2 px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl border transition ${kindTab === 0 ? 'bg-indigo-600 text-white border-indigo-700 shadow-md shadow-indigo-500/20' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                    >
+                        🎭 Rol Şablonları
+                        <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] ${kindTab === 0 ? 'bg-indigo-500' : 'bg-slate-100 text-slate-500'}`}>
+                            {templates.filter(t => (t.kind ?? 0) === 0).length}
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => setKindTab(1)}
+                        className={`flex items-center gap-2 px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl border transition ${kindTab === 1 ? 'bg-emerald-600 text-white border-emerald-700 shadow-md shadow-emerald-500/20' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'}`}
+                    >
+                        📦 Yetenek Paketleri
+                        <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] ${kindTab === 1 ? 'bg-emerald-500' : 'bg-slate-100 text-slate-500'}`}>
+                            {templates.filter(t => (t.kind ?? 0) === 1).length}
+                        </span>
+                    </button>
+                </div>
+                {loading ? (
                     <div className="flex justify-center py-20">
                         <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-indigo-500" />
                     </div>
-                ) : templates.length === 0 ? (
+                ) : templates.filter(t => (t.kind ?? 0) === kindTab).length === 0 ? (
                     <div className="bg-white border border-slate-100 rounded-2xl p-16 text-center text-slate-400">
-                        <div className="text-5xl mb-4">📋</div>
-                        <p className="font-bold">Henüz şablon oluşturulmadı.</p>
+                        <div className="text-5xl mb-4">{kindTab === 0 ? '🎭' : '📦'}</div>
+                        <p className="font-bold">Henüz {kindTab === 0 ? 'rol şablonu' : 'yetenek paketi'} oluşturulmadı.</p>
                         <p className="text-sm mt-1">Yukarıdaki "Yeni Şablon" butonunu kullanın.</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {templates.map(tmpl => (
+                        {templates.filter(t => (t.kind ?? 0) === kindTab).map(tmpl => (
                             <div key={tmpl.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                                 <div className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="font-black text-slate-800">{tmpl.name}</span>
+                                            {tmpl.slug && (
+                                                <span className="text-[9px] text-slate-400 font-mono">{tmpl.slug}</span>
+                                            )}
                                             {!tmpl.isActive && (
                                                 <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded font-black uppercase">Pasif</span>
                                             )}
                                             {tmpl.latestVersion && (
-                                                <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-black uppercase">
+                                                <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${(tmpl.kind ?? 0) === 1 ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>
                                                     v{tmpl.latestVersion.version} — {tmpl.latestVersion.items.length} yetki
                                                 </span>
                                             )}
@@ -364,7 +499,7 @@ export default function CapabilityTemplatesTab() {
                                             <p className="text-xs text-slate-400">{tmpl.description}</p>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
                                         <button
                                             onClick={() => viewVersions(tmpl.id)}
                                             className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition shadow-sm"
@@ -392,6 +527,12 @@ export default function CapabilityTemplatesTab() {
                                                     className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-indigo-600 text-white border border-indigo-700 hover:bg-indigo-700 transition shadow-sm"
                                                 >
                                                     Toplu Uygula
+                                                </button>
+                                                <button
+                                                    onClick={() => openRevoke(tmpl)}
+                                                    className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 transition shadow-sm"
+                                                >
+                                                    Şablonu Kaldır
                                                 </button>
                                             </>
                                         )}
@@ -432,7 +573,8 @@ export default function CapabilityTemplatesTab() {
                             </div>
                         ))}
                     </div>
-                )
+                )}
+                </>
             )}
 
             {/* ── PUBLISH MODAL ────────────────────────────────────────── */}
@@ -526,14 +668,77 @@ export default function CapabilityTemplatesTab() {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kullanıcı ID'leri *</label>
-                                <textarea
-                                    rows={3}
-                                    value={applyUserIds}
-                                    onChange={e => setApplyUserIds(e.target.value)}
-                                    placeholder="Virgül, boşluk veya noktalı virgülle ayırın: 1, 2, 5"
-                                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
-                                />
+                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kurum Kapsamı (opsiyonel)</label>
+                                <select
+                                    value={applyInstitutionId}
+                                    onChange={e => setApplyInstitutionId(e.target.value)}
+                                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="">Global (tüm kurumlar)</option>
+                                    {institutions.map(inst => (
+                                        <option key={inst.id} value={String(inst.id)}>{inst.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">
+                                    Kullanıcılar * — {applySelectedUsers.length} seçili
+                                </label>
+
+                                {/* Seçili kullanıcı chip'leri */}
+                                {applySelectedUsers.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {applySelectedUsers.map(u => (
+                                            <span key={u.id} className="flex items-center gap-1 px-2 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-700">
+                                                @{u.userName}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setApplySelectedUsers(prev => prev.filter(x => x.id !== u.id))}
+                                                    className="text-indigo-400 hover:text-rose-500 leading-none"
+                                                >×</button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Arama */}
+                                <div ref={applyUserSearchRef} className="relative">
+                                    <input
+                                        type="text"
+                                        value={applyUserQuery}
+                                        onChange={e => setApplyUserQuery(e.target.value)}
+                                        placeholder="İsim, e-posta veya kullanıcı adı ara..."
+                                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    />
+                                    {applyUserSearchLoading && (
+                                        <div className="absolute right-3 top-3 text-slate-400 text-xs">...</div>
+                                    )}
+                                    {applyUserDropOpen && applyUserResults.length > 0 && (
+                                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-44 overflow-y-auto">
+                                            {applyUserResults.map(u => (
+                                                <button
+                                                    key={u.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setApplySelectedUsers(prev => [...prev, u]);
+                                                        setApplyUserQuery('');
+                                                        setApplyUserDropOpen(false);
+                                                    }}
+                                                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-indigo-50 text-left"
+                                                >
+                                                    <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                                                        {u.userName?.[0]?.toUpperCase() ?? '?'}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-medium truncate">@{u.userName}</div>
+                                                        <div className="text-xs text-slate-400 truncate">{u.email}</div>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div>
@@ -563,10 +768,63 @@ export default function CapabilityTemplatesTab() {
                             <button onClick={() => setApplyTemplate(null)} className="px-5 py-2 text-xs font-black uppercase bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition">İptal</button>
                             <button
                                 onClick={handleApply}
-                                disabled={applyLoading || !applyVersionId || !applyReason.trim() || !applyUserIds.trim()}
+                                disabled={applyLoading || !applyVersionId || !applyReason.trim() || applySelectedUsers.length === 0}
                                 className="px-5 py-2 text-xs font-black uppercase bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition disabled:opacity-50 shadow-md shadow-indigo-500/20"
                             >
                                 {applyLoading ? 'Uygulanıyor...' : 'Uygula'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── ŞABLONU KALDIR MODAL ─────────────────────────────────────── */}
+            {revokeTemplate !== null && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+                        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                            <div>
+                                <h2 className="font-black text-slate-800 text-lg">Şablonu Kullanıcıdan Kaldır</h2>
+                                <p className="text-xs text-slate-400 mt-0.5">{revokeTemplate.name}</p>
+                            </div>
+                            <button onClick={() => setRevokeTemplate(null)} className="text-slate-400 hover:text-slate-600 transition">✕</button>
+                        </div>
+                        <div className="px-6 py-5 space-y-4">
+                            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-700">
+                                Bu şablondaki tüm yetkiler seçilen kullanıcıdan kaldırılır.
+                                Şablonun yüklü olduğu kullanıcılara işlem geri alınamaz.
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kullanıcı *</label>
+                                <UserSearchInput
+                                    selectedUser={revokeUser}
+                                    onSelect={setRevokeUser}
+                                    onClear={() => setRevokeUser(null)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Gerekçe *</label>
+                                <input
+                                    type="text"
+                                    value={revokeReason}
+                                    onChange={e => setRevokeReason(e.target.value)}
+                                    placeholder="Kaldırma gerekçesi"
+                                    minLength={3}
+                                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-rose-400 outline-none"
+                                />
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+                            <button onClick={() => setRevokeTemplate(null)}
+                                className="px-5 py-2 text-xs font-black uppercase bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition">
+                                İptal
+                            </button>
+                            <button
+                                onClick={handleRevokeApplied}
+                                disabled={revokeLoading || !revokeUser || !revokeReason.trim()}
+                                className="px-5 py-2 text-xs font-black uppercase bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition disabled:opacity-50 shadow-md shadow-rose-500/20"
+                            >
+                                {revokeLoading ? 'Kaldırılıyor...' : 'Şablonu Kaldır'}
                             </button>
                         </div>
                     </div>
@@ -604,6 +862,19 @@ export default function CapabilityTemplatesTab() {
                                         <option key={v.id} value={v.id}>
                                             v{v.version} — {v.items?.length ?? 0} yetki {v.publishedAt ? `(${new Date(v.publishedAt).toLocaleDateString('tr-TR')})` : ''}
                                         </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kurum Kapsamı (opsiyonel)</label>
+                                <select
+                                    value={singleApplyInstitutionId}
+                                    onChange={e => setSingleApplyInstitutionId(e.target.value)}
+                                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="">Global (tüm kurumlar)</option>
+                                    {institutions.map(inst => (
+                                        <option key={inst.id} value={String(inst.id)}>{inst.name}</option>
                                     ))}
                                 </select>
                             </div>

@@ -7,13 +7,15 @@ import { useCapability } from '../hooks/useCapability';
 import { useFeature } from '../hooks/useFeature';
 import MentionWrapper from './MentionWrapper';
 import MentionText from './MentionText';
+import SenderBadges from './SenderBadges';
 
 interface Props {
     solutionId: number;
     institutionId?: number;
+    isClosed?: boolean;
 }
 
-const CommentSection = ({ solutionId, institutionId }: Props) => {
+const CommentSection = ({ solutionId, institutionId, isClosed }: Props) => {
     const enableMentions = useFeature<boolean>('Social.EnableMentions', true);
     const [comments, setComments] = useState<CommentDetailDto[]>([]);
     const [loading, setLoading] = useState(false);
@@ -173,12 +175,14 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <div className="flex items-center gap-2">
-                                                        <Link to={`/user/${comment.senderId}`} className="font-bold text-slate-800 hover:text-indigo-600 hover:underline text-xs">
+                                                        <Link to={`/user/${comment.senderUsername}`} className="font-bold text-slate-800 hover:text-indigo-600 hover:underline text-xs">
                                                             @{comment.senderUsername}
                                                         </Link>
-                                                        {comment.senderIsExpert && (
-                                                            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] rounded font-black uppercase tracking-wider">Uzman</span>
-                                                        )}
+                                                        <SenderBadges
+                                                            isExpert={comment.senderIsExpert}
+                                                            isOfficial={comment.senderIsOfficial}
+                                                            titles={comment.senderTitles}
+                                                        />
                                                     </div>
                                                     <span className="text-[10px] font-medium text-slate-400">
                                                         {new Date(comment.sendDate).toLocaleDateString('tr-TR')}
@@ -280,9 +284,14 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
                                                             <div className="h-5 w-5 rounded-full bg-slate-200 flex items-center justify-center font-black text-slate-500 text-[10px] shrink-0">
                                                                 {sub.senderUsername[0].toUpperCase()}
                                                             </div>
-                                                            <Link to={`/user/${sub.senderId}`} className="font-bold text-slate-700 text-xs hover:text-indigo-600 hover:underline">
+                                                            <Link to={`/user/${sub.senderUsername}`} className="font-bold text-slate-700 text-xs hover:text-indigo-600 hover:underline">
                                                                 @{sub.senderUsername}
                                                             </Link>
+                                                            <SenderBadges
+                                                                isExpert={sub.senderIsExpert}
+                                                                isOfficial={sub.senderIsOfficial}
+                                                                titles={sub.senderTitles}
+                                                            />
                                                             <span className="text-[9px] font-medium text-slate-400">
                                                                 {new Date(sub.sendDate).toLocaleDateString('tr-TR')}
                                                             </span>
@@ -341,10 +350,13 @@ const CommentSection = ({ solutionId, institutionId }: Props) => {
                     )}
 
                     {/* ANA YORUM YAZMA FORMU — sadece yetki varsa */}
-                    {!canCreateComment && currentUserId !== 0 && (
+                    {isClosed && (
+                        <p className="text-xs text-orange-600 font-medium text-center py-2 bg-orange-50 rounded-lg border border-orange-100">Bu sorun kapatılmıştır, yorum eklenemiyor.</p>
+                    )}
+                    {!isClosed && !canCreateComment && currentUserId !== 0 && (
                         <p className="text-xs text-slate-400 font-medium text-center py-2">Yorum yapma yetkiniz bulunmamaktadır.</p>
                     )}
-                    {(canCreateComment || currentUserId === 0) && (
+                    {!isClosed && (canCreateComment || currentUserId === 0) && (
                     <form onSubmit={(e) => handleSendComment(e, null)} className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
                         <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 ml-1">
                             {/* Giriş yapmamışsa varsayılan ikon, yapmışsa baş harfi */}

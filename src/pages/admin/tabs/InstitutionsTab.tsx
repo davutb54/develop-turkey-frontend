@@ -54,7 +54,7 @@ const TagListManager = ({
 };
 
 const emptyInst: Institution = {
-    name: '', subtitle: '', domain: '', logoUrl: '', primaryColor: '#2563eb',
+    name: '', subtitle: '', domain: '', subdomain: '', logoUrl: '', primaryColor: '#2563eb',
     customFieldsJson: '[]', customHierarchyLabel: '', customHierarchyJson: '[]', status: true,
 };
 
@@ -125,6 +125,7 @@ export default function InstitutionsTab() {
         formData.append('Name', instFormData.name);
         formData.append('Subtitle', instFormData.subtitle || '');
         formData.append('Domain', instFormData.domain);
+        if (instFormData.subdomain) formData.append('Subdomain', instFormData.subdomain);
         formData.append('PrimaryColor', instFormData.primaryColor || '#2563eb');
         formData.append('CustomFieldsJson', instFormData.customFieldsJson || '[]');
         formData.append('CustomHierarchyLabel', instFormData.customHierarchyLabel || '');
@@ -179,6 +180,7 @@ export default function InstitutionsTab() {
         formData.append('Name', editInstData.name);
         formData.append('Subtitle', editInstData.subtitle || '');
         formData.append('Domain', editInstData.domain);
+        if (editInstData.subdomain) formData.append('Subdomain', editInstData.subdomain);
         formData.append('PrimaryColor', editInstData.primaryColor || '#4f46e5');
         formData.append('CustomFieldsJson', editInstData.customFieldsJson || '[]');
         formData.append('CustomHierarchyLabel', editInstData.customHierarchyLabel || '');
@@ -236,6 +238,14 @@ export default function InstitutionsTab() {
                         <div>
                             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Mail Domain'i</label>
                             <input type="text" name="domain" required value={instFormData.domain} onChange={handleInstChange} placeholder="Örn: eskisehir.edu.tr" className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Subdomain Slug <span className="normal-case text-slate-400 font-normal">(opsiyonel)</span></label>
+                            <div className="flex items-center">
+                                <span className="px-3 py-3 bg-slate-100 border border-r-0 border-slate-200 rounded-l-xl text-xs text-slate-400 font-bold whitespace-nowrap">slug.</span>
+                                <input type="text" name="subdomain" value={instFormData.subdomain || ''} onChange={handleInstChange} placeholder="Örn: eskisehir" className="w-full border border-slate-200 shadow-sm rounded-r-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white" />
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1 ml-1">Gelecekte subdomain yönlendirmesi için. Şimdilik boş bırakabilirsiniz.</p>
                         </div>
                         <div>
                             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kurum Logosu (Dosya Seçin)</label>
@@ -386,7 +396,8 @@ export default function InstitutionsTab() {
                                                 setEditingInst(inst);
                                                 setEditInstData({
                                                     id: inst.id, name: inst.name, subtitle: inst.subtitle || '',
-                                                    domain: inst.domain, primaryColor: inst.primaryColor || '#2563eb',
+                                                    domain: inst.domain, subdomain: inst.subdomain || '',
+                                                    primaryColor: inst.primaryColor || '#2563eb',
                                                     logoUrl: inst.logoUrl, customFieldsJson: inst.customFieldsJson || '[]',
                                                     customHierarchyLabel: inst.customHierarchyLabel || '',
                                                     customHierarchyJson: inst.customHierarchyJson || '[]', status: inst.status,
@@ -434,8 +445,15 @@ export default function InstitutionsTab() {
                                     <input type="text" value={editInstData.subtitle || ''} onChange={e => setEditInstData({ ...editInstData, subtitle: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Domain</label>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Mail Domain'i</label>
                                     <input type="text" required value={editInstData.domain} onChange={e => setEditInstData({ ...editInstData, domain: e.target.value })} className="w-full border border-slate-200 shadow-sm rounded-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Subdomain Slug <span className="normal-case text-slate-400 font-normal">(opsiyonel)</span></label>
+                                    <div className="flex items-center">
+                                        <span className="px-3 py-3 bg-slate-100 border border-r-0 border-slate-200 rounded-l-xl text-xs text-slate-400 font-bold whitespace-nowrap">slug.</span>
+                                        <input type="text" value={editInstData.subdomain || ''} onChange={e => setEditInstData({ ...editInstData, subdomain: e.target.value })} placeholder="Örn: eskisehir" className="w-full border border-slate-200 shadow-sm rounded-r-xl px-4 py-3 outline-none text-sm bg-slate-50" />
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tema Rengi</label>

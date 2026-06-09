@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { problemService } from '../services/problemService';
 import { solutionService } from '../services/solutionService';
 import { solutionVoteService } from '../services/solutionVoteService';
-import type { ProblemDetailDto, SolutionDetailDto, SolutionAddDto } from '../types';
+import type { ProblemDetailDto, SolutionDetailDto, SolutionAddDto, ProblemViewerDto, ProblemUpvoterDto, ProblemParticipantDto, SolutionVoterDto } from '../types';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import type { LatLngExpression, LeafletMouseEvent } from 'leaflet';
 import Navbar from '../components/Navbar';
@@ -19,12 +19,50 @@ import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature'
 import MentionWrapper from '../components/MentionWrapper';
 import MentionText from '../components/MentionText';
 import SocialShare from '../components/SocialShare';
+import SenderBadges from '../components/SenderBadges';
+
+function roleLabel(role: string) {
+    if (role === 'solution_author') return '✏️ Çözüm';
+    if (role === 'commenter') return '💬 Yorum';
+    if (role === 'upvoter') return '✋ Destek';
+    return role;
+}
+
+interface EngagementUserListItem {
+    userId: number;
+    username: string;
+    profileImageUrl?: string | null;
+    sub?: string;
+}
+
+function EngagementUserList({ items, emptyText }: { items: EngagementUserListItem[]; emptyText: string }) {
+    if (items.length === 0) return <p className="text-xs text-gray-400">{emptyText}</p>;
+    return (
+        <div className="flex flex-wrap gap-2">
+            {items.map((item, i) => (
+                <a key={`${item.userId}-${i}`} href={`/user/${item.username}`} className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl transition text-xs group">
+                    <div className="h-7 w-7 rounded-full overflow-hidden bg-indigo-100 flex items-center justify-center shrink-0">
+                        {item.profileImageUrl ? (
+                            <img src={item.profileImageUrl.startsWith('/') ? `${import.meta.env.VITE_API_URL ?? ''}${item.profileImageUrl}` : item.profileImageUrl} alt={item.username} className="w-full h-full object-cover" />
+                        ) : (
+                            <span className="font-black text-indigo-700 text-[10px]">{item.username[0]?.toUpperCase()}</span>
+                        )}
+                    </div>
+                    <div>
+                        <div className="font-bold text-gray-800 group-hover:text-indigo-700">@{item.username}</div>
+                        {item.sub && <div className="text-gray-400 text-[10px]">{item.sub}</div>}
+                    </div>
+                </a>
+            ))}
+        </div>
+    );
+}
 
 const ProblemDetail = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const highlightSolutionId = parseInt(searchParams.get('solution') || '0');
+    const highlightSolutionPid = searchParams.get('solution') || '';
     const solutionRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
     const [focusedSolutionId, setFocusedSolutionId] = useState<number | null>(null);
     const enableUpvote = useFeature<boolean>('Social.EnableUpvote', true);
@@ -67,6 +105,9 @@ const ProblemDetail = () => {
     const canUpdateOwnSolution  = useCapability('user.solution_update_own');
     const canDeleteOwnSolution  = useCapability('user.solution_delete_own');
     const canModDeleteSolution  = useCapability('moderation.solution_delete');
+    const canCloseProblem       = useCapability('moderation.problem_close');
+    const canReopenProblem      = useCapability('moderation.problem_reopen');
+    const canHideProblem        = useCapability('moderation.problem_hide');
 
     const [isEditingProblem, setIsEditingProblem] = useState(false);
     const [editProblemData, setEditProblemData] = useState({ title: '', description: '' });
@@ -105,6 +146,20 @@ const ProblemDetail = () => {
     const [lightboxImages, setLightboxImages] = useState<string[]>([]);
     const [lightboxIndex, setLightboxIndex] = useState(0);
 
+    // Etkileşim paneli state'leri
+    const [engagementSection, setEngagementSection] = useState<'viewers' | 'upvoters' | 'participants' | null>(null);
+    const [viewers, setViewers] = useState<ProblemViewerDto[] | null>(null);
+    const [upvoters, setUpvoters] = useState<ProblemUpvoterDto[] | null>(null);
+    const [participants, setParticipants] = useState<ProblemParticipantDto[] | null>(null);
+    const [engagementLoading, setEngagementLoading] = useState(false);
+    const [engagementDenied, setEngagementDenied] = useState(false);
+
+    // Çözüm oylayanlar
+    const [votersSolutionId, setVotersSolutionId] = useState<number | null>(null);
+    const [voters, setVoters] = useState<SolutionVoterDto[] | null>(null);
+    const [votersLoading, setVotersLoading] = useState(false);
+    const [votersDenied, setVotersDenied] = useState(false);
+
     const openLightbox = (images: string[], index: number) => {
         setLightboxImages(images);
         setLightboxIndex(index);
@@ -120,9 +175,12 @@ const ProblemDetail = () => {
     };
 
     useEffect(() => {
-        if (id) {
-            loadData(parseInt(id));
-        }
+        if (!id) return;
+        // Sayısal ID'ler artık desteklenmiyor — yalnızca publicId (Sqids) çalışır
+        if (/^\d+$/.test(id)) return; // numeric URL → bileşen NotFound render eder
+        problemService.getByPublicId(id).then(res => {
+            if (res.data?.success && res.data.data?.id) loadData(res.data.data.id);
+        }).catch(() => {});
         const fetchTopics = async () => {
             const res = await topicService.getAll();
             if (res.data.success) setTopics(res.data.data);
@@ -225,17 +283,57 @@ const ProblemDetail = () => {
     }, [isEditingProblem, editLatitude, editLongitude, editClearLocation]);
 
     useEffect(() => {
-        if (highlightSolutionId && solutions.length > 0) {
-            const el = solutionRefs.current[highlightSolutionId];
+        if (highlightSolutionPid && solutions.length > 0) {
+            const target = solutions.find(s => s.publicId === highlightSolutionPid);
+            if (!target) return;
+            const el = solutionRefs.current[target.id];
             if (el) {
                 setTimeout(() => {
                     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    setFocusedSolutionId(highlightSolutionId);
+                    setFocusedSolutionId(target.id);
                     setTimeout(() => setFocusedSolutionId(null), 3000);
                 }, 300);
             }
         }
-    }, [solutions, highlightSolutionId]);
+    }, [solutions, highlightSolutionPid]);
+
+    const loadEngagement = async (section: 'viewers' | 'upvoters' | 'participants', problemId: number) => {
+        if (engagementSection === section) { setEngagementSection(null); return; }
+        setEngagementSection(section);
+        setEngagementDenied(false);
+        setEngagementLoading(true);
+        try {
+            if (section === 'viewers') {
+                const res = await problemService.getViewers(problemId);
+                setViewers(res.data?.data ?? []);
+            } else if (section === 'upvoters') {
+                const res = await problemService.getUpvoters(problemId);
+                setUpvoters(res.data?.data ?? []);
+            } else {
+                const res = await problemService.getParticipants(problemId);
+                setParticipants(res.data?.data ?? []);
+            }
+        } catch (err: any) {
+            if (err?.response?.status === 403) setEngagementDenied(true);
+        } finally {
+            setEngagementLoading(false);
+        }
+    };
+
+    const loadVoters = async (solutionId: number) => {
+        if (votersSolutionId === solutionId) { setVotersSolutionId(null); setVoters(null); return; }
+        setVotersSolutionId(solutionId);
+        setVotersDenied(false);
+        setVotersLoading(true);
+        try {
+            const res = await solutionVoteService.getVoters(solutionId);
+            setVoters(res.data?.data ?? []);
+        } catch (err: any) {
+            if (err?.response?.status === 403) setVotersDenied(true);
+        } finally {
+            setVotersLoading(false);
+        }
+    };
 
     const loadData = async (problemId: number) => {
         try {
@@ -446,7 +544,7 @@ const ProblemDetail = () => {
         }
         try {
             await solutionVoteService.vote(solutionId, currentUserId, isUpvote);
-            loadData(parseInt(id!));
+            if (problem?.id) loadData(problem.id);
         } catch (err) {
             console.error("Oy verme hatası", err);
         }
@@ -508,6 +606,9 @@ const ProblemDetail = () => {
         });
     };
 
+    // Sayısal URL'ler artık geçersiz — sadece publicId (opak string) kabul edilir
+    if (id && /^\d+$/.test(id)) return <Navigate to="/404" replace />;
+
     if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-blue-600">Yükleniyor...</div>;
     if (!problem) return <div className="min-h-screen flex items-center justify-center font-bold text-red-500">Sorun bulunamadı veya silinmiş.</div>;
 
@@ -536,13 +637,27 @@ const ProblemDetail = () => {
                     {problem.imageUrls && problem.imageUrls.length > 0 && (
                         <div className="flex overflow-x-auto gap-4 p-4 bg-gray-50 border-b custom-scrollbar">
                             {problem.imageUrls.map((url, idx) => (
-                                <div 
-                                    key={idx} 
+                                <div
+                                    key={idx}
                                     onClick={() => openLightbox(problem.imageUrls!.map(u => `/uploads/problems/${u}`), idx)}
                                     className="h-64 w-96 flex-shrink-0 rounded-2xl overflow-hidden border bg-white group relative shadow-sm cursor-zoom-in"
                                 >
                                      <img src={`/uploads/problems/${url}`} alt={`${problem.title} ${idx + 1}`} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
                                 </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {problem.videoUrls && problem.videoUrls.length > 0 && (
+                        <div className="flex overflow-x-auto gap-4 p-4 bg-gray-900 border-b custom-scrollbar">
+                            {problem.videoUrls.map((url, idx) => (
+                                <video
+                                    key={idx}
+                                    src={url}
+                                    controls
+                                    className="h-56 w-80 flex-shrink-0 rounded-xl bg-black shadow-lg"
+                                    preload="metadata"
+                                />
                             ))}
                         </div>
                     )}
@@ -874,9 +989,9 @@ const ProblemDetail = () => {
                                     )}
                                     {enableSharing && (
                                         <div className="ml-2">
-                                            <SocialShare 
-                                                url={`/problem/${problem.id}`} 
-                                                title={problem.title} 
+                                            <SocialShare
+                                                url={`/problem/${problem.publicId || problem.id}`}
+                                                title={problem.title}
                                                 description={problem.description}
                                             />
                                         </div>
@@ -892,7 +1007,7 @@ const ProblemDetail = () => {
                         {/* Alt Bilgi & Aksiyonlar */}
                         <div className="flex flex-wrap items-center justify-between border-t border-gray-100 pt-6">
                             <div className="flex items-center gap-3">
-                                <Link to={`/user/${problem.senderId}`} className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-tr from-blue-100 to-indigo-100 flex items-center justify-center shadow-inner shrink-0 border border-gray-100">
+                                <Link to={`/user/${problem.senderUsername}`} className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-tr from-blue-100 to-indigo-100 flex items-center justify-center shadow-inner shrink-0 border border-gray-100">
                                     {problem.senderImageUrl ? (
                                         <img src={getProfileImageUrl(problem.senderImageUrl)} alt={problem.senderUsername} className="w-full h-full object-cover" />
                                     ) : (
@@ -901,7 +1016,13 @@ const ProblemDetail = () => {
                                 </Link>
                                 <div>
                                     <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">Gönderen</div>
-                                    <Link to={`/user/${problem.senderId}`} className="font-bold text-gray-900 text-sm hover:text-blue-600 hover:underline">@{problem.senderUsername}</Link>
+                                    <Link to={`/user/${problem.senderUsername}`} className="font-bold text-gray-900 text-sm hover:text-blue-600 hover:underline">@{problem.senderUsername}</Link>
+                                    <SenderBadges
+                                        isExpert={problem.senderIsExpert}
+                                        isOfficial={problem.senderIsOfficial}
+                                        titles={problem.senderTitles}
+                                        size="sm"
+                                    />
                                 </div>
                                 <div className="ml-4 pl-4 border-l border-gray-200">
                                     <div className="text-xs text-gray-400 font-medium">{formatDate(problem.sendDate)}</div>
@@ -945,7 +1066,7 @@ const ProblemDetail = () => {
                                 )}
                                 {/* Moderasyon butonları — sahip olmayanlara göster */}
                                 {currentUserId !== problem.senderId && currentUserId !== 0 && (
-                                    <div className="flex gap-2 mb-4">
+                                    <div className="flex flex-wrap gap-2 mb-4">
                                         {canModResolveProblem && !isProblemResolved && (
                                             <button
                                                 onClick={async () => {
@@ -973,6 +1094,52 @@ const ProblemDetail = () => {
                                                 ⭐ Öne Çıkar
                                             </button>
                                         )}
+                                        {!problem.isClosed && canCloseProblem && (
+                                            <button
+                                                onClick={async () => {
+                                                    const reason = window.prompt('Kapatma sebebi (opsiyonel):');
+                                                    if (reason === null) return;
+                                                    try {
+                                                        await problemService.closeProblem(problem.id, reason || undefined);
+                                                        await loadData(problem.id);
+                                                    } catch { alert('İşlem gerçekleştirilemedi.'); }
+                                                }}
+                                                className="text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5"
+                                            >
+                                                🔒 Kapat
+                                            </button>
+                                        )}
+                                        {problem.isClosed && canReopenProblem && (
+                                            <button
+                                                onClick={async () => {
+                                                    if (!window.confirm('Sorunu yeniden açmak istediğinize emin misiniz?')) return;
+                                                    try {
+                                                        await problemService.reopenProblem(problem.id);
+                                                        await loadData(problem.id);
+                                                    } catch { alert('İşlem gerçekleştirilemedi.'); }
+                                                }}
+                                                className="text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5"
+                                            >
+                                                🔓 Yeniden Aç
+                                            </button>
+                                        )}
+                                        {canHideProblem && (
+                                            <button
+                                                onClick={async () => {
+                                                    const msg = problem.isHidden
+                                                        ? 'Sorunu herkese görünür yapmak istediğinize emin misiniz?'
+                                                        : 'Sorunu gizlemek istediğinize emin misiniz?';
+                                                    if (!window.confirm(msg)) return;
+                                                    try {
+                                                        await problemService.toggleHide(problem.id);
+                                                        await loadData(problem.id);
+                                                    } catch { alert('İşlem gerçekleştirilemedi.'); }
+                                                }}
+                                                className={`text-xs font-bold px-4 py-2 rounded-xl transition flex items-center gap-1.5 border ${problem.isHidden ? 'text-slate-700 bg-slate-100 hover:bg-slate-200 border-slate-300' : 'text-slate-600 bg-slate-50 hover:bg-slate-100 border-slate-200'}`}
+                                            >
+                                                {problem.isHidden ? '👁️ Göster' : '🚫 Gizle'}
+                                            </button>
+                                        )}
                                         {canModDeleteProblem && (
                                             <button onClick={handleDeleteProblem} className="text-xs font-bold text-red-500 hover:text-white bg-red-50 hover:bg-red-500 border border-red-200 px-4 py-2 rounded-xl transition flex items-center gap-1.5">
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -990,6 +1157,138 @@ const ProblemDetail = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* KAPALI SORUN BANNERI */}
+                {problem.isClosed && (
+                    <div className="mb-6 bg-orange-50 border border-orange-200 rounded-2xl p-5 shadow-sm flex items-start gap-3">
+                        <span className="text-2xl mt-0.5">🔒</span>
+                        <div>
+                            <p className="font-black text-orange-800 text-sm">Bu sorun kapatılmıştır</p>
+                            {problem.closeReason && (
+                                <p className="text-orange-700 text-sm mt-1">{problem.closeReason}</p>
+                            )}
+                            {problem.closedAt && (
+                                <p className="text-orange-500 text-xs mt-1">
+                                    {new Date(problem.closedAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                </p>
+                            )}
+                            <p className="text-orange-600 text-xs mt-1.5">Yeni çözüm ve yorum eklenemez.</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* GİZLİ SORUN BANNERI (sadece moderatöre) */}
+                {problem.isHidden && canHideProblem && (
+                    <div className="mb-6 bg-slate-100 border border-slate-300 rounded-2xl p-4 flex items-center gap-3">
+                        <span className="text-xl">🚫</span>
+                        <p className="text-slate-600 font-bold text-sm">Bu sorun herkese gizlenmiştir. Sadece moderatörler görebilir.</p>
+                    </div>
+                )}
+
+                {/* RESMİ YANITLAR */}
+                {problem.officialResponses && problem.officialResponses.length > 0 && (
+                    <div className="mb-8 space-y-4">
+                        <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                            <span className="text-blue-600">🏛️</span> Kurumsal Yanıtlar
+                        </h2>
+                        {problem.officialResponses.map(resp => {
+                            const statusConfig: Record<string, { label: string; color: string }> = {
+                                acknowledged: { label: 'İncelendi',    color: 'bg-blue-100 text-blue-700 border-blue-200' },
+                                in_progress:  { label: 'İşlemde',      color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+                                info:         { label: 'Bilgi',         color: 'bg-gray-100 text-gray-600 border-gray-200' },
+                                closed:       { label: 'Tamamlandı',   color: 'bg-green-100 text-green-700 border-green-200' },
+                            };
+                            const cfg = statusConfig[resp.status] ?? statusConfig.info;
+                            return (
+                                <div key={resp.id} className="bg-blue-50/60 border border-blue-200 rounded-2xl p-5 shadow-sm">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <Link to={`/user/${resp.authorUsername}`} className="h-9 w-9 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center shrink-0 border border-blue-200">
+                                                {resp.authorImageUrl ? (
+                                                    <img src={getProfileImageUrl(resp.authorImageUrl)} alt={resp.authorUsername} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <span className="text-xs font-black text-blue-800">{resp.authorUsername[0].toUpperCase()}</span>
+                                                )}
+                                            </Link>
+                                            <div>
+                                                <Link to={`/user/${resp.authorUsername}`} className="font-bold text-gray-900 text-sm hover:underline">@{resp.authorUsername}</Link>
+                                                <SenderBadges titles={resp.authorTitles} size="xs" />
+                                                <div className="text-[10px] text-gray-400 mt-0.5">{new Date(resp.createdAt).toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                                            </div>
+                                        </div>
+                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${cfg.color}`}>{cfg.label}</span>
+                                    </div>
+                                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{resp.body}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Etkileşim İstatistikleri Paneli — sadece en az bir bölüm kapalı değilse göster */}
+                {problem && (() => {
+                    const showViewers     = problem.viewersVisibility     !== 'closed';
+                    const showUpvoters    = enableUpvote && problem.upvotersVisibility !== 'closed';
+                    const showParticipants = problem.participantsVisibility !== 'closed';
+                    if (!showViewers && !showUpvoters && !showParticipants) return null;
+                    return (
+                        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mb-6">
+                            <div className="flex flex-wrap gap-3 mb-3">
+                                {showViewers && (
+                                    <button
+                                        onClick={() => loadEngagement('viewers', problem.id)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition ${engagementSection === 'viewers' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                    >
+                                        👁️ {problem.viewCount ?? 0} Görüntülenme
+                                    </button>
+                                )}
+                                {showUpvoters && (
+                                    <button
+                                        onClick={() => loadEngagement('upvoters', problem.id)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition ${engagementSection === 'upvoters' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                    >
+                                        ✋ {problem.upvoteCount ?? 0} Destek
+                                    </button>
+                                )}
+                                {showParticipants && (
+                                    <button
+                                        onClick={() => loadEngagement('participants', problem.id)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition ${engagementSection === 'participants' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                    >
+                                        👥 Katılımcılar
+                                    </button>
+                                )}
+                            </div>
+
+                            {engagementSection && (
+                                <div className="border-t border-gray-100 pt-4">
+                                    {engagementLoading && <p className="text-xs text-gray-400">Yükleniyor…</p>}
+                                    {engagementDenied && (
+                                        <p className="text-xs text-gray-400 flex items-center gap-1.5">🔒 Bu liste gizlidir.</p>
+                                    )}
+                                    {!engagementLoading && !engagementDenied && engagementSection === 'viewers' && viewers && (
+                                        <EngagementUserList
+                                            items={viewers.filter(v => v.userId).map(v => ({ userId: v.userId!, username: v.username ?? 'Anonim', profileImageUrl: v.profileImageUrl, sub: new Date(v.viewedAt).toLocaleDateString('tr-TR') }))}
+                                            emptyText="Henüz görüntüleyen yok."
+                                        />
+                                    )}
+                                    {!engagementLoading && !engagementDenied && engagementSection === 'upvoters' && upvoters && (
+                                        <EngagementUserList
+                                            items={upvoters.map(u => ({ userId: u.userId, username: u.username, profileImageUrl: u.profileImageUrl, sub: new Date(u.createdAt).toLocaleDateString('tr-TR') }))}
+                                            emptyText="Henüz destek veren yok."
+                                        />
+                                    )}
+                                    {!engagementLoading && !engagementDenied && engagementSection === 'participants' && participants && (
+                                        <EngagementUserList
+                                            items={participants.map(p => ({ userId: p.userId, username: p.username, profileImageUrl: p.profileImageUrl, sub: roleLabel(p.role) }))}
+                                            emptyText="Henüz katılımcı yok."
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {/* ALT KISIM: ÇÖZÜMLER VE FORM */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1064,7 +1363,7 @@ const ProblemDetail = () => {
                                                         {enableSharing && (
                                                             <SocialShare 
                                                                 variant="dropdown"
-                                                                url={`/problem/${problem.id}?solution=${sol.id}`}
+                                                                url={`/problem/${problem.publicId || problem.id}?solution=${sol.publicId || sol.id}`}
                                                                 title={`${problem.title} - ${sol.title}`}
                                                             />
                                                         )}
@@ -1200,8 +1499,8 @@ const ProblemDetail = () => {
                                                             {sol.imageUrls && sol.imageUrls.length > 0 && (
                                                                 <div className="mt-4 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                                                                     {sol.imageUrls.map((url: string, idx: number) => (
-                                                                        <div 
-                                                                            key={idx} 
+                                                                        <div
+                                                                            key={idx}
                                                                             onClick={() => openLightbox(sol.imageUrls!.map((u: string) => `/uploads/solutions/${u}`), idx)}
                                                                             className="h-32 w-44 sm:h-40 sm:w-60 flex-shrink-0 rounded-xl overflow-hidden border shadow-sm group cursor-zoom-in"
                                                                         >
@@ -1211,8 +1510,23 @@ const ProblemDetail = () => {
                                                                 </div>
                                                             )}
 
+                                                            {/* Çözüm Videoları */}
+                                                            {sol.videoUrls && sol.videoUrls.length > 0 && (
+                                                                <div className="mt-3 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                                                    {sol.videoUrls.map((url: string, idx: number) => (
+                                                                        <video
+                                                                            key={idx}
+                                                                            src={url}
+                                                                            controls
+                                                                            className="h-36 w-56 flex-shrink-0 rounded-lg bg-black shadow-sm"
+                                                                            preload="metadata"
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
                                                             <div className="mt-5 flex items-center gap-3">
-                                                                <Link to={`/user/${sol.senderId}`} className="h-10 w-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center shrink-0 border border-gray-100 shadow-sm">
+                                                                <Link to={`/user/${sol.senderUsername}`} className="h-10 w-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center shrink-0 border border-gray-100 shadow-sm">
                                                                     {sol.senderImageUrl ? (
                                                                         <img src={getProfileImageUrl(sol.senderImageUrl)} alt={sol.senderUsername} className="w-full h-full object-cover" />
                                                                     ) : (
@@ -1220,7 +1534,12 @@ const ProblemDetail = () => {
                                                                     )}
                                                                 </Link>
                                                                 <div>
-                                                                    <Link to={`/user/${sol.senderId}`} className="font-bold text-gray-900 text-sm hover:underline">@{sol.senderUsername}</Link>
+                                                                    <Link to={`/user/${sol.senderUsername}`} className="font-bold text-gray-900 text-sm hover:underline">@{sol.senderUsername}</Link>
+                                                                    <SenderBadges
+                                                                        isExpert={sol.senderIsExpert}
+                                                                        isOfficial={sol.senderIsOfficial}
+                                                                        titles={sol.senderTitles}
+                                                                    />
                                                                     <div className="text-[11px] text-gray-500">{formatDate(sol.sendDate)}</div>
                                                                 </div>
                                                             </div>
@@ -1231,9 +1550,33 @@ const ProblemDetail = () => {
 
                                                 </div>
 
+                                                {/* Çözüm oylayanlar — solutionVotersVisibility 'closed' ise tamamen gizle */}
+                                                {enableUpvote && problem?.solutionVotersVisibility !== 'closed' && (
+                                                <div className="mt-4">
+                                                    <button
+                                                        onClick={() => loadVoters(sol.id)}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition ${votersSolutionId === sol.id ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}
+                                                    >
+                                                        📊 Oylayanlar ({sol.voteCount || 0})
+                                                    </button>
+                                                    {votersSolutionId === sol.id && (
+                                                        <div className="mt-3">
+                                                            {votersLoading && <p className="text-xs text-gray-400">Yükleniyor…</p>}
+                                                            {votersDenied && <p className="text-xs text-gray-400 flex items-center gap-1">🔒 Bu liste gizlidir.</p>}
+                                                            {!votersLoading && !votersDenied && voters && (
+                                                                <EngagementUserList
+                                                                    items={voters.map(v => ({ userId: v.userId, username: v.username, profileImageUrl: v.profileImageUrl, sub: v.isUpvote ? '👍 Olumlu' : '👎 Olumsuz' }))}
+                                                                    emptyText="Henüz oy yok."
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                )}
+
                                                 {enableComments && (
                                                 <div className="mt-6">
-                                                    <CommentSection solutionId={sol.id} institutionId={problem?.institutionId} />
+                                                    <CommentSection solutionId={sol.id} institutionId={problem?.institutionId} isClosed={problem?.isClosed} />
                                                 </div>
                                                 )}
 
@@ -1286,7 +1629,12 @@ const ProblemDetail = () => {
                             <h3 className="text-xl font-black text-gray-900 mb-2">Çözümün var mı?</h3>
                             <p className="text-sm text-gray-500 mb-6">Diğer kullanıcılara yardımcı olmak için fikrini veya tecrübeni paylaş.</p>
 
-                            {currentUserId !== 0 ? (
+                            {problem.isClosed ? (
+                                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-center">
+                                    <p className="text-orange-700 font-bold text-sm">🔒 Bu sorun kapatılmıştır.</p>
+                                    <p className="text-orange-600 text-xs mt-1">Yeni çözüm eklenemiyor.</p>
+                                </div>
+                            ) : currentUserId !== 0 ? (
                                 <form onSubmit={handleSolutionSubmit}>
                                     <div className="mb-4">
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Çözüm Başlığı</label>

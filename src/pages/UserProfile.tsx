@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { userService } from '../services/userService';
 import { problemService } from '../services/problemService';
 import { solutionService } from '../services/solutionService';
-import type { UserPublicProfileDto, ProblemDetailDto, SolutionDetailDto } from '../types';
+import type { UserPublicProfileDto, ProblemDetailDto, SolutionDetailDto, UserTitleDto } from '../types';
 import Navbar from '../components/Navbar';
 import ReportModal from '../components/ReportModal';
 import { getProfileImageUrl } from '../utils/imageUtils';
 import { useFeature, useInstitution, useTerminology } from '../hooks/useFeature';
 import { useAuth } from '../context/AuthContext';
 import { useCapability } from '../hooks/useCapability';
+import SenderBadges from '../components/SenderBadges';
+import { userTitleService } from '../services/userTitleService';
 
 const UserProfile = () => {
     const { id } = useParams<{ id: string }>(); // URL'den tıklanan kişinin ID'sini alıyoruz
@@ -17,6 +19,7 @@ const UserProfile = () => {
     const [problems, setProblems] = useState<ProblemDetailDto[]>([]);
     const [solutions, setSolutions] = useState<SolutionDetailDto[]>([]);
     const [activeTab, setActiveTab] = useState<'problems' | 'solutions'>('problems');
+    const [titles, setTitles] = useState<UserTitleDto[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -40,18 +43,14 @@ const UserProfile = () => {
     useEffect(() => {
         const fetchUserData = async () => {
             if (!id) return;
+            // Sayısal ID'ler artık desteklenmiyor — sadece username çalışır
+            if (/^\d+$/.test(id)) return;
             setLoading(true);
 
             try {
-                const isNumeric = /^\d+$/.test(id);
+                const instId = institution?.id || 1;
                 let userRes;
-                const instId = institution?.id || 1; // Fallback to 1 if not detected
-                
-                if (isNumeric) {
-                    userRes = await userService.getPublicProfile(parseInt(id), instId);
-                } else {
-                    userRes = await userService.getPublicProfileByUserName(id, instId);
-                }
+                userRes = await userService.getPublicProfileByUserName(id, instId);
 
                 if (userRes.data.success) {
                     const fetchedUser = userRes.data.data;
@@ -66,6 +65,11 @@ const UserProfile = () => {
 
                     if (probRes.data.success) setProblems(probRes.data.data);
                     if (solRes.data.success) setSolutions(solRes.data.data);
+
+                    try {
+                        const titleRes = await userTitleService.getByUser(actualUserId);
+                        if (titleRes.data.success) setTitles(titleRes.data.data.filter(t => t.isVisible));
+                    } catch { /* titles optional */ }
                 } else {
                     setError(userRes.data.message || "Kullanıcı bulunamadı.");
                 }
@@ -79,6 +83,9 @@ const UserProfile = () => {
 
         fetchUserData();
     }, [id]);
+
+    // Sayısal ID'ler artık desteklenmiyor — sadece username kabul edilir
+    if (id && /^\d+$/.test(id)) return <Navigate to="/404" replace />;
 
     if (loading) return <div className="text-center p-20 font-medium text-blue-600">Kullanıcı Yükleniyor...</div>;
     if (error) return <div className="text-center p-20 text-red-500 font-bold">{error}</div>;
@@ -136,7 +143,10 @@ const UserProfile = () => {
                             <div className="flex items-center justify-between flex-wrap gap-4">
                                 <div>
                                     <h1 className="text-3xl font-extrabold text-gray-900">{user.name} {user.surname}</h1>
-                                    <p className="text-gray-500 font-medium">@{user.userName}</p>
+                                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                                        <p className="text-gray-500 font-medium">@{user.userName}</p>
+                                        {titles.length > 0 && <SenderBadges titles={titles} size="sm" />}
+                                    </div>
                                 </div>
                                 <div className="flex gap-2">
                                 </div>
@@ -239,7 +249,7 @@ const UserProfile = () => {
                                                     })()} • {new Date(prob.sendDate).toLocaleDateString('tr-TR')}
                                                 </p>
                                             </div>
-                                            <Link to={`/problem/${prob.id}`} className="text-blue-600 text-sm font-bold hover:underline">İncele</Link>
+                                            <Link to={`/problem/${prob.publicId || prob.id}`} className="text-blue-600 text-sm font-bold hover:underline">İncele</Link>
                                         </div>
                                     ))
                                 )}
@@ -256,7 +266,7 @@ const UserProfile = () => {
                                                 <span className="text-xs text-gray-500">{new Date(sol.sendDate).toLocaleDateString('tr-TR')}</span>
                                             </div>
                                             <p className="text-sm text-gray-600 line-clamp-2 mb-3">{sol.description}</p>
-                                            <Link to={`/problem/${sol.problemId}`} className="text-xs text-blue-600 font-bold hover:underline italic">
+                                            <Link to={`/problem/${sol.problemPublicId || sol.problemId}`} className="text-xs text-blue-600 font-bold hover:underline italic">
                                                 İlgili Soruna Git: {sol.problemName}
                                             </Link>
                                         </div>

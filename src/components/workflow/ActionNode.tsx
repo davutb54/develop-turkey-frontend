@@ -10,28 +10,68 @@ export type ActionNodeData = {
   accentColor?: string;
 };
 
+// Her trigger kategorisi (prefix) için uyumlu context-specific action kodları.
+// Universal action'lar (iletişim + sistem) ayrıca her zaman gösterilir.
+const TRIGGER_CONTEXTUAL_ACTIONS: Record<string, string[]> = {
+  auth:        ['ban_user', 'unban_user', 'warn_user', 'grant_capability', 'apply_capability_template'],
+  user:        ['ban_user', 'unban_user', 'warn_user', 'grant_capability', 'apply_capability_template'],
+  problem:     ['resolve_problem', 'highlight_problem', 'delete_problem', 'report_problem', 'assign_problem_institution', 'change_problem_status'],
+  solution:    ['approve_solution', 'reject_solution', 'highlight_solution', 'delete_solution'],
+  comment:     ['delete_comment'],
+  // report trigger'da hedef tip bilinmediğinden tüm içerik aksiyonları açık
+  report:      ['resolve_problem', 'highlight_problem', 'delete_problem', 'approve_solution', 'reject_solution', 'highlight_solution', 'delete_solution', 'delete_comment', 'ban_user', 'warn_user'],
+  // Kalan kategoriler (topic, feedback, legal, institution, system) → sadece universal
+  topic:       [],
+  feedback:    [],
+  legal:       [],
+  institution: [],
+  system:      [],
+};
+
+// Tetikleyiciden bağımsız her zaman gösterilecek action'lar
+const UNIVERSAL_ACTION_CODES = new Set([
+  'send_email', 'send_notification', 'send_bulk_notification',
+  'log_event', 'webhook', 'create_announcement', 'trigger_workflow',
+]);
+
 function ActionNode({ id, data, selected }: NodeProps) {
   const nodeData = data as ActionNodeData;
   const actions = useWorkflowStore((s) => s.actions);
   const availableCapabilities = useWorkflowStore((s) => s.availableCapabilities);
   const availableTemplates = useWorkflowStore((s) => s.availableTemplates);
+  const activeTrigger = useWorkflowStore((s) => s.activeTrigger);
   const { hasCapability } = useAuth();
   const { setNodes } = useReactFlow();
 
   const accent = nodeData.accentColor ?? '#7c3aed';
 
-  // Kullanıcının çalıştırma yetkisi olduğu action'lar.
-  // Mevcut seçili action yetkisizleşmiş olsa bile listede tutulur ki kullanıcı
-  // bunu görüp değiştirebilsin (sessiz veri kaybı önlenir).
+  // Seçili tetikleyiciye göre izin verilen action kodları seti.
+  // Tetikleyici seçilmemişse filtre yok (null → hepsini göster).
+  const compatibleCodes = useMemo<Set<string> | null>(() => {
+    if (!activeTrigger) return null;
+    const prefix = activeTrigger.split('.')[0];
+    const contextual = TRIGGER_CONTEXTUAL_ACTIONS[prefix] ?? [];
+    return new Set([...UNIVERSAL_ACTION_CODES, ...contextual]);
+  }, [activeTrigger]);
+
+  // Kullanıcının çalıştırma yetkisi olan VE tetikleyiciyle uyumlu action'lar.
+  // Mevcut seçili action yetkisizleşmiş/uyumsuz olsa bile listede tutulur (sessiz veri kaybı önlenir).
   const allowedActions = useMemo(() => {
-    return actions.filter(
-      (a) => hasCapability(`workflow.action.${a.value}`) || a.value === nodeData.action,
-    );
-  }, [actions, hasCapability, nodeData.action]);
+    return actions.filter((a) => {
+      if (a.value === nodeData.action) return true; // seçili → her zaman göster
+      if (!hasCapability(`workflow.action.${a.value}`)) return false; // yetki yok → gizle
+      if (compatibleCodes !== null && !compatibleCodes.has(a.value)) return false; // uyumsuz → gizle
+      return true;
+    });
+  }, [actions, hasCapability, nodeData.action, compatibleCodes]);
 
   const actionDef = allowedActions.find((a) => a.value === (nodeData.action ?? ''));
   const selectedActionDenied =
     !!nodeData.action && !hasCapability(`workflow.action.${nodeData.action}`);
+  const selectedActionIncompatible =
+    !!nodeData.action &&
+    compatibleCodes !== null &&
+    !compatibleCodes.has(nodeData.action);
 
   // Kategoriye göre grupla
   const grouped = allowedActions.reduce<Record<string, typeof allowedActions>>((acc, a) => {
@@ -120,7 +160,7 @@ function ActionNode({ id, data, selected }: NodeProps) {
         ))}
       </select>
 
-      {/* Boş durum / yetkisiz seçim bilgilendirmesi */}
+      {/* Bilgi/uyarı alanı */}
       {allowedActions.length === 0 && (
         <div style={{ marginTop: 8, fontSize: 10, color: '#fecaca', lineHeight: 1.4 }}>
           ⚠ Bu kullanıcıda hiçbir <code>workflow.action.*</code> yetkisi yok.
@@ -129,6 +169,16 @@ function ActionNode({ id, data, selected }: NodeProps) {
       {selectedActionDenied && allowedActions.length > 0 && (
         <div style={{ marginTop: 8, fontSize: 10, color: '#fecaca', lineHeight: 1.4 }}>
           ⚠ Seçili aksiyon için <code>workflow.action.{nodeData.action}</code> yetkisi yok.
+        </div>
+      )}
+      {!selectedActionDenied && selectedActionIncompatible && (
+        <div style={{ marginTop: 8, fontSize: 10, color: '#fde68a', lineHeight: 1.4 }}>
+          ⚠ Seçili aksiyon bu tetikleyiciyle uyumlu değil.
+        </div>
+      )}
+      {activeTrigger && !nodeData.action && (
+        <div style={{ marginTop: 6, fontSize: 10, opacity: 0.6, lineHeight: 1.4 }}>
+          Tetikleyici: <strong>{activeTrigger.split('.')[0]}</strong> — uyumlu aksiyonlar filtrelendi.
         </div>
       )}
 

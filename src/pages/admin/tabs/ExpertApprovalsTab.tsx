@@ -11,6 +11,10 @@ export default function ExpertApprovalsTab() {
     const [pendingSolutions, setPendingSolutions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
+    if (!canApprove && !canReject) {
+        return <div className="p-10 text-center text-slate-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
+    }
+
     useEffect(() => {
         load();
     }, []);
@@ -25,7 +29,12 @@ export default function ExpertApprovalsTab() {
     };
 
     const groupedPendingSolutions = Object.values(pendingSolutions.reduce((acc: any, sol) => {
-        if (!acc[sol.problemId]) acc[sol.problemId] = { problemId: sol.problemId, problemName: sol.problemName, solutions: [] };
+        if (!acc[sol.problemId]) acc[sol.problemId] = {
+            problemId: sol.problemId,
+            problemPublicId: sol.problemPublicId,
+            problemName: sol.problemName,
+            solutions: [],
+        };
         acc[sol.problemId].solutions.push(sol);
         return acc;
     }, {})) as any[];
@@ -77,11 +86,11 @@ export default function ExpertApprovalsTab() {
                             <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                                 <div>
                                     <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest block mb-1">İlgili Sorun</span>
-                                    <Link to={`/problem/${group.problemId}`} target="_blank" className="font-black text-slate-800 text-lg hover:text-indigo-600 transition">
+                                    <Link to={`/problem/${group.problemPublicId || group.problemId}`} target="_blank" className="font-black text-slate-800 text-lg hover:text-indigo-600 transition">
                                         {group.problemName}
                                     </Link>
                                 </div>
-                                <Link to={`/problem/${group.problemId}`} target="_blank" className="shrink-0 text-[11px] uppercase tracking-wider bg-white border border-slate-200 px-4 py-2 rounded-xl font-black text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition shadow-sm">
+                                <Link to={`/problem/${group.problemPublicId || group.problemId}`} target="_blank" className="shrink-0 text-[11px] uppercase tracking-wider bg-white border border-slate-200 px-4 py-2 rounded-xl font-black text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition shadow-sm">
                                     Soruna Git ↗
                                 </Link>
                             </div>
@@ -90,7 +99,7 @@ export default function ExpertApprovalsTab() {
                                     <div key={sol.id} className="bg-indigo-50/40 border border-indigo-100 p-5 rounded-2xl relative shadow-sm">
                                         <div className="flex justify-between items-start mb-3">
                                             <div className="flex items-center gap-3">
-                                                <Link to={`/user/${sol.senderId}`} target="_blank" className="h-10 w-10 rounded-full bg-indigo-200 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white hover:ring-indigo-300 transition">
+                                                <Link to={`/user/${sol.senderUsername}`} target="_blank" className="h-10 w-10 rounded-full bg-indigo-200 flex items-center justify-center font-black text-indigo-700 text-sm shrink-0 overflow-hidden ring-2 ring-white hover:ring-indigo-300 transition">
                                                     {sol.senderImageUrl ? <img src={getProfileImageUrl(sol.senderImageUrl)} className="w-full h-full object-cover" alt={sol.senderUsername} /> : sol.senderUsername[0].toUpperCase()}
                                                 </Link>
                                                 <div>
@@ -98,7 +107,7 @@ export default function ExpertApprovalsTab() {
                                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Uzman</span>
                                                         <span className="bg-indigo-100 text-indigo-700 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest shadow-sm">Onay Bekliyor</span>
                                                     </div>
-                                                    <Link to={`/user/${sol.senderId}`} target="_blank" className="font-bold text-indigo-900 text-sm hover:underline">@{sol.senderUsername}</Link>
+                                                    <Link to={`/user/${sol.senderUsername}`} target="_blank" className="font-bold text-indigo-900 text-sm hover:underline">@{sol.senderUsername}</Link>
                                                 </div>
                                             </div>
                                             <span className="text-xs text-slate-400 font-bold bg-white px-2.5 py-1 rounded-md border border-slate-100 shadow-sm">{new Date(sol.sendDate).toLocaleDateString()}</span>

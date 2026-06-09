@@ -120,6 +120,13 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
     if (def.inputType === 'Select' && def.optionsJson) {
       let options: string[] = [];
       try { options = JSON.parse(def.optionsJson); } catch {}
+      const visibilityLabels: Record<string, string> = {
+        closed: 'Kapalı',
+        public: 'Herkese Açık',
+        admin_only: 'Sadece Yöneticilere',
+        admin_and_owner: 'Yönetici ve İçerik Sahibine',
+        owner_only: 'Sadece İçerik Sahibine',
+      };
       return (
         <select
           value={value}
@@ -129,7 +136,11 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
             isDisabled ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
-          {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          {options.map(opt => (
+            <option key={opt} value={opt}>
+              {visibilityLabels[opt] ?? opt}
+            </option>
+          ))}
         </select>
       );
     }
@@ -168,8 +179,13 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
     );
   }
 
+  // Global feature'lar kurum bazında override edilemez — sadece institution-scope olanlar listelenir
   const activeGroupDefs = definitions
-    .filter(d => d.groupId === activeGroup)
+    .filter(d => d.groupId === activeGroup && d.scope !== 'Global')
+    .sort((a, b) => a.orderIndex - b.orderIndex);
+
+  const activeGroupGlobalDefs = definitions
+    .filter(d => d.groupId === activeGroup && d.scope === 'Global')
     .sort((a, b) => a.orderIndex - b.orderIndex);
 
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
@@ -230,9 +246,9 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
               }`}
             >
               {group.name}
-              {/* Bekleyen değişiklik varsa nokta göster */}
+              {/* Bekleyen değişiklik varsa nokta göster (sadece institution-scope) */}
               {definitions
-                .filter(d => d.groupId === group.id)
+                .filter(d => d.groupId === group.id && d.scope !== 'Global')
                 .some(d => pendingChanges[d.key] !== undefined) && (
                 <span className="ml-2 inline-block w-2 h-2 bg-amber-400 rounded-full"></span>
               )}
@@ -242,10 +258,25 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
 
         {/* Sağ: Feature Listesi */}
         <div className="flex-1 p-6">
-          {activeGroupDefs.length === 0 ? (
+          {activeGroupGlobalDefs.length > 0 && (
+            <div className="mb-4 p-3 bg-violet-50 border border-violet-100 rounded-xl flex items-start gap-2">
+              <span className="text-violet-500 mt-0.5 flex-shrink-0">🌐</span>
+              <div className="text-xs text-violet-700">
+                <span className="font-black">Platform ayarı:</span>{' '}
+                {activeGroupGlobalDefs.map(d => d.displayName).join(', ')} — bu grupta{' '}
+                {activeGroupGlobalDefs.length > 1 ? 'bu özellikler' : 'bu özellik'} tüm kurumlar için
+                geçerlidir ve kurum bazında değiştirilemez.
+              </div>
+            </div>
+          )}
+          {activeGroupDefs.length === 0 && activeGroupGlobalDefs.length === 0 ? (
             <div className="text-center py-12 text-slate-400">
               <div className="text-4xl mb-3">📭</div>
               <p className="font-bold">Bu grupta henüz özellik tanımı yok.</p>
+            </div>
+          ) : activeGroupDefs.length === 0 ? (
+            <div className="text-center py-8 text-slate-400">
+              <p className="font-bold text-sm">Bu gruptaki tüm özellikler platform genelinde geçerlidir.</p>
             </div>
           ) : (
             <div className="space-y-4">

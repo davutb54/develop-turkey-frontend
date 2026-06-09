@@ -111,7 +111,7 @@ export default function FeedbacksTab() {
                                     <div>
                                         <h4 className="text-lg font-black text-slate-800">{fb.title}</h4>
                                         <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                            <Link to={`/user/${fb.userId}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline transition">@{fb.userName}</Link>
+                                            <Link to={`/user/${fb.userName}`} target="_blank" className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline transition">@{fb.userName}</Link>
                                             <span className="text-slate-300">•</span>
                                             <span className="text-[10px] font-medium text-slate-500">{fb.userEmail}</span>
                                             <span className="text-slate-300">•</span>

@@ -6,9 +6,10 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { NotificationProvider } from './context/NotificationContext'
 import { FeatureProvider } from './context/FeatureContext'
+import { ChatProvider } from './context/ChatContext'
 import { Toaster } from 'react-hot-toast'
 import { GoogleOAuthProvider } from '@react-oauth/google'
-
+import ErrorBoundary from './components/ErrorBoundary'
 import L from 'leaflet'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
@@ -29,10 +30,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <AuthProvider>
       <FeatureProvider>
         <NotificationProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-          <Toaster />
+          <ChatProvider>
+            <BrowserRouter>
+              <ErrorBoundary>
+                <App />
+              </ErrorBoundary>
+            </BrowserRouter>
+            <Toaster />
+          </ChatProvider>
         </NotificationProvider>
       </FeatureProvider>
     </AuthProvider>

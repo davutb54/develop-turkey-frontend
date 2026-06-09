@@ -65,6 +65,7 @@ export default function SolutionsTab() {
     const groupedSolutions = filteredSolutions.reduce((acc: any, sol) => {
         if (!acc[sol.problemId]) acc[sol.problemId] = {
             problemId: sol.problemId,
+            problemPublicId: sol.problemPublicId,
             problemName: problems.find(p => p.id === sol.problemId)?.title || 'Bilinmeyen Sorun',
             solutions: [],
         };
@@ -118,7 +119,7 @@ export default function SolutionsTab() {
                         <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex justify-between items-center">
                             <div>
                                 <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest block mb-1">İlgili Sorun</span>
-                                <Link to={`/problem/${group.problemId}`} target="_blank" className="font-black text-slate-800 text-lg hover:text-indigo-600 transition flex items-center gap-2">
+                                <Link to={`/problem/${group.problemPublicId || group.problemId}`} target="_blank" className="font-black text-slate-800 text-lg hover:text-indigo-600 transition flex items-center gap-2">
                                     {group.problemName}
                                 </Link>
                             </div>
@@ -128,14 +129,14 @@ export default function SolutionsTab() {
                                 <div key={sol.id} className="bg-slate-50 border border-slate-100 p-5 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-start gap-4 hover:shadow-md transition">
                                     <div>
                                         <div className="flex items-center gap-3 mb-2">
-                                            <Link to={`/user/${sol.senderId}`} target="_blank" className="font-bold text-indigo-900 text-sm hover:underline">@{sol.senderUsername}</Link>
+                                            <Link to={`/user/${sol.senderUsername}`} target="_blank" className="font-bold text-indigo-900 text-sm hover:underline">@{sol.senderUsername}</Link>
                                             <span className="text-[10px] text-slate-400 font-medium">{new Date(sol.sendDate).toLocaleDateString('tr-TR')}</span>
                                             {sol.isHighlighted && <span className="bg-orange-100 text-orange-700 border border-orange-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">VİTRİN</span>}
                                         </div>
                                         <p className="text-sm text-slate-700 line-clamp-2">{sol.title}</p>
                                     </div>
                                     <div className="flex gap-2 shrink-0">
-                                        <Link to={`/problem/${group.problemId}?solution=${sol.id}`} target="_blank" className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-50 transition shadow-sm">Çözüme Git</Link>
+                                        <Link to={`/problem/${group.problemPublicId || group.problemId}?solution=${sol.publicId || sol.id}`} target="_blank" className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-50 transition shadow-sm">Çözüme Git</Link>
                                         {canHighlight && <button onClick={() => handleToggleHighlight(sol.id)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${sol.isHighlighted ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>
                                             {sol.isHighlighted ? 'Vitrinden Al' : 'Vitrine Koy'}
                                         </button>}

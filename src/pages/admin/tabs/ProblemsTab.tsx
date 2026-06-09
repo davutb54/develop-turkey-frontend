@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom';
 import { adminService } from '../../../services/adminService';
 import { institutionService } from '../../../services/institutionService';
+import { problemService } from '../../../services/problemService';
 import type { ProblemDetailDto, Institution, Topic } from '../../../types';
 import { useCapability } from '../../../hooks/useCapability';
 
@@ -12,6 +13,9 @@ export default function ProblemsTab() {
     const canHighlight = useCapability('moderation.problem_highlight');
     const canDelete    = useCapability('moderation.problem_delete');
     const canModerate  = useCapability('moderation.problem_moderate');
+    const canClose     = useCapability('moderation.problem_close');
+    const canReopen    = useCapability('moderation.problem_reopen');
+    const canHide      = useCapability('moderation.problem_hide');
     const [problems, setProblems] = useState<ProblemDetailDto[]>([]);
     const [institutions, setInstitutions] = useState<Institution[]>([]);
     const [topics, setTopics] = useState<Topic[]>([]);
@@ -85,6 +89,32 @@ export default function ProblemsTab() {
         catch { alert('Çözüldü durumu güncellenemedi.'); }
     };
 
+    const handleCloseProblem = async (id: number) => {
+        const reason = window.prompt('Kapatma sebebi (opsiyonel):');
+        if (reason === null) return;
+        try {
+            await problemService.closeProblem(id, reason || undefined);
+            reload();
+        } catch { alert('İşlem başarısız.'); }
+    };
+
+    const handleReopenProblem = async (id: number) => {
+        if (!window.confirm('Sorunu yeniden açmak istediğinize emin misiniz?')) return;
+        try {
+            await problemService.reopenProblem(id);
+            reload();
+        } catch { alert('İşlem başarısız.'); }
+    };
+
+    const handleToggleHide = async (id: number, isHidden: boolean) => {
+        const msg = isHidden ? 'Sorunu herkese görünür yapmak istiyor musunuz?' : 'Sorunu gizlemek istiyor musunuz?';
+        if (!window.confirm(msg)) return;
+        try {
+            await problemService.toggleHide(id);
+            reload();
+        } catch { alert('İşlem başarısız.'); }
+    };
+
     const handleRemoveTopicFromProblem = async (problemId: number, topicId: number, topicName: string) => {
         if (!window.confirm(`'${topicName}' etiketini bu sorundan tamamen kaldırmak istediğinize emin misiniz?`)) return;
         try {
@@ -144,11 +174,11 @@ export default function ProblemsTab() {
                         ) : paginatedProblems.map(prob => (
                             <tr key={prob.id} className="hover:bg-indigo-50/30 transition">
                                 <td className="px-6 py-4">
-                                    <Link to={`/problem/${prob.id}`} target="_blank" className="font-bold text-slate-800 text-sm hover:text-indigo-600 line-clamp-2 transition mb-1">{prob.title}</Link>
+                                    <Link to={`/problem/${prob.publicId || prob.id}`} target="_blank" className="font-bold text-slate-800 text-sm hover:text-indigo-600 line-clamp-2 transition mb-1">{prob.title}</Link>
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs text-slate-400 font-medium">{new Date(prob.sendDate).toLocaleDateString('tr-TR')}</span>
                                         <span className="text-slate-300">•</span>
-                                        <Link to={`/user/${prob.senderId}`} target="_blank" className="text-indigo-600 font-bold text-xs hover:underline">@{prob.senderUsername}</Link>
+                                        <Link to={`/user/${prob.senderUsername}`} target="_blank" className="text-indigo-600 font-bold text-xs hover:underline">@{prob.senderUsername}</Link>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
@@ -175,14 +205,21 @@ export default function ProblemsTab() {
                                     {prob.isHighlighted && <span className="bg-orange-100 text-orange-700 border border-orange-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">VİTRİN</span>}
                                     {prob.isResolved && <span className="bg-green-100 text-green-700 border border-green-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">ÇÖZÜLDÜ (ADMİN)</span>}
                                     {prob.isResolvedByExpert && <span className="bg-teal-100 text-teal-700 border border-teal-200 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">UZMAN ÇÖZÜMÜ</span>}
+                                    {(prob as any).isClosed && <span className="bg-orange-200 text-orange-800 border border-orange-300 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">🔒 KAPALI</span>}
+                                    {(prob as any).isHidden && <span className="bg-slate-200 text-slate-700 border border-slate-300 text-[10px] px-2 py-0.5 rounded font-black tracking-wider shadow-sm">🚫 GİZLİ</span>}
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <div className="flex justify-end gap-2">
+                                    <div className="flex justify-end flex-wrap gap-2">
                                         {canResolve && <button onClick={() => handleToggleProblemResolved(prob.id)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${prob.isResolved ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>
                                             {prob.isResolved ? 'Çözüldü İptal' : 'Çözüldü Yap'}
                                         </button>}
                                         {canHighlight && <button onClick={() => handleToggleHighlight(prob.id)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${prob.isHighlighted ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>
                                             {prob.isHighlighted ? 'Vitrinden Al' : 'Vitrine Koy'}
+                                        </button>}
+                                        {!(prob as any).isClosed && canClose && <button onClick={() => handleCloseProblem(prob.id)} className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-orange-600 border border-orange-200 hover:bg-orange-50 transition shadow-sm">🔒 Kapat</button>}
+                                        {(prob as any).isClosed && canReopen && <button onClick={() => handleReopenProblem(prob.id)} className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition shadow-sm">🔓 Aç</button>}
+                                        {canHide && <button onClick={() => handleToggleHide(prob.id, !!(prob as any).isHidden)} className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition border shadow-sm ${(prob as any).isHidden ? 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                                            {(prob as any).isHidden ? '👁️ Göster' : '🚫 Gizle'}
                                         </button>}
                                         {canDelete && <button onClick={() => handleDeleteProblem(prob.id)} className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg bg-white text-rose-500 border border-rose-200 hover:bg-rose-50 transition shadow-sm">Sil</button>}
                                     </div>
