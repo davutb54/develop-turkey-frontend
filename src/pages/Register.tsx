@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { authService } from '../services/authService';
 import { constantService } from '../services/constantService';
 import { legalAgreementService } from '../services/legalAgreementService';
@@ -7,7 +7,7 @@ import type { City, Gender, LegalAgreement } from '../types';
 import SearchableSelect from '../components/SearchableSelect';
 import AgreementModal from '../components/AgreementModal';
 import { useAuth } from '../context/AuthContext';
-import { Turnstile } from '@marsidev/react-turnstile';
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 import { GoogleLogin } from '@react-oauth/google';
 import toast from 'react-hot-toast';
 import { useFeature } from '../hooks/useFeature';
@@ -40,6 +40,13 @@ const Register = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance | null>(null);
+
+  // Turnstile token'ı tek kullanımlıktır — başarısız denemeden sonra widget resetlenmeli
+  const resetCaptcha = () => {
+    setCaptchaToken(null);
+    turnstileRef.current?.reset();
+  };
 
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -138,13 +145,22 @@ const Register = () => {
 
         await checkAuth();
         alert("Kayıt Başarılı! Hoşgeldiniz.");
-        navigate('/verify-email', { state: { email: formData.email } });
+
+        // Kurumun email doğrulama zorunluluğu kapalıysa doğrudan ana sayfaya git
+        const requireEmailVerification = (response.data as any).requireEmailVerification !== false;
+        if (requireEmailVerification) {
+          navigate('/verify-email', { state: { email: formData.email } });
+        } else {
+          navigate('/');
+        }
       } else {
         setError("Kayıt işlemi başarısız oldu.");
+        resetCaptcha();
       }
     } catch (err: any) {
       console.error("Kayıt hatası:", err);
-      
+      resetCaptcha();
+
       if (err.response && err.response.data) {
         const data = err.response.data;
         const contentType = err.response.headers?.['content-type'] || '';
@@ -336,6 +352,7 @@ const Register = () => {
           {enableCaptcha && (
           <div className="flex justify-center">
             <Turnstile
+              ref={turnstileRef}
               siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
               onSuccess={(token) => setCaptchaToken(token)}
               onError={() => setCaptchaToken(null)}

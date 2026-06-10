@@ -86,10 +86,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (response.data && response.data.success) {
                 const user = response.data.data;
 
-                // Feature: Identity.RequireEmailVerification
+                // Feature: Identity.RequireEmailVerification — kullanıcının KENDİ kurumunun ayarı
                 let requireEmailVerification = true;
                 try {
-                    const featuresRes = await featureService.getInstitutionFeatures(1);
+                    const featuresRes = await featureService.getInstitutionFeatures(user?.institutionId || 1);
                     if (featuresRes.data.success) {
                         const features = featuresRes.data.data || {};
                         const rawValue = features['Identity.RequireEmailVerification'];

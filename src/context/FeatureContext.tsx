@@ -84,16 +84,7 @@ export const FeatureProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     }
                 }
             } else {
-                // apex domain veya www.domain.com — www. prefix'ini soyarak dene
-                const apexDomain = isWww ? parts.slice(1).join('.') : hostname;
-                try {
-                    const domainRes = await institutionService.getByDomain(apexDomain);
-                    if (domainRes.data?.success && domainRes.data.data?.id) {
-                        instId = domainRes.data.data.id;
-                    }
-                } catch {
-                    // kayıtlı kurum yok, varsayılan instId=1 kullanılır
-                }
+                // apex domain veya www — subdomain yok, varsayılan kurum 1 kullanılır
             }
         }
 

@@ -13,7 +13,7 @@ import {
 import toast from 'react-hot-toast';
 import { useAuth } from './AuthContext';
 import { notificationService } from '../services/notificationService';
-import { featureService } from '../services/featureService';
+import { useFeature } from '../hooks/useFeature';
 import type { Notification } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -104,22 +104,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [signalREnabled, setSignalREnabled] = useState(true);
 
-  // — Feature kontrolü: Communication.EnableSignalR —
-  useEffect(() => {
-    featureService.getInstitutionFeatures(1)
-      .then((res) => {
-        if (res.data.success) {
-          const features = res.data.data || {};
-          const rawValue = features['Communication.EnableSignalR'];
-          if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
-            setSignalREnabled(rawValue.toLowerCase() === 'true');
-          }
-        }
-      })
-      .catch(() => { /* Varsayılan true kalır */ });
-  }, []);
+  // — Feature kontrolü: Communication.EnableSignalR (kullanıcının kurumuna göre) —
+  const signalREnabled = useFeature<boolean>('Communication.EnableSignalR', true);
 
   // — Başlangıçta okunmamışları çek —
   useEffect(() => {

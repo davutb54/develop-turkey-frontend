@@ -1,9 +1,9 @@
 // src/pages/Login.tsx
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { authService } from '../services/authService';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Turnstile } from '@marsidev/react-turnstile';
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 import { GoogleLogin } from '@react-oauth/google';
 import toast from 'react-hot-toast';
 import { useFeature } from '../hooks/useFeature';
@@ -14,7 +14,14 @@ const Login = () => {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showVerifyLink, setShowVerifyLink] = useState(false);
+  const turnstileRef = useRef<TurnstileInstance | null>(null);
   const navigate = useNavigate();
+
+  // Turnstile token'ı tek kullanımlıktır — başarısız denemeden sonra widget resetlenmeli
+  const resetCaptcha = () => {
+    setCaptchaToken(null);
+    turnstileRef.current?.reset();
+  };
   const { checkAuth, setCapabilities } = useAuth();
   const allowGoogleLogin = useFeature<boolean>('Identity.AllowGoogleLogin', true);
   const enableCaptcha = useFeature<boolean>('Identity.EnableCaptcha', true);
@@ -39,11 +46,13 @@ const Login = () => {
       } else {
         // Hata
         setError("Giriş başarısız.");
+        resetCaptcha();
       }
     } catch (err: any) {
       // Backend'den gelen hata mesajını daha detaylı yakalıyoruz
       console.error("Login hatası:", err);
-      
+      resetCaptcha();
+
       if (err.response && err.response.data) {
         const data = err.response.data;
         const contentType = err.response.headers?.['content-type'] || '';
@@ -174,6 +183,7 @@ const Login = () => {
           {enableCaptcha && (
           <div className="flex justify-center">
             <Turnstile
+              ref={turnstileRef}
               siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
               onSuccess={(token) => setCaptchaToken(token)}
               onError={() => setCaptchaToken(null)}

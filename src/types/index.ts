@@ -221,6 +221,7 @@ export interface UserForRegisterDto {
     captchaToken?: string;
     agreementAccepted?: boolean;
     customHierarchyId?: number | null;
+    institutionId?: number;
 }
 
 // Profil Resmi Yüklemek İçin (UserImageUpdateDto)

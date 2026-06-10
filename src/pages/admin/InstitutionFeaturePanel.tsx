@@ -18,12 +18,14 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
   const [currentValues, setCurrentValues] = useState<Record<string, string>>({});
   const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [activeGroup, setActiveGroup] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [gRes, dRes, fRes] = await Promise.all([
         featureService.getFeatureGroups(),
@@ -38,7 +40,13 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
       }
       if (dRes.data.success) setDefinitions(dRes.data.data);
       if (fRes.data.success) setCurrentValues(fRes.data.data || {});
-    } catch (err) {
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 403) {
+        setLoadError('Bu kurumun feature ayarlarını görüntüleme yetkiniz yok (admin.institution_feature_write gerekli).');
+      } else {
+        setLoadError('Veriler yüklenemedi. Lütfen sayfayı yenileyin.');
+      }
       console.error('Veriler yüklenemedi', err);
     } finally {
       setLoading(false);
@@ -175,6 +183,18 @@ const InstitutionFeaturePanel: React.FC<InstitutionFeaturePanelProps> = ({
     return (
       <div className="flex items-center justify-center p-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex items-start gap-3">
+        <span className="text-red-500 text-xl">⚠️</span>
+        <div>
+          <p className="text-red-700 font-medium">Feature ayarları yüklenemedi</p>
+          <p className="text-red-600 text-sm mt-1">{loadError}</p>
+        </div>
       </div>
     );
   }
